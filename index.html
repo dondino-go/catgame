@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bowl Bandit — a cat on Marrow Street</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #150e22;
+    background-image: radial-gradient(ellipse at 50% 0%, #3b2560 0%, #150e22 70%);
+    font-family: 'Trebuchet MS', 'Avenir Next', system-ui, sans-serif;
+    color: #ffe9c9;
+  }
+  body { display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #wrap { width: min(100%, 1000px); }
+  canvas {
+    display: block; width: 100%; height: auto;
+    border-radius: 18px; border: 4px solid #2a1b3d;
+    box-shadow: 0 24px 60px rgba(0,0,0,.55), 0 0 0 6px rgba(255,255,255,.04);
+    cursor: pointer; touch-action: manipulation;
+  }
+  #hint { text-align: center; font-size: 13px; opacity: .55; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="1000" height="700"></canvas>
+  <div id="hint">Arrow keys / WASD to prowl &nbsp;·&nbsp; Space to eat &nbsp;·&nbsp; M mutes</div>
+</div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ *  BOWL BANDIT
+ *  Eight houses, eight bowls, two minutes, four waves.
+ *  Get seen eating from a NEIGHBOUR's bowl and the witness stops
+ *  feeding you. Someone who already gave up grasses you to the owner.
+ * ------------------------------------------------------------------ */
+
+const cv  = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const W = 1000, H = 700;
+
+/* ---------- palette ---------- */
+/* Outline weight. Every stroke in the game is scaled by this, so the whole
+   look can be tuned from one number: 1 = original chunky, lower = finer. */
+const STROKE   = 0.7;
+
+const INK      = '#2a1b3d';
+const ROAD     = '#4a3a6e';
+const ROAD_2   = '#553f7d';
+const PAVE     = '#7b6aa8';
+const PAVE_LIP = '#9384c2';
+const WARM     = '#ffd978';
+const MINT     = '#9df5c8';
+
+const HOUSE_TINT = [
+  { wall:'#ff7a6b', roof:'#c9455c', trim:'#ffd3a8' },
+  { wall:'#ffc247', roof:'#e08a2b', trim:'#fff0c0' },
+  { wall:'#79d6b5', roof:'#2f9d84', trim:'#ddfff2' },
+  { wall:'#b39ddb', roof:'#7a5fb0', trim:'#f0e6ff' },
+  { wall:'#6fc7e1', roof:'#3184a8', trim:'#ddf6ff' },
+  { wall:'#ff9ecd', roof:'#d1568f', trim:'#ffe3f1' },
+  { wall:'#ffa145', roof:'#e07a1f', trim:'#ffe9c9' },
+  { wall:'#8fd96b', roof:'#4e9b34', trim:'#e9ffd6' },
+];
+const HOUSE_NAMES = [
+  'The Pemburys', 'Old Nan', 'The Dobsons', 'Mr Quill',
+  'The Ashfords', 'Bea & Rook', 'The Mullens', 'Doctor Pye',
+];
+
+/* ---------- world layout ---------- */
+const HUD_H     = 56;
+const TOP_BASE  = 266;
+const BOT_BASE  = 494;
+const BOWL_TOP  = 300;
+const BOWL_BOT  = 460;
+const ROAD_TOP  = 330;
+const ROAD_BOT  = 430;
+const ROAD_MID  = (ROAD_TOP + ROAD_BOT) / 2;
+const CAT_MIN_Y = 292, CAT_MAX_Y = 470;
+const CAT_MIN_X = 46,  CAT_MAX_X = 954;
+const HOUSE_W   = 190;
+const BODY_H    = 130;
+const VIEW_R    = 300;
+/* Both rows of houses are drawn upright (roof above body). The near row simply
+   sits lower and taller in frame, which reads as houses; mirroring it upside
+   down made the roofs point downward and the whole row looked like arrows. */
+const TOP_BODY_BOT = 266, TOP_ROOF_H = 52, TOP_WIN_DY = 74;
+const BOT_BODY_BOT = 678, BOT_ROOF_H = 54, BOT_WIN_DY = 96;
+
+/* ---------- waves ---------- *
+ * Difficulty steps at wave boundaries rather than creeping continuously,
+ * so the player can feel the street turning against them.               */
+const WAVES = [
+  { name:'QUIET STREET', secs:30,
+    warn:1.90, watch:1.15, idle:[7.5,12.0], awake:1, bites:3,
+    react:0.55, speed:0.68, zone:0.42, zoneMin:0.22,
+    dog:0,  fox:false, blurb:'nobody is paying much attention yet' },
+  { name:'CURTAINS TWITCHING', secs:30,
+    warn:1.45, watch:1.60, idle:[5.5,9.0],  awake:2, bites:4,
+    react:0.42, speed:0.85, zone:0.36, zoneMin:0.18,
+    dog:19, fox:false, blurb:'a DOG is loose - it sends everyone to the windows' },
+  { name:'GETTING NOSY', secs:30,
+    warn:1.05, watch:2.05, idle:[4.0,7.0],  awake:3, bites:5,
+    react:0.30, speed:1.02, zone:0.31, zoneMin:0.145,
+    dog:15, fox:true,  blurb:'a FOX is working the same street - it will rob your bowls' },
+  { name:'NEIGHBOURHOOD WATCH', secs:30,
+    warn:0.72, watch:2.50, idle:[2.6,4.8],  awake:4, bites:6,
+    react:0.18, speed:1.25, zone:0.26, zoneMin:0.115,
+    dog:11, fox:true,  blurb:'every curtain on Marrow Street is twitching' },
+];
+const GAME_SECONDS = WAVES.reduce((n, w) => n + w.secs, 0);
+const GRACE        = 4.5;
+const KEPT_BONUS   = 40;
+
+/* ---------- helpers ---------- */
+const rand  = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp  = (a, b, t) => a + (b - a) * t;
+const dist  = (x1, y1, x2, y2) => Math.hypot(x1 - x2, y1 - y2);
+
+function rr(x, y, w, h, r) {
+  const k = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + k, y);
+  ctx.lineTo(x + w - k, y);     ctx.quadraticCurveTo(x + w, y, x + w, y + k);
+  ctx.lineTo(x + w, y + h - k); ctx.quadraticCurveTo(x + w, y + h, x + w - k, y + h);
+  ctx.lineTo(x + k, y + h);     ctx.quadraticCurveTo(x, y + h, x, y + h - k);
+  ctx.lineTo(x, y + k);         ctx.quadraticCurveTo(x, y, x + k, y);
+  ctx.closePath();
+}
+function fillStroke(fill, stroke, lw) {
+  if (fill)   { ctx.fillStyle = fill;     ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = (lw || 4) * STROKE; ctx.stroke(); }
+}
+function circle(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); }
+function text(str, x, y, size, colour, align, weight) {
+  ctx.font = (weight || 'bold') + ' ' + size + "px 'Trebuchet MS', system-ui, sans-serif";
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = colour;
+  ctx.fillText(str, x, y);
+}
+function outlinedText(str, x, y, size, colour, align) {
+  ctx.font = "bold " + size + "px 'Trebuchet MS', system-ui, sans-serif";
+  ctx.textAlign = align || 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(4, size * 0.22) * STROKE;
+  ctx.strokeStyle = INK;
+  ctx.strokeText(str, x, y);
+  ctx.fillStyle = colour;
+  ctx.fillText(str, x, y);
+}
+
+/* ---------- sound ---------- */
+const Sfx = {
+  ac: null, muted: false,
+  boot() {
+    if (!this.ac) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) this.ac = new AC(); }
+    if (this.ac && this.ac.state === 'suspended') this.ac.resume();
+  },
+  tone(freq, dur, type, vol, slideTo, delay) {
+    if (this.muted || !this.ac) return;
+    const t = this.ac.currentTime + (delay || 0);
+    const o = this.ac.createOscillator(), g = this.ac.createGain();
+    o.type = type || 'triangle';
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.15, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.ac.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  bite()   { this.tone(rand(620, 760), 0.09, 'triangle', 0.16, 980); },
+  miss()   { this.tone(150, 0.16, 'sawtooth', 0.11, 80); },
+  clear()  { [660, 880, 1100].forEach((f, i) => this.tone(f, 0.13, 'triangle', 0.16, null, i * 0.07)); },
+  stir()   { this.tone(400, 0.07, 'sine', 0.07, 520); },
+  caught() { this.tone(300, 0.5, 'square', 0.14, 90); },
+  step()   { this.tone(rand(180, 230), 0.04, 'sine', 0.045); },
+  bark()   { [220, 180].forEach((f, i) => this.tone(f, 0.11, 'square', 0.13, f * 0.6, i * 0.16)); },
+  waveUp() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.13, null, i * 0.09)); },
+  steal()  { this.tone(520, 0.22, 'sawtooth', 0.10, 180); },
+  call()   { [523, 392].forEach((f, i) => this.tone(f, 0.4, 'sine', 0.13, null, i * 0.34)); },
+  over()   { [520, 440, 330, 262].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.14, null, i * 0.15)); },
+};
+
+/* ---------- state ---------- */
+let houses = [];
+let scene = 'title';          // title | play | caught | pickup | over
+let score = 0, bowlsCleared = 0, foxLosses = 0, timeLeft = GAME_SECONDS;
+let keptBonus = 0;
+let eat = null, caughtInfo = null;
+let flash = 0, shakeT = 0, elapsed = 0;
+let spotHeat = 0, spotBy = null;
+let floaters = [];
+let waveIdx = 0, banner = null;
+let dog = null, dogTimer = 0;
+let fox = null;
+let pickup = null;
+
+const cat = { x: 500, y: 400, vx: 0, vy: 0, face: 1, walk: 0, blink: 2.5, tail: 0, startle: 0, happy: 0 };
+
+/* current wave, and 0..1 position across the whole round */
+function wave() { return WAVES[waveIdx]; }
+function wt()   { return waveIdx / (WAVES.length - 1); }
+function played(){ return GAME_SECONDS - timeLeft; }
+
+function waveAt(sec) {
+  let acc = 0;
+  for (let i = 0; i < WAVES.length; i++) { acc += WAVES[i].secs; if (sec < acc) return i; }
+  return WAVES.length - 1;
+}
+function waveProgress() {
+  let acc = 0;
+  for (let i = 0; i < waveIdx; i++) acc += WAVES[i].secs;
+  return clamp((played() - acc) / wave().secs, 0, 1);
+}
+
+/* ---------- houses ---------- */
+function buildHouses() {
+  houses = [];
+  let id = 0;
+  for (const side of ['top', 'bottom']) {
+    for (let i = 0; i < 4; i++) {
+      const cx = 125 + i * 250;
+      const top  = side === 'top';
+      const base = top ? TOP_BASE : BOT_BASE;
+      const dir  = top ? 1 : -1;
+      const bodyBot  = top ? TOP_BODY_BOT : BOT_BODY_BOT;
+      const roofH    = top ? TOP_ROOF_H   : BOT_ROOF_H;
+      const winDy    = top ? TOP_WIN_DY   : BOT_WIN_DY;
+      const bodyTop  = bodyBot - BODY_H;
+      houses.push({
+        id, i, side, cx, base, dir,
+        tint: HOUSE_TINT[id], name: HOUSE_NAMES[id],
+        tilt: rand(-0.018, 0.018),
+        bodyBot, bodyTop, roofApex: bodyTop - roofH, chimney: top,
+        wx: cx, wy: bodyBot - winDy,
+        bowlY: side === 'top' ? BOWL_TOP : BOWL_BOT,
+        angry: false, state: 'idle', t: GRACE + rand(0, 6),
+        curtain: 0, glow: 0, bowl: null, respawn: rand(0, 2),
+        shake: 0, bang: 0,
+      });
+      id++;
+    }
+  }
+  for (const h of houses) {
+    h.neighbours = houses
+      .filter(o => o !== h && ((o.side === h.side && Math.abs(o.i - h.i) === 1) ||
+                               (o.side !== h.side && o.i === h.i)))
+      .map(o => o.id);
+  }
+}
+
+/* Small bowls in early waves (quick, safe visits); big ones later (long, exposed). */
+function spawnBowl(h) {
+  const n = wave().bites;
+  h.bowl = { food: n, max: n, bob: rand(0, 6.28), pop: 0 };
+}
+
+function resetGame() {
+  buildHouses();
+  waveIdx = 0;
+  houses.forEach(spawnBowl);
+  cat.x = 500; cat.y = 400; cat.vx = cat.vy = 0; cat.face = 1;
+  cat.startle = 0; cat.happy = 0;
+  score = 0; bowlsCleared = 0; foxLosses = 0; timeLeft = GAME_SECONDS;
+  eat = null; caughtInfo = null; flash = 0; shakeT = 0; elapsed = 0;
+  spotHeat = 0; spotBy = null; keptBonus = 0;
+  floaters = []; dog = null; fox = null; pickup = null;
+  dogTimer = 0;
+  banner = { t: 2.6, idx: 0 };
+  scene = 'play';
+}
+
+function endRound() {
+  if (scene === 'over') return;
+  keptBonus = houses.filter(h => !h.angry).length * KEPT_BONUS;
+  stopEating();
+  banner = null;
+  scene = 'over';
+  Sfx.over();
+}
+
+function floater(x, y, str, colour) { floaters.push({ x, y, str, colour, t: 0 }); }
+
+/* ---------- input ---------- */
+const keys = {};
+const MOVE_KEYS = ['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'];
+
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (MOVE_KEYS.includes(k) || k === ' ' || k === 'spacebar') e.preventDefault();
+  if (keys[k]) return;
+  keys[k] = true;
+  Sfx.boot();
+  if (k === 'm') { Sfx.muted = !Sfx.muted; return; }
+  if (k === ' ' || k === 'spacebar' || k === 'enter') {
+    if (scene === 'title' || scene === 'over') { resetGame(); return; }
+    if (scene === 'play') pressAction();
+  }
+  if (k === 'escape' && eat) stopEating();
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+cv.addEventListener('pointerdown', () => {
+  Sfx.boot();
+  if (scene === 'title' || scene === 'over') resetGame();
+  else if (scene === 'play') pressAction();
+});
+
+/* ---------- eating ---------- */
+function nearestBowl() {
+  let best = null, bd = 64;
+  for (const h of houses) {
+    if (!h.bowl) continue;
+    const d = dist(cat.x, cat.y, h.cx, h.bowlY);
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+function pressAction() {
+  if (eat) { takeBite(); return; }
+  const h = nearestBowl();
+  if (h) startEating(h);
+}
+function startEating(h) {
+  const w = wave();
+  eat = {
+    h, t: rand(0.2, 0.8), dir: Math.random() < 0.5 ? 1 : -1,
+    speed: w.speed, zoneW: w.zone, zoneMin: w.zoneMin, zone: 0.35,
+    bites: 0, cool: 0, flashBad: 0, flashGood: 0,
+  };
+  placeZone();
+  cat.x = lerp(cat.x, h.cx, 0.6);
+  cat.y = h.bowlY + (h.side === 'top' ? 26 : -26);
+}
+function placeZone() {
+  for (let n = 0; n < 40; n++) {
+    const z = rand(0.04, 0.96 - eat.zoneW);
+    if (Math.abs((z + eat.zoneW / 2) - eat.t) > 0.22) { eat.zone = z; return; }
+  }
+  eat.zone = 1 - eat.zoneW - 0.04;
+}
+function stopEating() { eat = null; }
+
+function takeBite() {
+  if (eat.cool > 0) return;
+  const h = eat.h;
+  if (eat.t < eat.zone || eat.t > eat.zone + eat.zoneW) {
+    eat.cool = 0.34; eat.flashBad = 0.3;
+    Sfx.miss();
+    makeNoise(h.cx, h.bowlY);
+    return;
+  }
+  eat.bites++; eat.flashGood = 0.2;
+  score += 10; cat.happy = 0.35;
+  Sfx.bite();
+  floater(h.cx, h.bowlY - 30, '+10', '#ffe9a8');
+
+  h.bowl.food--; h.bowl.pop = 0.22;
+  eat.speed = Math.min(2.5, eat.speed + 0.10);
+  eat.zoneW = Math.max(eat.zoneMin, eat.zoneW - 0.022);
+
+  if (h.bowl.food <= 0) {
+    h.bowl = null; h.respawn = rand(5.5, 9);
+    bowlsCleared++; score += 25;
+    floater(h.cx, h.bowlY - 56, 'BOWL CLEARED +25', MINT);
+    Sfx.clear();
+    stopEating();
+    return;
+  }
+  placeZone();
+}
+
+/* A missed bite clatters the bowl and brings nearby residents to the window. */
+function makeNoise(x, y) {
+  const t = wt();
+  const reach = lerp(200, 340, t);
+  const lo = lerp(1.8, 0.35, t), hi = lerp(3.0, 1.1, t);
+  for (const h of houses) {
+    if (h.state !== 'idle') continue;
+    if (dist(x, y, h.wx, h.wy) < reach) { h.t = Math.min(h.t, rand(lo, hi)); h.shake = 0.25; }
+  }
+}
+
+/* ---------- resident behaviour ---------- */
+function updateHouses(dt) {
+  const w = wave();
+  const maxAwake = w.awake;
+  let awake = houses.reduce((n, h) => n + (h.state !== 'idle' ? 1 : 0), 0);
+
+  for (const h of houses) {
+    h.shake = Math.max(0, h.shake - dt);
+    h.bang  = Math.max(0, h.bang - dt);
+
+    // An angry resident stops feeding you but never stops watching.
+    if (!h.angry && !h.bowl) {
+      h.respawn -= dt;
+      if (h.respawn <= 0 && !(eat && eat.h === h) && !(fox && fox.target === h)) spawnBowl(h);
+    }
+
+    h.t -= dt;
+    if (h.t <= 0) {
+      if (h.state === 'idle') {
+        if (awake >= maxAwake) {
+          h.t = rand(0.5, 1.5);
+        } else {
+          h.state = 'stir'; h.t = w.warn; h.bang = h.t; awake++;
+          Sfx.stir();
+        }
+      } else if (h.state === 'stir') {
+        h.state = 'watch'; h.t = w.watch + rand(0, 0.5);
+      } else {
+        h.state = 'idle'; h.t = rand(w.idle[0], w.idle[1]); awake--;
+      }
+    }
+
+    const wantGlow    = h.state === 'watch' ? 1 : h.state === 'stir' ? 0.55 : 0.22;
+    const wantCurtain = h.state === 'watch' ? 1 : h.state === 'stir' ? 0.5  : 0;
+    h.glow    = lerp(h.glow, wantGlow, dt * 7);
+    h.curtain = lerp(h.curtain, wantCurtain, dt * 8);
+  }
+}
+
+function isThreat(w, owner) { return w !== owner && owner.neighbours.includes(w.id); }
+function canSee(w) { return w.state === 'watch' && dist(cat.x, cat.y, w.wx, w.wy) < VIEW_R; }
+
+/* A resident needs a moment to register what they're seeing — your window to bolt. */
+function checkSpotted(dt) {
+  let seer = null;
+  if (eat) {
+    for (const w of houses) if (isThreat(w, eat.h) && canSee(w)) { seer = w; break; }
+  }
+  if (seer) {
+    spotBy = seer;
+    spotHeat += dt;
+    if (spotHeat >= wave().react) { spotHeat = 0; spotBy = null; getCaught(seer, eat.h); }
+  } else {
+    spotHeat = Math.max(0, spotHeat - dt * 2.5);
+    if (spotHeat === 0) spotBy = null;
+  }
+}
+
+function getCaught(witness, owner) {
+  const grass = witness.angry;            // already stopped feeding — they tell instead
+  const loser = grass ? owner : witness;
+  loser.angry = true; loser.bowl = null;
+  witness.state = 'idle'; witness.t = rand(2.2, 3.6);
+  witness.glow = 0; witness.curtain = 0;
+  caughtInfo = { w: witness, owner, loser, grass, t: 1.6 };
+  stopEating();
+  cat.startle = 1.1; flash = 0.5; shakeT = 0.5;
+  Sfx.caught();
+  floater(loser.cx, loser.wy - 110, 'NO MORE BOWLS!', '#ff8f8f');
+  scene = 'caught';
+}
+
+/* ---------- the dog ---------- *
+ * Runs the length of the street. Every resident goes to the window to look,
+ * so the only safe move is to be off the bowls when it passes.            */
+function spawnDog() {
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  dog = { dir, x: dir === 1 ? -70 : W + 70, y: ROAD_MID + rand(-12, 12), phase: 'bark', t: 1.15, run: 0 };
+  Sfx.bark();
+}
+function updateDog(dt) {
+  const w = wave();
+  if (!dog) {
+    if (w.dog > 0) {
+      dogTimer -= dt;
+      if (dogTimer <= 0) { spawnDog(); dogTimer = w.dog + rand(-3, 3); }
+    }
+    return;
+  }
+  dog.run += dt;
+  if (dog.phase === 'bark') {
+    // telegraph: every curtain twitches before the dog appears
+    for (const h of houses) {
+      if (h.state === 'idle') { h.state = 'stir'; h.bang = Math.max(h.bang, 0.6); }
+      h.t = Math.max(h.t, 0.35);
+    }
+    dog.t -= dt;
+    if (dog.t <= 0) { dog.phase = 'run'; Sfx.bark(); }
+    return;
+  }
+  dog.x += dog.dir * 430 * dt;
+  for (const h of houses) { h.state = 'watch'; h.t = 0.7; }
+  if (dog.x < -110 || dog.x > W + 110) dog = null;
+}
+
+/* ---------- the fox ---------- *
+ * Competition, not a threat. It robs bowls; residents don't care.        */
+function spawnFox() {
+  const fromLeft = Math.random() < 0.5;
+  fox = { x: fromLeft ? -50 : W + 50, y: ROAD_MID, face: fromLeft ? 1 : -1,
+          target: null, eatT: 0, walk: 0, rest: 0 };
+}
+function foxPickTarget() {
+  let best = null, bd = 1e9;
+  for (const h of houses) {
+    if (!h.bowl) continue;
+    const d = dist(fox.x, fox.y, h.cx, h.bowlY);
+    if (d < bd) { bd = d; best = h; }
+  }
+  fox.target = best;
+}
+function updateFox(dt) {
+  if (!wave().fox) return;
+  if (!fox) { spawnFox(); return; }
+  fox.walk += dt;
+
+  if (fox.rest > 0) {            // a smug sit-down between courses
+    fox.rest -= dt;
+    fox.target = null;
+    return;
+  }
+  if (!fox.target || !fox.target.bowl) { foxPickTarget(); fox.eatT = 0; }
+  if (!fox.target) {                                  // nothing to rob — mooch about
+    fox.x += fox.face * 55 * dt;
+    if (fox.x < 60 || fox.x > W - 60) fox.face *= -1;
+    fox.y = lerp(fox.y, ROAD_MID, dt * 2);
+    return;
+  }
+
+  const h = fox.target;
+  const tx = h.cx, ty = h.bowlY + (h.side === 'top' ? 24 : -24);
+  const d = dist(fox.x, fox.y, tx, ty);
+  if (d > 12) {
+    const sp = 112;                                   // slower than the cat: you can beat it
+    fox.x += ((tx - fox.x) / d) * sp * dt;
+    fox.y += ((ty - fox.y) / d) * sp * dt;
+    if (Math.abs(tx - fox.x) > 2) fox.face = tx > fox.x ? 1 : -1;
+    fox.eatT = 0;
+    return;
+  }
+  fox.eatT += dt;
+  if (fox.eatT >= 1.0) {                              // one ball at a time
+    fox.eatT = 0;
+    if (h.bowl) {
+      h.bowl.food--; h.bowl.pop = 0.2;
+      if (h.bowl.food <= 0) {
+        h.bowl = null; h.respawn = rand(5.5, 9);
+        foxLosses++;
+        floater(h.cx, h.bowlY - 44, 'FOX GOT IT!', '#ff9d6b');
+        Sfx.steal();
+        if (eat && eat.h === h) stopEating();
+        fox.target = null;
+        fox.rest = 1.4;
+      }
+    }
+  }
+}
+
+/* ---------- the owner arrives ---------- */
+function beginPickup() {
+  stopEating();
+  const fromLeft = cat.x > W / 2 ? false : true;
+  pickup = { t: 0, x: fromLeft ? -70 : W + 70, dir: fromLeft ? 1 : -1, holding: false, walk: 0 };
+  scene = 'pickup';
+  Sfx.call();
+}
+function updatePickup(dt) {
+  pickup.t += dt; pickup.walk += dt;
+  const stopX = cat.x - pickup.dir * 40;
+  if (!pickup.holding) {
+    const d = stopX - pickup.x;
+    if (Math.abs(d) > 4) pickup.x += Math.sign(d) * 190 * dt;
+    else pickup.holding = true;
+  }
+  if (pickup.t > 3.4) endRound();
+}
+
+/* ---------- update ---------- */
+function update(dt) {
+  cat.tail += dt;
+  cat.blink -= dt;
+  if (cat.blink < -0.12) cat.blink = rand(2, 5.5);
+  cat.startle = Math.max(0, cat.startle - dt);
+  cat.happy   = Math.max(0, cat.happy - dt);
+  flash  = Math.max(0, flash - dt * 2);
+  shakeT = Math.max(0, shakeT - dt);
+  for (const f of floaters) f.t += dt;
+  floaters = floaters.filter(f => f.t < 1.3);
+  for (const h of houses) if (h.bowl) { h.bowl.bob += dt; h.bowl.pop = Math.max(0, h.bowl.pop - dt); }
+  if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
+
+  if (scene === 'pickup') { updatePickup(dt); updateHouses(dt); return; }
+
+  if (scene === 'caught') {
+    caughtInfo.t -= dt;
+    updateHouses(dt);
+    if (caughtInfo.t <= 0) {
+      caughtInfo = null;
+      if (houses.every(h => h.angry)) endRound();
+      else scene = 'play';
+    }
+    return;
+  }
+  if (scene !== 'play') return;
+
+  elapsed  += dt;
+  timeLeft -= dt;
+  if (timeLeft <= 0) { timeLeft = 0; beginPickup(); return; }
+
+  // wave changeover
+  const wi = waveAt(played());
+  if (wi !== waveIdx) {
+    waveIdx = wi;
+    banner = { t: 2.8, idx: wi };
+    Sfx.waveUp();
+    if (wave().dog > 0 && !dog) dogTimer = rand(4, 8);
+    if (wave().fox && !fox) spawnFox();
+  }
+
+  /* movement */
+  const up    = keys['arrowup']    || keys['w'];
+  const down  = keys['arrowdown']  || keys['s'];
+  const left  = keys['arrowleft']  || keys['a'];
+  const right = keys['arrowright'] || keys['d'];
+  let dx = (right ? 1 : 0) - (left ? 1 : 0);
+  let dy = (down  ? 1 : 0) - (up   ? 1 : 0);
+
+  if (eat && (dx || dy)) stopEating();
+
+  if (!eat) {
+    const SPEED = 205;
+    if (dx && dy) { const k = Math.SQRT1_2; dx *= k; dy *= k; }
+    cat.vx = lerp(cat.vx, dx * SPEED, dt * 14);
+    cat.vy = lerp(cat.vy, dy * SPEED, dt * 14);
+    cat.x = clamp(cat.x + cat.vx * dt, CAT_MIN_X, CAT_MAX_X);
+    cat.y = clamp(cat.y + cat.vy * dt, CAT_MIN_Y, CAT_MAX_Y);
+    if (dx) cat.face = dx > 0 ? 1 : -1;
+    const spd = Math.hypot(cat.vx, cat.vy);
+    const before = cat.walk;
+    cat.walk += spd * dt * 0.05;
+    if (spd > 30 && Math.floor(before / 3) !== Math.floor(cat.walk / 3)) Sfx.step();
+  } else {
+    cat.vx = cat.vy = 0;
+    eat.cool      = Math.max(0, eat.cool - dt);
+    eat.flashBad  = Math.max(0, eat.flashBad - dt);
+    eat.flashGood = Math.max(0, eat.flashGood - dt);
+    eat.t += eat.dir * eat.speed * dt;
+    if (eat.t > 1) { eat.t = 1; eat.dir = -1; }
+    if (eat.t < 0) { eat.t = 0; eat.dir = 1; }
+    if (!eat.h.bowl) stopEating();
+  }
+
+  updateHouses(dt);
+  updateDog(dt);
+  updateFox(dt);
+  checkSpotted(dt);
+
+  if (houses.every(h => h.angry)) endRound();
+}
+
+/* ================================================================== *
+ *  DRAWING
+ * ================================================================== */
+const stars = Array.from({ length: 70 }, () => ({
+  x: Math.random() * W, y: HUD_H + Math.random() * 190, r: rand(0.8, 2.1), p: rand(0, 6.28),
+}));
+
+function drawBackdrop() {
+  // The sky only occupies the strip behind the far houses. Previously this
+  // gradient was stretched over the whole canvas, so everything below the road
+  // clamped to the warm horizon stop and became one flat orange band.
+  const g = ctx.createLinearGradient(0, HUD_H, 0, TOP_BASE);
+  g.addColorStop(0, '#3f2a6b'); g.addColorStop(0.52, '#8a4b8f'); g.addColorStop(1, '#ef8f6a');
+  ctx.fillStyle = g; ctx.fillRect(0, HUD_H, W, TOP_BASE - HUD_H);
+
+  for (const st of stars) {
+    ctx.globalAlpha = (0.45 + 0.55 * Math.abs(Math.sin(elapsed * 1.6 + st.p))) * 0.9;
+    ctx.fillStyle = '#fff4d0'; circle(st.x, st.y, st.r); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  circle(880, HUD_H + 52, 27); fillStroke('#fff1c2', INK, 4);
+  ctx.globalAlpha = 0.35;
+  circle(871, HUD_H + 45, 6); fillStroke('#e6d3a0', null);
+  circle(889, HUD_H + 61, 4.5); fillStroke('#e6d3a0', null);
+  ctx.restore();
+
+  // night ground in front of the near houses
+  ctx.fillStyle = '#2c2148'; ctx.fillRect(0, BOT_BASE, W, H - BOT_BASE);
+
+  ctx.fillStyle = PAVE;     ctx.fillRect(0, TOP_BASE, W, BOT_BASE - TOP_BASE);
+  ctx.fillStyle = PAVE_LIP; ctx.fillRect(0, TOP_BASE, W, 7);
+  ctx.fillStyle = PAVE_LIP; ctx.fillRect(0, BOT_BASE - 7, W, 7);
+  ctx.fillStyle = ROAD;     ctx.fillRect(0, ROAD_TOP, W, ROAD_BOT - ROAD_TOP);
+  ctx.fillStyle = ROAD_2;   ctx.fillRect(0, ROAD_TOP, W, 6);
+  ctx.fillStyle = ROAD_2;   ctx.fillRect(0, ROAD_BOT - 6, W, 6);
+
+  ctx.strokeStyle = 'rgba(42,27,61,.18)'; ctx.lineWidth = 3 * STROKE;
+  for (let x = 0; x < W; x += 62) {
+    ctx.beginPath(); ctx.moveTo(x, TOP_BASE + 7); ctx.lineTo(x, ROAD_TOP); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 31, ROAD_BOT); ctx.lineTo(x + 31, BOT_BASE - 7); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,233,201,.35)';
+  ctx.lineWidth = 6 * STROKE; ctx.lineCap = 'round'; ctx.setLineDash([34, 30]);
+  ctx.beginPath(); ctx.moveTo(0, ROAD_MID); ctx.lineTo(W, ROAD_MID); ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawBunting() {
+  const y0 = 104, sag = 22, span = 250;   // strung across the roofs, clear of the street
+  const wireY = x => y0 + sag * Math.sin(Math.PI * ((x % span) / span));
+  ctx.strokeStyle = 'rgba(42,27,61,.75)'; ctx.lineWidth = 3 * STROKE;
+  ctx.beginPath();
+  for (let x = 0; x <= W; x += 8) { if (x === 0) ctx.moveTo(x, wireY(x)); else ctx.lineTo(x, wireY(x)); }
+  ctx.stroke();
+  const cols = ['#ff7a6b', '#ffc247', '#79d6b5', '#6fc7e1', '#ff9ecd'];
+  for (let x = 18; x < W; x += 34) {
+    const y = wireY(x), sway = Math.sin(elapsed * 1.5 + x * 0.03) * 3;
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y); ctx.lineTo(x + 9, y); ctx.lineTo(x + sway, y + 20);
+    ctx.closePath();
+    fillStroke(cols[(x / 34 | 0) % cols.length], INK, 2.5);
+  }
+}
+
+function drawLamp(x) {
+  const baseY = ROAD_TOP - 2;
+  ctx.save();
+  rr(x - 5, baseY - 96, 10, 96, 5);   fillStroke('#3a2b57', INK, 3);
+  rr(x - 16, baseY - 118, 32, 26, 10); fillStroke(WARM, INK, 3.5);
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, baseY - 106, 4, x, baseY - 106, 70);
+  g.addColorStop(0, 'rgba(255,214,120,.36)'); g.addColorStop(1, 'rgba(255,214,120,0)');
+  ctx.fillStyle = g; circle(x, baseY - 106, 70); ctx.fill();
+  ctx.restore();
+}
+
+function drawHouse(h) {
+  const t = h.tint, half = HOUSE_W / 2, dull = h.angry;
+  const bodyH = h.bodyBot - h.bodyTop;
+  const roofH = h.bodyTop - h.roofApex;
+  const winDy = h.bodyBot - h.wy;
+
+  ctx.save();
+  ctx.translate(h.cx + (h.shake > 0 ? Math.sin(h.shake * 70) * 2 : 0), h.bodyBot);
+  ctx.rotate(h.tilt);
+
+  if (h.chimney) {
+    rr(-62, -(bodyH + 70), 26, 40, 4); fillStroke(dull ? '#6b5b83' : t.roof, INK, 4);
+    if (!dull) {
+      ctx.globalAlpha = 0.26;
+      for (let i = 0; i < 3; i++) {
+        const p = (elapsed * 0.45 + i * 0.33) % 1;
+        circle(-49 + Math.sin(p * 5 + i) * 10, -(bodyH + 74) - p * 14, 6 + p * 7);
+        ctx.fillStyle = '#ffeecf'; ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(-half - 18, -bodyH); ctx.lineTo(0, -(bodyH + roofH)); ctx.lineTo(half + 18, -bodyH);
+  ctx.closePath(); fillStroke(dull ? '#5f5079' : t.roof, INK, 4);
+
+  rr(-half, -bodyH, HOUSE_W, bodyH, 8); fillStroke(dull ? '#7a6c93' : t.wall, INK, 4);
+
+  ctx.strokeStyle = 'rgba(42,27,61,.13)'; ctx.lineWidth = 3 * STROKE;
+  for (let y = -bodyH + 22; y < -6; y += 22) {
+    ctx.beginPath(); ctx.moveTo(-half + 4, y); ctx.lineTo(half - 4, y); ctx.stroke();
+  }
+
+  rr(46, -56, 46, 56, 8); fillStroke(dull ? '#5f5079' : t.roof, INK, 4);
+  circle(56, -28, 3.5); fillStroke(WARM, INK, 2);
+
+  const wx = -34, wy = -winDy - 26, ww = 68, wh = 52;
+  rr(wx - 5, wy - 5, ww + 10, wh + 10, 8); fillStroke(dull ? '#5f5079' : t.trim, INK, 4);
+  rr(wx, wy, ww, wh, 5);
+  ctx.fillStyle = dull ? '#2f2544'
+    : 'rgba(255,' + (lerp(200, 226, h.glow) | 0) + ',' + (lerp(120, 150, h.glow) | 0) + ',1)';
+  ctx.fill();
+
+  if (!dull) {
+    ctx.save(); ctx.clip();
+    const s = h.curtain;
+    if (s > 0.05) {
+      // an actual person at the glass: shoulders, head, hair, eyes. The old
+      // flat silhouette with two glowing dots read as an insect.
+      const mx = wx + ww / 2, hy = wy + wh - lerp(-2, 31, s);
+      ctx.fillStyle = t.roof;
+      rr(mx - 21, hy + 9, 42, 34, 15); ctx.fill();
+      ctx.fillStyle = '#f2c49b';
+      circle(mx, hy, 11.5); ctx.fill();
+      ctx.fillStyle = '#4a3550';
+      ctx.beginPath(); ctx.arc(mx, hy - 1.5, 11.5, Math.PI * 1.02, Math.PI * 1.98);
+      ctx.closePath(); ctx.fill();
+      if (s > 0.5) {
+        ctx.fillStyle = '#2a1b3d';
+        circle(mx - 4.2, hy + 1.5, 1.9); ctx.fill();
+        circle(mx + 4.2, hy + 1.5, 1.9); ctx.fill();
+      }
+    }
+    const cwd = lerp(ww * 0.5, ww * 0.16, h.curtain);
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    ctx.fillRect(wx, wy, cwd, wh);
+    ctx.fillRect(wx + ww - cwd, wy, cwd, wh);
+    ctx.restore();
+  }
+
+  // a boarded-up resident still watches through the gap in the planks
+  if (dull && h.glow > 0.12) {
+    ctx.save();
+    rr(wx, wy, ww, wh, 5); ctx.clip();
+    ctx.globalAlpha = clamp(h.glow, 0, 1);
+    ctx.fillStyle = '#e9b6ff'; ctx.fillRect(wx, wy + wh / 2 - 11, ww, 22);
+    ctx.fillStyle = 'rgba(42,27,61,.92)';
+    circle(wx + ww / 2, wy + wh / 2 + 3, 12); ctx.fill();
+    if (h.curtain > 0.6) {
+      ctx.fillStyle = '#fff0c8';
+      circle(wx + ww / 2 - 4.5, wy + wh / 2 - 1, 2.3); ctx.fill();
+      circle(wx + ww / 2 + 4.5, wy + wh / 2 - 1, 2.3); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  rr(wx, wy, ww, wh, 5); fillStroke(null, INK, 3.5);
+  ctx.beginPath();
+  ctx.moveTo(wx + ww / 2, wy); ctx.lineTo(wx + ww / 2, wy + wh);
+  ctx.moveTo(wx, wy + wh / 2); ctx.lineTo(wx + ww, wy + wh / 2);
+  ctx.strokeStyle = INK; ctx.lineWidth = 3 * STROKE; ctx.stroke();
+
+  if (dull) {
+    ctx.lineCap = 'round'; ctx.strokeStyle = '#6b4a2e'; ctx.lineWidth = 11 * STROKE;
+    ctx.beginPath(); ctx.moveTo(wx - 10, wy + 4); ctx.lineTo(wx + ww + 10, wy + wh - 6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(wx - 10, wy + wh - 6); ctx.lineTo(wx + ww + 10, wy + 4); ctx.stroke();
+  }
+
+  circle(-half - 8, -14, 18); fillStroke(dull ? '#4f6046' : '#5fbf74', INK, 3.5);
+  circle(-half + 12, -10, 14); fillStroke(dull ? '#4f6046' : '#71d489', INK, 3.5);
+  ctx.restore();
+}
+
+function drawWindowLight(h) {
+  if (h.glow < 0.06) return;
+  const threat = eat && isThreat(h, eat.h);
+  const strength = h.state === 'watch' ? 1 : h.state === 'stir' ? 0.35 : 0.12;
+  const a = h.glow * strength;
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, TOP_BASE, W, BOT_BASE - TOP_BASE); ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(h.wx, h.wy, 10, h.wx, h.wy, VIEW_R);
+  if (threat && h.state === 'watch') {
+    g.addColorStop(0, 'rgba(255,120,120,' + (0.40 * a) + ')');
+    g.addColorStop(0.6, 'rgba(255,90,90,' + (0.16 * a) + ')');
+    g.addColorStop(1, 'rgba(255,80,80,0)');
+  } else if (h.angry) {
+    g.addColorStop(0, 'rgba(214,150,255,' + (0.30 * a) + ')');
+    g.addColorStop(0.6, 'rgba(196,130,245,' + (0.12 * a) + ')');
+    g.addColorStop(1, 'rgba(196,130,245,0)');
+  } else {
+    g.addColorStop(0, 'rgba(255,206,120,' + (0.34 * a) + ')');
+    g.addColorStop(0.6, 'rgba(255,190,110,' + (0.13 * a) + ')');
+    g.addColorStop(1, 'rgba(255,190,110,0)');
+  }
+  ctx.fillStyle = g; circle(h.wx, h.wy, VIEW_R); ctx.fill();
+  ctx.restore();
+
+  if (h.state === 'stir') {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, TOP_BASE, W, BOT_BASE - TOP_BASE); ctx.clip();
+    ctx.setLineDash([10, 12]); ctx.lineWidth = 3 * STROKE;
+    ctx.strokeStyle = (eat && isThreat(h, eat.h)) ? 'rgba(255,140,140,.75)' : 'rgba(255,225,160,.45)';
+    circle(h.wx, h.wy, VIEW_R); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawStirBubble(h) {
+  if (h.bang <= 0) return;
+  const pop = 1 + Math.sin((1 - h.bang) * 18) * 0.07;
+  ctx.save();
+  ctx.translate(h.wx + 50, h.wy);
+  ctx.scale(pop, pop);
+  circle(0, 0, 15); fillStroke('#fff3d6', INK, 3.5);
+  outlinedText(h.angry ? '?' : '!', 0, 1, 20, h.angry ? '#a05fd6' : '#e0574f');
+  ctx.restore();
+}
+
+function drawThreatEyes(owner) {
+  for (const id of owner.neighbours) {
+    const n = houses[id];
+    const y = n.roofApex + 22;
+    const hot = n.state !== 'idle';
+    ctx.save();
+    ctx.globalAlpha = hot ? 1 : 0.6;
+    ctx.beginPath(); ctx.ellipse(n.cx, y, 15, 10, 0, 0, Math.PI * 2);
+    fillStroke(hot ? (n.angry ? '#d69bff' : '#ff9d9d') : '#fff0cf', INK, 3.5);
+    circle(n.cx, y, 5); fillStroke(INK, null);
+    ctx.restore();
+  }
+}
+
+function drawBowl(h) {
+  const b = h.bowl;
+  if (!b) {
+    ctx.save(); ctx.globalAlpha = 0.16;
+    ctx.setLineDash([6, 7]); ctx.lineWidth = 3 * STROKE; ctx.strokeStyle = '#fff0cf';
+    ctx.beginPath(); ctx.ellipse(h.cx, h.bowlY + 6, 24, 10, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  const bob = Math.sin(b.bob * 2) * 1.6, pop = 1 + b.pop * 1.2;
+  ctx.save();
+  ctx.translate(h.cx, h.bowlY + bob);
+  ctx.scale(pop, 2 - pop);
+  ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.ellipse(0, 15, 27, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  // bowl first, then the rim, then the food on top -- drawing the food first
+  // meant the rim covered it and every bowl looked empty.
+  ctx.beginPath();
+  ctx.moveTo(-24, 0); ctx.quadraticCurveTo(0, 20, 24, 0); ctx.closePath();
+  fillStroke(h.tint.wall, INK, 3.5);
+  ctx.beginPath(); ctx.ellipse(0, 0, 24, 7, 0, 0, Math.PI * 2);
+  fillStroke(h.tint.trim, INK, 3.5);
+
+  const cols = ['#ffb454', '#ff8f6b', '#ffd76b', '#f7935c', '#ffc48a', '#ffab73'];
+  for (let i = 0; i < b.food; i++) {
+    const a = (i / b.max) * Math.PI * 2 + b.bob * 0.4;
+    const row = i > 2 ? 1 : 0;
+    circle(Math.cos(a) * 10, -5 + Math.sin(a) * 2.5 - row * 9, 7);
+    fillStroke(cols[i % cols.length], INK, 2.5);
+  }
+  ctx.restore();
+}
+
+function drawCat() {
+  const eating = !!eat;
+  const spd = Math.hypot(cat.vx, cat.vy);
+  const bobW = spd > 30 ? Math.sin(cat.walk * 1.6) * 2.4 : Math.sin(elapsed * 2.2) * 1.1;
+  const chew = eating ? Math.sin(elapsed * 16) * 2 : 0;
+
+  ctx.save();
+  ctx.translate(cat.x, cat.y);
+  ctx.globalAlpha = 0.25; ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.ellipse(0, 6, 27, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.scale(cat.face, 1);
+  if (cat.startle > 0) {
+    ctx.translate(0, -Math.sin((1.1 - cat.startle) * 9) * 12);
+    ctx.rotate(Math.sin(cat.startle * 30) * 0.05);
+  }
+
+  const ORANGE = '#ff8c42', ORANGE_D = '#e5762f', CREAM = '#ffe3c2';
+
+  const tw = Math.sin(cat.tail * (eating ? 6 : 3)) * (eating ? 16 : 9);
+  ctx.beginPath();
+  ctx.moveTo(-20, -14);
+  ctx.quadraticCurveTo(-46, -22 + tw * 0.4, -42 + tw * 0.5, -50 - Math.abs(tw) * 0.3);
+  ctx.lineWidth = 11 * STROKE; ctx.lineCap = 'round'; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.lineWidth = 7 * STROKE;  ctx.strokeStyle = ORANGE; ctx.stroke();
+
+  const legPhase = spd > 30 ? Math.sin(cat.walk * 1.6) * 5 : 0;
+  for (const p of [[-14, legPhase], [-6, -legPhase], [10, -legPhase], [18, legPhase]]) {
+    rr(p[0] - 4, -14, 8, 16 + p[1] * 0.3, 4); fillStroke(ORANGE_D, INK, 3);
+  }
+
+  ctx.save();
+  ctx.translate(0, bobW - (eating ? 1 : 0));
+  ctx.beginPath(); ctx.ellipse(0, -22, 25, 17, eating ? -0.12 : 0, 0, Math.PI * 2);
+  fillStroke(ORANGE, INK, 4);
+  ctx.beginPath(); ctx.ellipse(2, -14, 15, 8, 0, 0, Math.PI * 2); fillStroke(CREAM, null);
+  ctx.strokeStyle = ORANGE_D; ctx.lineWidth = 4 * STROKE; ctx.lineCap = 'round';
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath(); ctx.moveTo(-14 + i * 9, -34); ctx.lineTo(-17 + i * 9, -27); ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(eating ? 26 : 22, eating ? -16 + chew : -34 + bobW);
+  if (eating) ctx.rotate(0.35);
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * 4 - 4, -12); ctx.lineTo(s * 11 - 2, -26 - (cat.startle > 0 ? -5 : 0)); ctx.lineTo(s * 14 + 2, -10);
+    ctx.closePath(); fillStroke(ORANGE, INK, 3.5);
+    ctx.beginPath();
+    ctx.moveTo(s * 6 - 3, -13); ctx.lineTo(s * 10 - 2, -21); ctx.lineTo(s * 12 + 1, -12);
+    ctx.closePath(); fillStroke('#ffb9a0', null);
+  }
+  circle(0, 0, 16); fillStroke(ORANGE, INK, 4);
+  ctx.beginPath(); ctx.ellipse(6, 6, 11, 8, 0, 0, Math.PI * 2); fillStroke(CREAM, null);
+
+  if (cat.startle > 0) {
+    ctx.strokeStyle = INK; ctx.lineWidth = 3 * STROKE; ctx.lineCap = 'round';
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * 6 - 3, -6); ctx.lineTo(s * 6 + 3, -2);
+      ctx.moveTo(s * 6 - 3, -2); ctx.lineTo(s * 6 + 3, -6);
+      ctx.stroke();
+    }
+  } else if (cat.blink < 0 || cat.happy > 0) {
+    ctx.strokeStyle = INK; ctx.lineWidth = 3 * STROKE; ctx.lineCap = 'round';
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(s * 6, -4, 4, Math.PI * (cat.happy > 0 ? 1.15 : 1.2), Math.PI * (cat.happy > 0 ? 1.85 : 1.8));
+      ctx.stroke();
+    }
+  } else {
+    for (const s of [-1, 1]) {
+      circle(s * 6 - 1, -4, 5); fillStroke('#fffdf4', INK, 2.5);
+      circle(s * 6 + 0.5, -4, 2.6); fillStroke('#2a1b3d', null);
+    }
+  }
+  ctx.beginPath(); ctx.moveTo(3, 3); ctx.lineTo(9, 3); ctx.lineTo(6, 7); ctx.closePath();
+  fillStroke('#ff7d9c', INK, 2);
+  ctx.strokeStyle = INK; ctx.lineWidth = 2.2 * STROKE;
+  ctx.beginPath();
+  ctx.moveTo(6, 7); ctx.lineTo(6, 9); ctx.arc(3.5, 9, 2.5, 0, Math.PI);
+  ctx.moveTo(6, 9); ctx.arc(8.5, 9, 2.5, 0, Math.PI); ctx.stroke();
+  ctx.lineWidth = 2 * STROKE; ctx.strokeStyle = 'rgba(42,27,61,.65)';
+  for (let i = -1; i <= 1; i++) {
+    ctx.beginPath(); ctx.moveTo(12, 4 + i * 3); ctx.lineTo(28, 1 + i * 6); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+
+  if (cat.startle > 0.1) {
+    ctx.save(); ctx.translate(cat.x + 26 * cat.face, cat.y - 74);
+    outlinedText('!', 0, 0, 40, '#ff6b6b'); ctx.restore();
+  }
+}
+
+/* the dog: all ears and enthusiasm, sends the whole street to the windows */
+function drawDog() {
+  if (!dog) return;
+  const RUST = '#c98a4b', RUST_D = '#a86d37', PALE = '#ffe9c9';
+
+  if (dog.phase === 'bark') {
+    const x = dog.dir === 1 ? 60 : W - 60;
+    const pop = 1 + Math.sin(dog.run * 20) * 0.07;
+    ctx.save();
+    ctx.translate(x, ROAD_MID); ctx.scale(pop, pop);
+    rr(-74, -26, 148, 52, 16); fillStroke('rgba(26,17,40,.9)', '#ffb45c', 4);
+    outlinedText('WOOF!', 0, 0, 27, '#ffb45c');
+    ctx.restore();
+    return;
+  }
+
+  const bounce = Math.abs(Math.sin(dog.run * 15)) * 7;
+  ctx.save();
+  ctx.translate(dog.x, dog.y - bounce);
+  ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.ellipse(0, 12 + bounce, 30, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.scale(dog.dir, 1);
+
+  // tail, wagging hard
+  const wag = Math.sin(dog.run * 26) * 16;
+  ctx.beginPath();
+  ctx.moveTo(-22, -16);
+  ctx.quadraticCurveTo(-42, -26 + wag * 0.4, -50, -38 + wag);
+  ctx.lineWidth = 10 * STROKE; ctx.lineCap = 'round'; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.lineWidth = 6 * STROKE;  ctx.strokeStyle = RUST; ctx.stroke();
+
+  const gait = Math.sin(dog.run * 15) * 9;
+  for (const p of [[-16, gait], [-6, -gait], [12, -gait], [21, gait]]) {
+    rr(p[0] - 4, -14, 9, 18, 4); fillStroke(RUST_D, INK, 3);
+    rr(p[0] - 5, 1 + p[1] * 0.35, 11, 6, 3); fillStroke(PALE, INK, 2.5);
+  }
+
+  ctx.beginPath(); ctx.ellipse(0, -24, 28, 17, -0.06, 0, Math.PI * 2);
+  fillStroke(RUST, INK, 4);
+  ctx.beginPath(); ctx.ellipse(2, -17, 16, 8, 0, 0, Math.PI * 2); fillStroke(PALE, null);
+
+  ctx.save();
+  ctx.translate(27, -34);
+  // flapping ears
+  const flap = Math.sin(dog.run * 15) * 0.5;
+  ctx.save(); ctx.rotate(-0.5 + flap);
+  ctx.beginPath(); ctx.ellipse(-9, 2, 8, 15, 0, 0, Math.PI * 2); fillStroke(RUST_D, INK, 3);
+  ctx.restore();
+  circle(0, 0, 15); fillStroke(RUST, INK, 4);
+  ctx.beginPath(); ctx.ellipse(9, 6, 12, 9, 0, 0, Math.PI * 2); fillStroke(PALE, null);
+  circle(17, 4, 4.5); fillStroke(INK, null);              // nose
+  // open, happy mouth
+  ctx.beginPath(); ctx.ellipse(10, 12, 6, 4, 0, 0, Math.PI); fillStroke('#e0574f', INK, 2);
+  circle(-2, -4, 3.4); fillStroke('#fffdf4', INK, 2.2);
+  circle(-1, -4, 1.9); fillStroke(INK, null);
+  ctx.restore();
+  ctx.restore();
+}
+
+/* the fox: rival, not a threat. Bushier tail, white tip, sly eyes. */
+function drawFox() {
+  if (!fox) return;
+  const RED = '#f2703c', RED_D = '#cf5526', SNOW = '#fff2e0';
+  const moving = !!fox.target;
+  const bob = moving ? Math.sin(fox.walk * 9) * 1.8 : Math.sin(fox.walk * 2) * 1;
+  const munch = (fox.target && fox.eatT > 0) ? Math.sin(fox.walk * 20) * 2 : 0;
+
+  ctx.save();
+  ctx.translate(fox.x, fox.y);
+  ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.ellipse(0, 6, 26, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.scale(fox.face, 1);
+
+  // big brush tail
+  const sway = Math.sin(fox.walk * 5) * 9;
+  ctx.beginPath();
+  ctx.moveTo(-18, -16);
+  ctx.quadraticCurveTo(-44, -18 + sway * 0.5, -46, -44 + sway);
+  ctx.lineWidth = 16 * STROKE; ctx.lineCap = 'round'; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.lineWidth = 12 * STROKE; ctx.strokeStyle = RED_D; ctx.stroke();
+  circle(-46, -46 + sway, 8); fillStroke(SNOW, INK, 3);
+
+  const gait = moving ? Math.sin(fox.walk * 9) * 5 : 0;
+  for (const p of [[-13, gait], [-5, -gait], [10, -gait], [18, gait]]) {
+    rr(p[0] - 4, -14, 8, 16 + p[1] * 0.3, 4); fillStroke('#8c3f1d', INK, 3);
+  }
+
+  ctx.save();
+  ctx.translate(0, bob);
+  ctx.beginPath(); ctx.ellipse(0, -21, 24, 15, 0, 0, Math.PI * 2); fillStroke(RED, INK, 4);
+  ctx.beginPath(); ctx.ellipse(2, -14, 14, 7, 0, 0, Math.PI * 2); fillStroke(SNOW, null);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(moving ? 24 : 24, (fox.eatT > 0 && fox.target ? -14 + munch : -32) + bob);
+  if (fox.eatT > 0 && fox.target) ctx.rotate(0.4);
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * 4 - 3, -11); ctx.lineTo(s * 12 - 2, -30); ctx.lineTo(s * 15 + 2, -9);
+    ctx.closePath(); fillStroke(RED_D, INK, 3.5);
+  }
+  circle(0, 0, 15); fillStroke(RED, INK, 4);
+  // long white snout
+  ctx.beginPath();
+  ctx.moveTo(6, -2); ctx.lineTo(28, 5); ctx.lineTo(6, 11);
+  ctx.closePath(); fillStroke(SNOW, INK, 3);
+  circle(28, 5, 3.4); fillStroke(INK, null);
+  // sly narrow eyes
+  ctx.strokeStyle = INK; ctx.lineWidth = 3.4 * STROKE; ctx.lineCap = 'round';
+  for (const s of [-1, 1]) {
+    ctx.beginPath(); ctx.moveTo(s * 5 - 2, -5); ctx.lineTo(s * 5 + 5, -3); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+/* the owner, come to fetch you home */
+function drawOwner() {
+  if (!pickup) return;
+  const p = pickup;
+  const stride = p.holding ? 0 : Math.sin(p.walk * 9) * 6;
+  const groundY = cat.y + 4;
+
+  ctx.save();
+  ctx.translate(p.x, groundY);
+  ctx.globalAlpha = 0.22; ctx.fillStyle = INK;
+  ctx.beginPath(); ctx.ellipse(0, 4, 24, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.scale(p.dir, 1);
+
+  for (const s of [-1, 1]) {
+    rr(s * 8 - 6, -46, 12, 48, 5); fillStroke('#3f5aa8', INK, 3.5);
+    rr(s * 8 - 8, -2 + (s > 0 ? stride * 0.2 : -stride * 0.2), 17, 9, 4);
+    fillStroke('#2f2544', INK, 3);
+  }
+  rr(-20, -104, 40, 60, 12); fillStroke('#e0574f', INK, 4);
+  rr(-20, -104, 40, 16, 10); fillStroke('#c9455c', INK, 3);       // collar
+  // arms: reaching down, or cradling
+  ctx.lineCap = 'round'; ctx.lineWidth = 11 * STROKE; ctx.strokeStyle = INK;
+  ctx.beginPath();
+  if (p.holding) { ctx.moveTo(14, -84); ctx.quadraticCurveTo(30, -70, 16, -58); }
+  else           { ctx.moveTo(14, -86); ctx.quadraticCurveTo(28, -68, 22, -52 + stride); }
+  ctx.stroke();
+  ctx.lineWidth = 7 * STROKE; ctx.strokeStyle = '#e0574f'; ctx.stroke();
+
+  circle(0, -122, 19); fillStroke('#ffd0a8', INK, 4);
+  ctx.beginPath(); ctx.arc(0, -126, 20, Math.PI * 1.05, Math.PI * 1.95); ctx.lineTo(0, -126);
+  fillStroke('#5b3a2e', INK, 3.5);                                // hair
+  for (const s of [-1, 1]) { circle(s * 6, -120, 2.6); fillStroke(INK, null); }
+  ctx.beginPath(); ctx.arc(0, -114, 5, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.strokeStyle = INK; ctx.lineWidth = 2.4 * STROKE; ctx.stroke();
+  ctx.restore();
+
+  // the cat, safely gathered up
+  if (p.holding) {
+    ctx.save();
+    ctx.translate(p.x + p.dir * 20, groundY - 62);
+    ctx.scale(p.dir, 1);
+    const purr = Math.sin(p.t * 12) * 1.2;
+    ctx.beginPath(); ctx.ellipse(0, purr, 20, 13, 0, 0, Math.PI * 2);
+    fillStroke('#ff8c42', INK, 4);
+    ctx.beginPath();
+    ctx.moveTo(-16, 4 + purr); ctx.quadraticCurveTo(-34, 10, -30, -8);
+    ctx.lineWidth = 9 * STROKE; ctx.lineCap = 'round'; ctx.strokeStyle = INK; ctx.stroke();
+    ctx.lineWidth = 5.5 * STROKE; ctx.strokeStyle = '#ff8c42'; ctx.stroke();
+    ctx.save();
+    ctx.translate(15, -8 + purr);
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * 3 - 3, -8); ctx.lineTo(s * 8 - 2, -19); ctx.lineTo(s * 10 + 2, -7);
+      ctx.closePath(); fillStroke('#ff8c42', INK, 3);
+    }
+    circle(0, 0, 12); fillStroke('#ff8c42', INK, 3.5);
+    ctx.strokeStyle = INK; ctx.lineWidth = 2.6 * STROKE; ctx.lineCap = 'round';
+    for (const s of [-1, 1]) {   // content, eyes closed
+      ctx.beginPath(); ctx.arc(s * 4.5, -3, 3.2, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(1, 3); ctx.lineTo(6, 3); ctx.lineTo(3.5, 6);
+    ctx.closePath(); fillStroke('#ff7d9c', INK, 1.8);
+    ctx.restore();
+    ctx.restore();
+  }
+
+  // speech
+  const say = p.holding ? 'Come on, you. Inside.' : 'There you are!';
+  const bx = clamp(p.x + p.dir * 40, 130, W - 130);
+  ctx.save();
+  const pop = clamp(p.t * 5, 0, 1);
+  ctx.translate(bx, groundY - 180); ctx.scale(pop, pop);
+  const bw = 260;
+  rr(-bw / 2, -26, bw, 48, 14); fillStroke('#fff3d6', INK, 5);
+  ctx.beginPath(); ctx.moveTo(-10, 20); ctx.lineTo(12, 20); ctx.lineTo(-2, 40);
+  ctx.closePath(); fillStroke('#fff3d6', INK, 5);
+  text(say, 0, -2, 19, '#7a5fb0');
+  ctx.restore();
+}
+
+function drawSpotMeter() {
+  if (!spotBy || spotHeat <= 0) return;
+  const p = clamp(spotHeat / wave().react, 0, 1);
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.setLineDash([7, 9]); ctx.lineWidth = 3 * STROKE; ctx.strokeStyle = '#ff8f8f';
+  ctx.beginPath(); ctx.moveTo(spotBy.wx, spotBy.wy); ctx.lineTo(cat.x, cat.y - 28); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  const y = cat.y - 96;
+  rr(cat.x - 48, y, 96, 15, 7); fillStroke('rgba(26,17,40,.92)', INK, 3.5);
+  rr(cat.x - 44, y + 3.5, 88 * p, 8, 4); fillStroke(p > 0.6 ? '#ff5555' : '#ffab4a', null);
+  outlinedText('RUN!', cat.x, y - 17, 21, '#ff9d9d');
+  ctx.restore();
+}
+
+function drawEatBar() {
+  if (!eat) return;
+  const bw = 190, bh = 24;
+  const bx = clamp(cat.x - bw / 2, 16, W - bw - 16);
+  const by = eat.h.side === 'top' ? cat.y + 34 : cat.y - 84;
+  ctx.save();
+  rr(bx - 8, by - 10, bw + 16, bh + 20, 12); fillStroke('rgba(26,17,40,.88)', INK, 4);
+  rr(bx, by, bw, bh, 8); fillStroke('#3b2c5c', null);
+  rr(bx + eat.zone * bw, by, eat.zoneW * bw, bh, 7);
+  fillStroke(eat.flashGood > 0 ? '#d5ffe6' : '#6de39b', INK, 3);
+  const bad = eat.cool > 0 || eat.flashBad > 0;
+  rr(bx + eat.t * bw - 4, by - 7, 8, bh + 14, 4);
+  fillStroke(bad ? '#ff6b6b' : '#fff3d6', INK, 3);
+  rr(bx, by, bw, bh, 8); fillStroke(null, INK, 3.5);
+  text(eat.cool > 0 ? 'clatter!' : 'SPACE on green', bx + bw / 2, by + bh + 18, 13,
+    bad ? '#ff9d9d' : 'rgba(255,233,201,.8)');
+  ctx.restore();
+}
+
+function drawHUD() {
+  ctx.fillStyle = '#241636'; ctx.fillRect(0, 0, W, HUD_H);
+  ctx.fillStyle = 'rgba(255,233,201,.10)'; ctx.fillRect(0, HUD_H - 4, W, 4);
+
+  outlinedText(String(score), 24, 26, 25, WARM, 'left');
+  text('POINTS', 24, 45, 10, 'rgba(255,233,201,.5)', 'left');
+
+  const m = Math.floor(timeLeft / 60), s = Math.floor(timeLeft % 60);
+  const low = timeLeft < 20;
+  outlinedText(m + ':' + String(s).padStart(2, '0'), W / 2, 19, 23,
+    low ? (Math.sin(elapsed * 8) > 0 ? '#ff8f8f' : '#ffd0d0') : '#ffe9c9');
+
+  const cols = [MINT, '#ffe07a', '#ffab4a', '#ff8f8f'];
+  const c = cols[waveIdx];
+  text('WAVE ' + (waveIdx + 1) + '/' + WAVES.length + ' · ' + wave().name, W / 2, 39, 11, c);
+  // segmented wave bar
+  const segW = 34, gap = 4, total = WAVES.length * segW + (WAVES.length - 1) * gap;
+  for (let i = 0; i < WAVES.length; i++) {
+    const x = W / 2 - total / 2 + i * (segW + gap);
+    rr(x, 47, segW, 5, 2.5); fillStroke('rgba(255,233,201,.16)', null);
+    const fillAmt = i < waveIdx ? 1 : i === waveIdx ? waveProgress() : 0;
+    if (fillAmt > 0) { rr(x, 47, segW * fillAmt, 5, 2.5); fillStroke(cols[i], null); }
+  }
+
+  // one label instead of two: the third line was colliding with the pips
+  const feeding = houses.filter(h => !h.angry).length;
+  text('STILL FEEDING YOU  ·  ' + feeding + ' × ' + KEPT_BONUS,
+    W - 24, 17, 10, 'rgba(255,233,201,.55)', 'right');
+  for (let i = 0; i < 8; i++) {
+    const x = W - 24 - i * 22;
+    ctx.beginPath();
+    ctx.moveTo(x - 8, 33); ctx.quadraticCurveTo(x, 47, x + 8, 33); ctx.closePath();
+    fillStroke(i < feeding ? HOUSE_TINT[7 - i].wall : '#4a3d63', INK, 2.5);
+  }
+}
+
+function drawBanner() {
+  if (!banner) return;
+  if (scene !== 'play' && scene !== 'caught') return;
+  const w = WAVES[banner.idx];
+  const cols = [MINT, '#ffe07a', '#ffab4a', '#ff8f8f'];
+  const t = banner.t;
+  const slide = t > 2.4 ? (2.8 - t) / 0.4 : t < 0.4 ? t / 0.4 : 1;
+  ctx.save();
+  ctx.globalAlpha = slide;
+  ctx.translate(W / 2, ROAD_MID - 8);
+  ctx.scale(0.9 + slide * 0.1, 0.9 + slide * 0.1);
+  rr(-320, -46, 640, 92, 20); fillStroke('rgba(26,17,40,.93)', cols[banner.idx], 5);
+  outlinedText('WAVE ' + (banner.idx + 1) + ' — ' + w.name, 0, -16, 30, cols[banner.idx]);
+  text(w.blurb, 0, 20, 17, '#ffe9c9', 'center', 'normal');
+  ctx.restore();
+}
+
+function drawCaughtOverlay() {
+  if (!caughtInfo) return;
+  const ci = caughtInfo;
+  ctx.save();
+  ctx.fillStyle = 'rgba(26,17,40,.45)'; ctx.fillRect(0, HUD_H, W, H - HUD_H);
+  // over the road, tail pointing back at the witness: always fully on screen
+  const tail = ci.w.side === 'top' ? -1 : 1;
+  const pop = clamp((1.6 - ci.t) * 6, 0, 1);
+  ctx.translate(clamp(ci.w.cx, 118, W - 118), ROAD_MID); ctx.scale(pop, pop);
+  rr(-104, -30, 208, 56, 16); fillStroke('#fff3d6', INK, 5);
+  ctx.beginPath();
+  ctx.moveTo(-10, 24 * tail); ctx.lineTo(12, 24 * tail); ctx.lineTo(0, 44 * tail);
+  ctx.closePath(); fillStroke('#fff3d6', INK, 5);
+  if (ci.grass) {
+    text('WAIT TILL I TELL', 0, -12, 16, '#8e44c9');
+    text(ci.owner.name.toUpperCase() + '!', 0, 10, 16, '#8e44c9');
+  } else {
+    text("OI! THAT'S", 0, -12, 17, '#e0574f');
+    text(ci.owner.name.toUpperCase() + "'S!", 0, 10, 17, '#e0574f');
+  }
+  ctx.restore();
+  if (ci.grass) outlinedText(ci.w.name + ' grassed you up.', W / 2, H - 76, 20, '#d69bff');
+  outlinedText(ci.loser.name + ' will never put a bowl out again.', W / 2, H - 46, 22, '#ff9d9d');
+}
+
+function drawPrompt() {
+  if (eat || scene !== 'play') return;
+  const h = nearestBowl();
+  if (!h) return;
+  drawThreatEyes(h);
+  const y = h.side === 'top' ? h.bowlY - 56 : h.bowlY + 56;
+  ctx.save();
+  ctx.translate(h.cx, y + Math.sin(elapsed * 5) * 2);
+  rr(-96, -19, 192, 38, 12); fillStroke('rgba(26,17,40,.9)', INK, 4);
+  text('SPACE — eat ' + h.name, 0, 0, 15, '#ffe9c9');
+  ctx.restore();
+}
+
+function panel(x, y, w, h) { rr(x, y, w, h, 22); fillStroke('rgba(26,17,40,.92)', INK, 6); }
+
+/* --- title: two columns so nothing overflows --- */
+function drawTitle() {
+  ctx.fillStyle = 'rgba(26,17,40,.62)'; ctx.fillRect(0, 0, W, H);
+  panel(78, 62, 844, 578);
+
+  outlinedText('BOWL BANDIT', W / 2, 116, 56, WARM);
+  text('one cat · one street · eight bowls · two minutes', W / 2, 172, 18, '#c9b8e8');
+
+  const LX = 122, RX = 546;
+  const rows = (x, y0, list, size, step) =>
+    list.forEach((l, i) => text(l[0], x, y0 + i * step, size, l[1], 'left', l[2] || 'normal'));
+
+  text('THE RULES', LX, 206, 15, MINT, 'left');
+  rows(LX, 234, [
+    ['Every house puts a bowl out for you.', '#ffe9c9'],
+    ['Get seen eating from a NEIGHBOUR’s', '#ffe9c9'],
+    ['bowl and that witness stops feeding', '#ffe9c9'],
+    ['you — for good.', '#ff9d9d'],
+    ['Already given up on you? They still', '#d69bff'],
+    ['watch, and grass you to the owner.', '#d69bff'],
+    ['Neighbours are worth 40 each at the', '#ffe9c9'],
+    ['end. Strip the street and you lose it.', '#ffe9c9'],
+  ], 15, 23);
+
+  // label/value drawn as separate columns: padded spaces don't align in a
+  // proportional font, which is what made the old block look crooked.
+  const defs = (x, y0, list, step) => list.forEach((l, i) => {
+    text(l[0], x, y0 + i * step, 15, l[2], 'left');
+    text(l[1], x + 132, y0 + i * step, 15, '#ffe9c9', 'left', 'normal');
+  });
+
+  text('CONTROLS', RX, 206, 15, MINT, 'left');
+  defs(RX, 234, [
+    ['WASD / arrows', 'prowl the street',        '#ffe9c9'],
+    ['SPACE',         'eat, then time each bite','#ffe9c9'],
+    ['walk away',     'stop eating',             '#ffe9c9'],
+    ['M',             'mute',                    '#ffe9c9'],
+  ], 23);
+
+  text('WATCH FOR', RX, 342, 15, MINT, 'left');
+  defs(RX, 370, [
+    ['yellow glow', 'somebody is looking',    WARM],
+    ['red glow',    'they can see YOU, here', '#ff9d9d'],
+    ['RUN! bar',    'bolt before it fills',   '#ff9d9d'],
+  ], 23);
+
+  text('FOUR WAVES, 30 SECONDS EACH', LX, 458, 15, MINT, 'left');
+  const cols = [MINT, '#ffe07a', '#ffab4a', '#ff8f8f'];
+  WAVES.forEach((w, i) => {
+    const y = 486 + i * 24;
+    circle(LX + 7, y, 8); fillStroke(cols[i], INK, 3);
+    text(String(i + 1), LX + 7, y + 0.5, 10, INK);
+    text(w.name, LX + 24, y, 14, cols[i], 'left');
+    text(w.blurb, LX + 244, y, 13, 'rgba(255,233,201,.72)', 'left', 'normal');
+  });
+
+  ctx.globalAlpha = 0.75 + 0.25 * Math.sin(elapsed * 4);
+  outlinedText('press SPACE to start', W / 2, 604, 27, MINT);
+  ctx.globalAlpha = 1;
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(26,17,40,.7)'; ctx.fillRect(0, 0, W, H);
+  panel(190, 118, 620, 462);
+
+  const lost = houses.filter(h => h.angry).length;
+  const kept = 8 - lost;
+  const allGone = lost === 8;
+  const total = score + keptBonus;
+
+  outlinedText(allGone ? 'RUN OUT OF FRIENDS' : 'CARRIED HOME', W / 2, 172, 36,
+    allGone ? '#ff9d9d' : WARM);
+
+  outlinedText(String(total), W / 2, 246, 72, MINT);
+  text('points', W / 2, 306, 17, '#c9b8e8');
+
+  const line = (label, val, y, colour) => {
+    text(label, W / 2 - 12, y, 17, colour, 'right', 'normal');
+    text(val,   W / 2 + 12, y, 17, colour, 'left');
+  };
+  line(bowlsCleared + ' bowl' + (bowlsCleared === 1 ? '' : 's') + ' licked clean', String(score), 340, '#ffe9c9');
+  line(kept + ' neighbour' + (kept === 1 ? '' : 's') + ' still feeding you', '+' + keptBonus, 366,
+    kept ? MINT : '#ff9d9d');
+  if (foxLosses > 0)
+    line(foxLosses + ' bowl' + (foxLosses === 1 ? '' : 's') + ' lost to the fox', '—', 392, '#ff9d6b');
+
+  let rank = 'Alley Amateur';
+  if (total >= 450)  rank = 'Bin Lid Regular';
+  if (total >= 800)  rank = 'Street Sweetheart';
+  if (total >= 1200) rank = 'Bowl Bandit';
+  if (total >= 1600) rank = 'Ghost of Marrow Street';
+  text('— ' + rank + ' —', W / 2, 442, 23, WARM);
+  if (allGone) text('nobody on Marrow Street will feed you now', W / 2, 470, 15, '#ff9d9d', 'center', 'normal');
+
+  ctx.globalAlpha = 0.75 + 0.25 * Math.sin(elapsed * 4);
+  outlinedText('press SPACE to prowl again', W / 2, 534, 23, MINT);
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- render ---------- */
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  if (shakeT > 0) ctx.translate(rand(-6, 6) * shakeT * 2, rand(-6, 6) * shakeT * 2);
+
+  drawBackdrop();
+  houses.filter(h => h.side === 'top').forEach(drawHouse);
+  drawBunting();
+  drawLamp(250); drawLamp(750);   // gaps between houses, not on top of a window
+  houses.filter(h => h.side === 'bottom').forEach(drawHouse);
+  houses.forEach(drawWindowLight);
+  houses.filter(h => h.side === 'top').forEach(drawBowl);
+
+  drawPrompt();
+  drawFox();
+  if (!(pickup && pickup.holding)) drawCat();
+  drawDog();
+  drawOwner();
+
+  houses.filter(h => h.side === 'bottom').forEach(drawBowl);
+  houses.forEach(drawStirBubble);
+  drawEatBar();
+  drawSpotMeter();
+
+  for (const f of floaters) {
+    ctx.globalAlpha = clamp(1.3 - f.t, 0, 1);
+    outlinedText(f.str, f.x, f.y - f.t * 40, 18, f.colour);
+  }
+  ctx.globalAlpha = 1;
+
+  if (spotHeat > 0 && spotBy) {
+    const p = clamp(spotHeat / wave().react, 0, 1);
+    const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.30, W / 2, H / 2, H * 0.82);
+    vg.addColorStop(0, 'rgba(255,60,60,0)');
+    vg.addColorStop(1, 'rgba(255,45,45,' + (0.5 * p) + ')');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+  }
+  if (flash > 0) { ctx.fillStyle = 'rgba(255,120,120,' + (flash * 0.45) + ')'; ctx.fillRect(0, 0, W, H); }
+  ctx.restore();
+
+  drawBanner();
+  drawHUD();
+  if (scene === 'caught') drawCaughtOverlay();
+  if (scene === 'title')  drawTitle();
+  if (scene === 'over')   drawGameOver();
+  if (Sfx.muted) text('muted', W - 12, H - 14, 12, 'rgba(255,233,201,.4)', 'right', 'normal');
+}
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (scene === 'title' || scene === 'over') elapsed += dt;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+buildHouses();
+houses.forEach(spawnBowl);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
