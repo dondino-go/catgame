@@ -605,23 +605,7 @@ function drawBowl(h) {
   ctx.fillStyle = '#000'; ctx.fill();
   ctx.globalAlpha = 1;
 
-  /* food, stacked so a full bowl reads as a bigger prize */
-  const n = h.bowl.food;
-  for (let i = 0; i < n; i++) {
-    const a = (i / Math.max(1, n)) * 6.283 + h.id;
-    const r2 = n > 1 ? 11 : 0;
-    circle(Math.cos(a) * r2, -6 + Math.sin(a) * r2 * 0.45, 8);
-    fillStroke(i % 2 ? '#ffbf6b' : '#ff9d6b', INK, 2.5);
-  }
-
-  ctx.beginPath();
-  ctx.moveTo(-28, -2);
-  ctx.quadraticCurveTo(-26, 18, 0, 18);
-  ctx.quadraticCurveTo(26, 18, 28, -2);
-  ctx.closePath();
-  fillStroke('#7fd4ea', INK, 4);
-  ctx.beginPath(); ctx.ellipse(0, -2, 28, 8, 0, 0, 6.3);
-  fillStroke('#a8e6f5', INK, 3);
+  bowlShape(h.bowl.food, h.id);
   ctx.restore();
 }
 
@@ -987,20 +971,33 @@ function drawEmptySlot(slot, c) {
 
 /* the food in a bowl, drawn at the origin */
 function bowlShape(n, seed) {
+  /* Back to front: the dark inside of the bowl, then the food heaped in it,
+     then the bowl's front face, whose top edge is the near half of the rim.
+     That front face is what hides the bottom of the pile, so the food sits
+     IN the bowl instead of behind it. */
+  ctx.beginPath(); ctx.ellipse(0, -2, 28, 8, 0, 0, Math.PI * 2);
+  fillStroke('#3f8fa8', INK, 3);
+
   for (let i = 0; i < n; i++) {
-    const a = (i / Math.max(1, n)) * 6.283 + seed;
-    const r2 = n > 1 ? 11 : 0;
-    circle(Math.cos(a) * r2, -6 + Math.sin(a) * r2 * 0.45, 8);
+    /* a mound: the first few spread across the bottom, the rest stack on top */
+    const layer = i < 4 ? 0 : 1;
+    const k = layer ? i - 4 : i;
+    const across = layer ? Math.min(n - 4, 3) : Math.min(n, 4);
+    const x = across > 1 ? (k / (across - 1) - 0.5) * (layer ? 18 : 30) : 0;
+    const y = layer ? -11 : -3 - (across > 1 ? Math.cos((k / (across - 1) - 0.5) * Math.PI) * 3 : 2);
+    circle(x + Math.sin(seed + i) * 1.5, y, 7.5);
     fillStroke(i % 2 ? '#ffbf6b' : '#ff9d6b', INK, 2.5);
   }
+
   ctx.beginPath();
-  ctx.moveTo(-28, -2);
+  ctx.ellipse(0, -2, 28, 8, 0, 0, Math.PI);          /* near rim, right to left */
   ctx.quadraticCurveTo(-26, 18, 0, 18);
   ctx.quadraticCurveTo(26, 18, 28, -2);
   ctx.closePath();
   fillStroke('#7fd4ea', INK, 4);
-  ctx.beginPath(); ctx.ellipse(0, -2, 28, 8, 0, 0, 6.3);
-  fillStroke('#a8e6f5', INK, 3);
+  /* a highlight on the bowl's face, clear of the food */
+  ctx.beginPath(); ctx.ellipse(0, 5, 21, 7, 0, 0.7, Math.PI - 0.7);
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3; ctx.stroke();
 }
 
 /* The cat, big. Its face is the second tell after the windows: content while
@@ -1188,8 +1185,8 @@ function drawCloseUp() {
     const nudge = Math.sin(elapsed * 16) * 8;
     rr(bx - 10, barY - 12, bw + 20, bh + 24, (bh + 24) / 2);
     fillStroke('rgba(42,10,20,.9)', ALARM, 5);
-    outlined('‹‹  SWIPE TO RUN!  ››', DW / 2 + nudge, barY + bh / 2 - 9, 42, '#fff');
-    text(motionSeen ? 'or shake your phone' : 'flick anywhere on the screen', DW / 2, barY + bh / 2 + 26, 20,
+    outlined('‹‹  SWIPE SIDEWAYS!  ››', DW / 2 + nudge, barY + bh / 2 - 9, 40, '#fff');
+    text(motionSeen ? 'flick left or right \u00b7 or shake' : 'flick left or right to run', DW / 2, barY + bh / 2 + 26, 20,
          '#ffd0d0', 'center', 600);
   } else if (e.cool > 0) {
     text('CLATTER! THE NEIGHBOURS HEARD', DW / 2, barY - 22, 20, ALARM, 'center', 800);
@@ -1239,7 +1236,7 @@ function drawCloseUp() {
     outlined('WOOF! EVERYONE’S COMING TO LOOK', DW / 2, ty, 28, '#fff');
   }
 
-  text('TAP ANYWHERE TO BITE · SWIPE TO RUN', DW / 2, DH - 46, 22,
+  text('TAP TO BITE · SWIPE SIDEWAYS TO RUN', DW / 2, DH - 46, 22,
        'rgba(255,233,201,.55)', 'center', 600);
 
   /* peripheral warnings, so the bar never has to be abandoned to see them */
@@ -1299,7 +1296,7 @@ function drawTitle() {
 
   [['TAP A HOUSE', 'the cat walks over and starts eating'],
    ['TAP TO BITE', 'time each bite on the green'],
-   ['SWIPE TO RUN', 'flick away when a neighbour spots you']].forEach((r, i) => {
+   ['SWIPE SIDEWAYS', 'flick left or right when you\u2019re spotted']].forEach((r, i) => {
     const ry = cardY + 54 + i * 62;
     circle(78, ry, 16); fillStroke(WARM, INK, 3);
     text(String(i + 1), 78, ry + 1, 20, INK, 'center', 800);
@@ -1543,10 +1540,14 @@ function onDown(ev) {
 
 /* A finger that travels far enough is a run, whether it moved at once (no
    bite taken) or slowly after the bite already landed. */
+/* Only a sideways flick runs. Vertical swipes belong to the phone (home from
+   the bottom edge, closing the app's sheet from the top), and the game can't
+   stop the phone taking them, so it doesn't ask the player to make one. */
 function onMove(ev) {
   if (!press) return;
   const p = toDesign(ev);
-  if (Math.hypot(p.x - press.x, p.y - press.y) > SWIPE) { press = null; bolt(); }
+  const dx = Math.abs(p.x - press.x), dy = Math.abs(p.y - press.y);
+  if (dx > SWIPE && dx > dy * 1.3) { press = null; bolt(); }
 }
 
 function onUp() { biteFromPress(); press = null; }
@@ -1572,7 +1573,8 @@ window.addEventListener('devicemotion', ev => {
 cv.addEventListener('pointerdown', onDown, { passive: false });
 cv.addEventListener('pointermove', onMove);
 cv.addEventListener('pointerup', onUp);
-cv.addEventListener('pointercancel', onUp);
+/* the phone took the gesture over: drop the touch rather than biting with it */
+cv.addEventListener('pointercancel', () => { press = null; });
 cv.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('resize', fit);
 window.addEventListener('orientationchange', () => setTimeout(fit, 120));
