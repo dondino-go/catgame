@@ -197,19 +197,39 @@ let banner = null;                  /* wave announcement */
 let best = 0;
 try { best = parseInt(localStorage.getItem('bowlbandit.best') || '0', 10) || 0; } catch (e) {}
 
-function floater(x, y, str, colour) { floaters.push({ x, y, str, colour, t: 0 }); }
+function floater(x, y, str, colour, layer) {
+  floaters.push({ x, y, str, colour, t: 0, layer: layer || 'street' });
+}
+let motionSeen = false;             /* a shake has a chance of working here */
 
 /* ---------- events from the core ---------- */
 function handleEvents() {
   for (const e of C.drainEvents(g)) {
     const h = e.house != null ? g.houses[e.house] : null;
     switch (e.type) {
-      case 'bite':
+      case 'bite': {
         Sfx.bite(); vis[h.id].pop = 0.22;
-        floater(bowlX(h), rowY(h) - 46, '+10', WARM);
+        anim.chomp = 0.22;
+        const c = closeLayout();
+        if (e.perfect) {
+          anim.perfect = 0.45;
+          Sfx.tone(1180, 0.08, 'triangle', 0.1, 1500, 0.04);
+          floater(c.bowlX, c.catY - 30 * clamp(DH / 560, 2.1, 2.9), 'PERFECT +' + e.points, MINT, 'close');
+        } else {
+          floater(c.bowlX, c.catY - 30 * clamp(DH / 560, 2.1, 2.9), '+' + e.points, WARM, 'close');
+        }
+        /* crumbs fly out of the bowl */
+        const k = clamp(DH / 560, 2.1, 2.9);
+        for (let i = 0; i < 7; i++) {
+          crumbs.push({ x: c.bowlX + rand(-20, 20), y: c.catY + 4 * k,
+                        vx: rand(-240, 240), vy: rand(-520, -260), r: rand(5, 9), t: 0,
+                        col: i % 2 ? '#ffbf6b' : '#ff9d6b' });
+        }
         break;
+      }
       case 'miss':
         Sfx.miss(); vis[h.id].shake = 0.3;
+        anim.flinch = 0.35;
         break;
       case 'clear':
         Sfx.clear();
@@ -248,6 +268,12 @@ function updateVisuals(dt) {
   elapsed += dt;
   shake = Math.max(0, shake - dt);
   flash = Math.max(0, flash - dt * 1.8);
+  anim.chomp   = Math.max(0, anim.chomp - dt);
+  anim.flinch  = Math.max(0, anim.flinch - dt);
+  anim.perfect = Math.max(0, anim.perfect - dt);
+  for (const cr of crumbs) { cr.t += dt; cr.vy += 1500 * dt; cr.x += cr.vx * dt; cr.y += cr.vy * dt; }
+  crumbs = crumbs.filter(cr => cr.t < 0.8);
+  if (!g.eat) crumbs = [];
   for (const f of floaters) f.t += dt;
   floaters = floaters.filter(f => f.t < 1.3);
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
@@ -747,161 +773,426 @@ function drawHud() {
        Sfx.muted ? 'rgba(255,233,201,.45)' : WARM, 'center', 600);
 }
 
-function drawFloaters() {
+function drawFloaters(layer) {
   for (const f of floaters) {
+    if (f.layer !== layer) continue;
     ctx.globalAlpha = 1 - f.t / 1.3;
     outlined(f.str, f.x, f.y - f.t * 44, 28, f.colour);
     ctx.globalAlpha = 1;
   }
 }
 
-/* ---------- the eating minigame ---------- *
- * The street stays visible above, but the bar and the tap target fill the
- * bottom of the screen: on a phone the timing game has to be worth a whole
- * hand's reach, not a sliver under a bowl.                                  */
-function eatPanelTop() { return DH * 0.44; }
-function leaveRect()   { return { x: DW - 196, y: eatPanelTop() + 22, w: 176, h: 72 }; }
+/* ---------- the eating close-up ---------- *
+ * When the cat sits down at a bowl the street gives way to a close-up: the
+ * neighbours who matter are drawn as real house fronts across the top, the
+ * cat and the bowl in the middle, and the timing bar along the bottom under
+ * the thumb. Left is always up the road, the middle is across it, the right
+ * is down the road, so the picture keeps the street's geography.            */
+const anim = { chomp: 0, flinch: 0, perfect: 0 };
+let crumbs = [];
 
-function drawEatPanel() {
-  const e = g.eat;
-  if (!e) return;
-  const top = eatPanelTop();
-  const h = e.h;
+function closeLayout() {
+  const frontH  = clamp(DH * 0.2, 220, 330);
+  const winTop  = L.hud + 64;
+  const statusY = winTop + frontH + 30;
+  const bh      = 100;
+  const barY    = DH - 236;
+  const rowY2   = statusY + 60;                    /* "at X's bowl" / LEAVE row */
+  const catY    = Math.round((rowY2 + 40 + barY - 70) / 2 + 40);
+  return { frontH, frontW: 206, winTop, statusY, bh, barY, rowY2, catY, bowlX: DW / 2 + 92 };
+}
+function leaveRect() {
+  const c = closeLayout();
+  return { x: DW - 182, y: c.rowY2 - 30, w: 158, h: 60 };
+}
 
-  /* dim the street, and spotlight the bowl we're at */
-  ctx.fillStyle = 'rgba(10,6,20,.6)';
-  ctx.fillRect(0, 0, DW, DH);
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  const sp = ctx.createRadialGradient(bowlX(h), rowY(h), 10, bowlX(h), rowY(h), 170);
-  sp.addColorStop(0, 'rgba(255,214,120,.26)');
-  sp.addColorStop(1, 'rgba(255,214,120,0)');
-  ctx.fillStyle = sp; circle(bowlX(h), rowY(h), 170); ctx.fill();
-  ctx.restore();
+/* which slot a neighbour occupies in the close-up */
+function slotOf(owner, n) {
+  if (n.col !== owner.col) return 1;
+  return n.row < owner.row ? 0 : 2;
+}
+const SLOT_LABEL = ['UP THE ROAD', 'OPPOSITE', 'DOWN THE ROAD'];
 
-  /* Solid, not translucent: the street behind would otherwise read as clutter
-     under the one thing the player is timing. */
-  rr(0, top, DW, DH - top, 36);
-  fillStroke('#150e2a', 'rgba(255,233,201,.18)', 2.5);
-
-  text('EATING AT', 28, top + 40, 21, 'rgba(255,233,201,.5)', 'left', 600);
-  outlined(h.name.toUpperCase(), 28, top + 76, 36, TINT[h.id].wall, 'left');
-
-  const lr = leaveRect();
-  const spotted = g.spot.heat > 0;
-  rr(lr.x, lr.y, lr.w, lr.h, 22);
-  fillStroke(spotted ? ALARM : 'rgba(255,233,201,.14)', INK, 4);
-  text(spotted ? 'RUN!' : 'LEAVE', lr.x + lr.w / 2, lr.y + lr.h / 2 + 2, 30,
-       spotted ? '#2a0f14' : CREAM, 'center', 800);
-
-  /* who can see you: the whole point of the game, so it is the biggest tell */
-  const ny = top + 188;
-  text('WHO CAN SEE YOU', DW / 2, top + 122, 21, 'rgba(255,233,201,.5)', 'center', 600);
-  const ns = h.neighbours;
-  const gapX = Math.min(170, (DW - 70) / ns.length);
-  ns.forEach((id, i) => {
-    const n = g.houses[id];
-    const x = DW / 2 + (i - (ns.length - 1) / 2) * gapX;
-    const watching = n.state === 'watch';
-    const stirring = n.state === 'stir';
-    const ring = watching ? ALARM : stirring ? WARM : 'rgba(255,233,201,.22)';
-
-    if (watching) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      const gl = ctx.createRadialGradient(x, ny, 4, x, ny, 66);
-      gl.addColorStop(0, 'rgba(255,125,125,.5)');
-      gl.addColorStop(1, 'rgba(255,125,125,0)');
-      ctx.fillStyle = gl; circle(x, ny, 66); ctx.fill();
-      ctx.restore();
-    }
-
-    circle(x, ny, 38);
-    fillStroke(n.angry ? '#4a4065' : TINT[n.id].wall, ring, watching ? 7 : 4.5);
-
+/* a resident at the glass: s scales from the street-sized figure */
+function drawResident(mx, baseY, s, tint, rise, stare) {
+  const hy = baseY - lerp(-6, 46, rise) * s;
+  ctx.fillStyle = tint.roof;
+  rr(mx - 28 * s, hy + 13 * s, 56 * s, 50 * s, 20 * s); ctx.fill();
+  ctx.fillStyle = '#f2c49b';
+  circle(mx, hy, 16 * s); ctx.fill();
+  ctx.fillStyle = '#4a3550';
+  ctx.beginPath(); ctx.arc(mx, hy - 2 * s, 16 * s, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();
+  if (rise > 0.5) {
     ctx.fillStyle = INK;
-    if (watching) {
-      circle(x - 11, ny - 4, 5); ctx.fill();
-      circle(x + 11, ny - 4, 5); ctx.fill();
-      ctx.strokeStyle = INK; ctx.lineWidth = 3.5 * STROKE;
-      ctx.beginPath(); ctx.arc(x, ny + 10, 9, 0.15, Math.PI - 0.15); ctx.stroke();
-    } else if (stirring) {
-      ctx.strokeStyle = INK; ctx.lineWidth = 4 * STROKE;
-      ctx.beginPath(); ctx.arc(x - 11, ny - 2, 5, Math.PI, 0); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x + 11, ny - 2, 5, Math.PI, 0); ctx.stroke();
-    } else {
-      ctx.strokeStyle = INK; ctx.lineWidth = 4 * STROKE;
-      ctx.beginPath(); ctx.arc(x - 11, ny - 6, 5, 0.2, Math.PI - 0.2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x + 11, ny - 6, 5, 0.2, Math.PI - 0.2); ctx.stroke();
-      text('z', x + 25, ny - 27, 22, 'rgba(255,233,201,.5)');
+    const er = stare ? 3.6 * s : 2.4 * s;
+    circle(mx - 6 * s, hy + 2 * s, er); ctx.fill();
+    circle(mx + 6 * s, hy + 2 * s, er); ctx.fill();
+    if (stare) {
+      /* brows down: they have seen exactly what you're doing */
+      ctx.strokeStyle = INK; ctx.lineWidth = 2.6 * s;
+      ctx.beginPath(); ctx.moveTo(mx - 11 * s, hy - 6 * s); ctx.lineTo(mx - 2 * s, hy - 3 * s); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx + 11 * s, hy - 6 * s); ctx.lineTo(mx + 2 * s, hy - 3 * s); ctx.stroke();
     }
+  }
+}
 
-    const label = n.angry ? 'GRASS' : watching ? 'WATCHING' : stirring ? 'CURTAIN' : 'ASLEEP';
-    text(label, x, ny + 58, 19, watching ? ALARM : stirring ? WARM : 'rgba(255,233,201,.45)', 'center', 600);
-    text(n.name, x, ny + 80, 17, 'rgba(255,233,201,.35)', 'center', 500);
-  });
+function drawFront(owner, n, slot, c) {
+  const cx = DW / 2 + (slot - 1) * 230;
+  const w = c.frontW, H = c.frontH, y = c.winTop;
+  const t = TINT[n.id], v = vis[n.id];
+  const watching = n.state === 'watch', stirring = n.state === 'stir';
+  const dull = n.angry;
+  const pulse = 0.5 + 0.5 * Math.sin(elapsed * 10);
 
-  /* The bar is anchored to the bottom of the screen rather than to the panel,
-     so it always lands under the thumb however tall the phone is. */
-  const bh = 100;
-  const barY = DH - 236;
+  text(SLOT_LABEL[slot], cx, y - 34, 18, 'rgba(255,233,201,.45)', 'center', 600);
 
-  /* the RUN meter: how long before the witness registers what they're seeing */
-  const by = barY - 112;
-  if (g.spot.heat > 0) {
-    const frac = clamp(g.spot.heat / C.wave(g).react, 0, 1);
-    rr(40, by, DW - 80, 32, 16); fillStroke('rgba(255,125,125,.18)', null);
-    rr(40, by, (DW - 80) * (1 - frac), 32, 16); fillStroke(ALARM, null);
-    outlined('SEEN BY ' + g.houses[g.spot.by].name.toUpperCase() + ' — RUN!',
-             DW / 2, by + 16, 23, '#fff');
+  /* red halo behind a window that can see you */
+  if (watching) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const hg = ctx.createRadialGradient(cx, y + H * 0.45, 10, cx, y + H * 0.45, w * 0.9);
+    hg.addColorStop(0, 'rgba(255,90,90,' + (0.35 + pulse * 0.2).toFixed(2) + ')');
+    hg.addColorStop(1, 'rgba(255,90,90,0)');
+    ctx.fillStyle = hg; circle(cx, y + H * 0.45, w * 0.9); ctx.fill();
+    ctx.restore();
   }
 
-  const left = h.bowl ? h.bowl.food : 0;
-  text(left + (left === 1 ? ' BITE LEFT' : ' BITES LEFT'), DW / 2, barY - 38, 21,
-       'rgba(255,233,201,.5)', 'center', 600);
+  /* roof and wall */
+  ctx.beginPath();
+  ctx.moveTo(cx - w / 2 - 10, y + 40); ctx.lineTo(cx, y - 6); ctx.lineTo(cx + w / 2 + 10, y + 40);
+  ctx.closePath();
+  fillStroke(dull ? '#564a73' : t.roof, INK, 4.5);
+  rr(cx - w / 2, y + 32, w, H - 32, 10);
+  fillStroke(dull ? '#766894' : t.wall, INK, 4.5);
 
-  /* the timing bar: the single biggest thing on the screen */
-  const bx = 48, bw = DW - 96;
+  /* window */
+  const ww = w * 0.66, wh = (H - 32) * 0.56;
+  const wx = cx - ww / 2, wy = y + 32 + (H - 32) * 0.13;
+  const s = ww / 64;
+  rr(wx - 7, wy - 7, ww + 14, wh + 14, 12);
+  fillStroke(dull ? '#564a73' : t.trim, watching ? ALARM : INK, watching ? 6 + pulse * 3 : 4.5);
+  rr(wx, wy, ww, wh, 8);
+  if (dull) {
+    ctx.fillStyle = '#211a38'; ctx.fill();
+    ctx.save(); rr(wx, wy, ww, wh, 8); ctx.clip();
+    /* boarded up, but still watching through the gap in the planks */
+    if (v.glow > 0.15) {
+      ctx.globalAlpha = clamp(v.glow, 0, 1);
+      ctx.fillStyle = '#e9b6ff';
+      ctx.fillRect(wx, wy + wh / 2 - 16, ww, 32);
+      ctx.fillStyle = INK;
+      circle(cx - 14, wy + wh / 2, 6); ctx.fill();
+      circle(cx + 14, wy + wh / 2, 6); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = '#7a6442'; ctx.lineWidth = 18;
+    ctx.beginPath(); ctx.moveTo(wx - 8, wy + 22); ctx.lineTo(wx + ww + 8, wy + 36); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(wx - 8, wy + wh - 20); ctx.lineTo(wx + ww + 8, wy + wh - 34); ctx.stroke();
+    ctx.restore();
+  } else {
+    const gl = clamp(v.glow, 0, 1);
+    ctx.fillStyle = 'rgb(' + (lerp(48, 255, gl) | 0) + ',' + (lerp(40, 226, gl) | 0) + ',' + (lerp(86, 150, gl) | 0) + ')';
+    ctx.fill();
+    ctx.save(); rr(wx, wy, ww, wh, 8); ctx.clip();
+    if (v.curtain > 0.05) drawResident(cx, wy + wh, s, t, v.curtain, watching);
+    /* curtains: a stirring resident makes them twitch */
+    const twitch = stirring ? Math.sin(elapsed * 22) * 5 : 0;
+    const cwd = lerp(ww * 0.5, ww * 0.13, v.curtain) + twitch;
+    ctx.fillStyle = 'rgba(226,214,255,' + lerp(0.62, 0.3, gl).toFixed(2) + ')';
+    ctx.fillRect(wx, wy, cwd, wh);
+    ctx.fillRect(wx + ww - cwd, wy, cwd, wh);
+    ctx.restore();
+    if (n.state === 'idle') {
+      const zt = (elapsed * 0.6 + n.id * 0.3) % 1;
+      ctx.globalAlpha = 1 - zt;
+      text('z', wx + ww - 6 + zt * 14, wy - 4 - zt * 26, 24 + zt * 8, 'rgba(255,233,201,.7)', 'center', 800);
+      ctx.globalAlpha = 1;
+    }
+  }
+  rr(wx, wy, ww, wh, 8); fillStroke(null, INK, 3.5);
+
+  /* window box, because every house on Marrow Street has one */
+  rr(wx - 4, wy + wh + 8, ww + 8, 16, 5);
+  fillStroke(dull ? '#4a4065' : t.door, INK, 3);
+  if (!dull) for (let i = 0; i < 4; i++) {
+    circle(wx + 10 + i * (ww - 20) / 3, wy + wh + 6, 7);
+    fillStroke(i % 2 ? '#ff9ecd' : WARM, INK, 2);
+  }
+
+  /* exclamation over a resident who has clocked you */
+  if (watching) {
+    const by = y - 8 + Math.sin(elapsed * 12) * 3;
+    circle(cx + w / 2 - 14, by, 22); fillStroke(ALARM, INK, 4);
+    text('!', cx + w / 2 - 14, by + 2, 32, '#2a0f14', 'center', 800);
+  } else if (stirring) {
+    circle(cx + w / 2 - 14, y - 8, 18); fillStroke(WARM, INK, 3.5);
+    text('?', cx + w / 2 - 14, y - 6, 26, INK, 'center', 800);
+  }
+
+  /* this window's own RUN timer, draining while they register what they see */
+  if (g.spot.by === n.id && g.spot.heat > 0) {
+    const frac = clamp(g.spot.heat / C.wave(g).react, 0, 1);
+    const mx2 = cx - w / 2 + 14, mw = w - 28, my = y + H - 30;
+    rr(mx2, my, mw, 18, 9); fillStroke('rgba(42,10,20,.7)', null);
+    rr(mx2, my, mw * (1 - frac), 18, 9); fillStroke(ALARM, null);
+  }
+
+  /* status, in words */
+  const st = dull
+    ? (watching ? ['WILL TELL ON YOU!', ALARM] : stirring ? ['STIRRING', WARM] : ['ALREADY CROSS', 'rgba(233,182,255,.85)'])
+    : (watching ? ['WATCHING YOU!', ALARM] : stirring ? ['CURTAIN TWITCHING', WARM] : ['ASLEEP', 'rgba(255,233,201,.5)']);
+  text(st[0], cx, c.statusY - 8, 19, st[1], 'center', 800);
+  text(dull && !watching ? 'will tell on you' : n.name, cx, c.statusY + 16, 17,
+       'rgba(255,233,201,.42)', 'center', 500);
+}
+
+function drawEmptySlot(slot, c) {
+  const cx = DW / 2 + (slot - 1) * 230;
+  text('END OF THE ROAD', cx, c.winTop + c.frontH * 0.5, 18, 'rgba(255,233,201,.22)', 'center', 600);
+  /* a hedge, so the gap reads as the street ending rather than a missing house */
+  for (let i = 0; i < 5; i++) {
+    circle(cx - 80 + i * 40, c.winTop + c.frontH - 24, 30);
+    fillStroke('#2f5a3e', INK, 3);
+  }
+}
+
+/* the food in a bowl, drawn at the origin */
+function bowlShape(n, seed) {
+  for (let i = 0; i < n; i++) {
+    const a = (i / Math.max(1, n)) * 6.283 + seed;
+    const r2 = n > 1 ? 11 : 0;
+    circle(Math.cos(a) * r2, -6 + Math.sin(a) * r2 * 0.45, 8);
+    fillStroke(i % 2 ? '#ffbf6b' : '#ff9d6b', INK, 2.5);
+  }
+  ctx.beginPath();
+  ctx.moveTo(-28, -2);
+  ctx.quadraticCurveTo(-26, 18, 0, 18);
+  ctx.quadraticCurveTo(26, 18, 28, -2);
+  ctx.closePath();
+  fillStroke('#7fd4ea', INK, 4);
+  ctx.beginPath(); ctx.ellipse(0, -2, 28, 8, 0, 0, 6.3);
+  fillStroke('#a8e6f5', INK, 3);
+}
+
+/* The cat, big. Its face is the second tell after the windows: content while
+   eating, chomping on a bite, wincing at a clatter, ears flat when seen. */
+function drawCatClose(x, y, s) {
+  const alert  = g.spot.heat > 0;
+  const chomp  = anim.chomp > 0 ? Math.sin((1 - anim.chomp / 0.22) * Math.PI) : 0;
+  const flinch = anim.flinch > 0 ? anim.flinch / 0.35 : 0;
+  const breathe = Math.sin(elapsed * 3) * 1.2;
+
+  ctx.save();
+  ctx.translate(x - flinch * 16 + (alert ? Math.sin(elapsed * 40) * 1.5 : 0), y);
+  ctx.scale(s, s);
+
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.ellipse(4, 22, 44, 9, 0, 0, 6.3);
+  ctx.fillStyle = '#000'; ctx.fill();
+  ctx.globalAlpha = 1;
+
+  /* tail: lazy swish when content, bottle-brush when spotted */
+  ctx.beginPath();
+  ctx.moveTo(-24, 4);
+  if (alert) ctx.quadraticCurveTo(-48, -10, -40, -40);
+  else       ctx.quadraticCurveTo(-52, 4 + Math.sin(elapsed * 2.4) * 10, -44, -18 + Math.sin(elapsed * 2.4) * 6);
+  ctx.strokeStyle = INK; ctx.lineWidth = alert ? 20 : 14; ctx.lineCap = 'round'; ctx.stroke();
+  ctx.strokeStyle = '#5b5884'; ctx.lineWidth = alert ? 14 : 9; ctx.stroke();
+
+  rr(-28, -14 + breathe, 54, 34, 16);
+  fillStroke('#5b5884', INK, 4.5);
+  /* stripes */
+  ctx.strokeStyle = 'rgba(42,27,61,.35)'; ctx.lineWidth = 3;
+  for (const sx2 of [-14, -4, 6]) {
+    ctx.beginPath(); ctx.moveTo(sx2, -13 + breathe); ctx.lineTo(sx2 + 3, -4 + breathe); ctx.stroke();
+  }
+  /* front legs */
+  rr(10, 8, 9, 14, 4); fillStroke('#5b5884', INK, 3);
+  rr(-20, 8, 9, 14, 4); fillStroke('#5b5884', INK, 3);
+
+  /* head: down in the bowl, lifting on each chomp; up and staring when seen */
+  const hx = alert ? 20 : 26;
+  const hy = alert ? -22 : 4 - chomp * 9 + breathe * 0.4;
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(alert ? -0.1 : 0.32 - chomp * 0.2);
+  const earBack = alert ? 0.7 : 0;
+  for (const side of [-1, 1]) {
+    ctx.save();
+    ctx.translate(side * 7, -10);
+    ctx.rotate(side * earBack);
+    ctx.beginPath(); ctx.moveTo(-6, 2); ctx.lineTo(0, -14); ctx.lineTo(6, 2); ctx.closePath();
+    fillStroke('#5b5884', INK, 3.5);
+    ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(0, -8); ctx.lineTo(3, 0); ctx.closePath();
+    fillStroke('#ffb0c8', null);
+    ctx.restore();
+  }
+  circle(0, 0, 16); fillStroke('#67648f', INK, 4);
+  /* eyes */
+  if (alert) {
+    circle(-6, -2, 5.4); fillStroke(MINT, INK, 2);
+    circle(6, -2, 5.4); fillStroke(MINT, INK, 2);
+    ctx.fillStyle = INK; circle(-6, -2, 2.2); ctx.fill(); circle(6, -2, 2.2); ctx.fill();
+  } else if (flinch > 0) {
+    ctx.strokeStyle = MINT; ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.moveTo(-10, -5); ctx.lineTo(-3, -2); ctx.lineTo(-10, 1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(10, -5); ctx.lineTo(3, -2); ctx.lineTo(10, 1); ctx.stroke();
+  } else {
+    ctx.strokeStyle = MINT; ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.arc(-6, -3, 4, 0.25, 2.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(6, -3, 4, 0.25, 2.9); ctx.stroke();
+  }
+  circle(0, 4, 2.4); fillStroke('#ffb0c8', null);
+  /* mouth: open on the chomp */
+  if (chomp > 0.2) {
+    ctx.beginPath(); ctx.ellipse(0, 10, 4.5, 2 + chomp * 4, 0, 0, 6.3);
+    fillStroke('#3a1830', INK, 2);
+  }
+  /* whiskers */
+  ctx.strokeStyle = 'rgba(255,233,201,.6)'; ctx.lineWidth = 1.4;
+  for (const sd of [-1, 1]) for (const dy of [-1, 3]) {
+    ctx.beginPath(); ctx.moveTo(sd * 8, 5 + dy * 0.6); ctx.lineTo(sd * 22, 3 + dy * 1.6); ctx.stroke();
+  }
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawCloseUp() {
+  const e = g.eat;
+  if (!e) return;
+  const h = e.h, c = closeLayout();
+  const alert = g.spot.heat > 0;
+
+  /* backdrop: night sky over the rooftops opposite, pavement under the cat */
+  const sky = ctx.createLinearGradient(0, L.hud, 0, c.statusY);
+  sky.addColorStop(0, '#24163f'); sky.addColorStop(1, '#3a2560');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, L.hud, DW, DH - L.hud);
+  ctx.fillStyle = '#2a1d47';
+  ctx.fillRect(0, c.winTop + c.frontH, DW, c.rowY2 + 30 - (c.winTop + c.frontH));
+  const pave = ctx.createLinearGradient(0, c.rowY2 + 30, 0, DH);
+  pave.addColorStop(0, PAVE); pave.addColorStop(1, '#3d3266');
+  ctx.fillStyle = pave;
+  ctx.fillRect(0, c.rowY2 + 30, DW, DH - (c.rowY2 + 30));
+  ctx.strokeStyle = 'rgba(42,27,61,.22)'; ctx.lineWidth = 3;
+  for (let x = -40; x < DW; x += 120) {
+    ctx.beginPath(); ctx.moveTo(x + 60, c.rowY2 + 30); ctx.lineTo(x, DH); ctx.stroke();
+  }
+
+  /* the three windows that matter */
+  const filled = [false, false, false];
+  for (const id of h.neighbours) {
+    const n = g.houses[id], slot = slotOf(h, n);
+    filled[slot] = true;
+    drawFront(h, n, slot, c);
+  }
+  filled.forEach((f, slot) => { if (!f) drawEmptySlot(slot, c); });
+
+  /* whose bowl, and the calm way out */
+  text('AT', 28, c.rowY2 - 14, 18, 'rgba(255,233,201,.5)', 'left', 600);
+  const nm = h.name.toUpperCase();
+  outlined(nm + (nm.endsWith('S') ? '’' : '’S') + ' BOWL', 28, c.rowY2 + 14, 30, TINT[h.id].wall, 'left');
+  const lr = leaveRect();
+  rr(lr.x, lr.y, lr.w, lr.h, 30);
+  fillStroke('rgba(255,233,201,.12)', 'rgba(255,233,201,.35)', 3);
+  text('LEAVE', lr.x + lr.w / 2, lr.y + lr.h / 2 + 2, 26, CREAM, 'center', 800);
+
+  /* lamplight on the cat */
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const sp = ctx.createRadialGradient(DW / 2, c.catY - 40, 10, DW / 2, c.catY - 40, 260);
+  sp.addColorStop(0, 'rgba(255,214,120,.22)'); sp.addColorStop(1, 'rgba(255,214,120,0)');
+  ctx.fillStyle = sp; circle(DW / 2, c.catY - 40, 260); ctx.fill();
+  ctx.restore();
+
+  const s = clamp(DH / 560, 2.1, 2.9);
+  drawCatClose(DW / 2 - 50, c.catY, s);
+
+  /* bowl, clattering on a miss */
+  ctx.save();
+  ctx.translate(c.bowlX, c.catY + 12 * s);
+  if (anim.flinch > 0) ctx.rotate(Math.sin(anim.flinch * 60) * 0.12);
+  ctx.scale(s * 0.95, s * 0.95);
+  bowlShape(h.bowl ? h.bowl.food : 0, h.id);
+  ctx.restore();
+  /* how much is left, by the bowl rather than by the bar, where the paw
+     would run over it */
+  const left = h.bowl ? h.bowl.food : 0;
+  text(left + (left === 1 ? ' BITE LEFT' : ' BITES LEFT'), c.bowlX, c.catY + 40 * s, 21,
+       'rgba(255,233,201,.7)', 'center', 700);
+
+  for (const cr of crumbs) {
+    ctx.globalAlpha = 1 - cr.t / 0.8;
+    circle(cr.x, cr.y, cr.r); fillStroke(cr.col, INK, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  /* spotted: the whole screen says so */
+  if (alert) {
+    const pulse = 0.5 + 0.5 * Math.sin(elapsed * 14);
+    const vg = ctx.createRadialGradient(DW / 2, DH / 2, DH * 0.25, DW / 2, DH / 2, DH * 0.7);
+    vg.addColorStop(0, 'rgba(255,60,60,0)');
+    vg.addColorStop(1, 'rgba(255,60,60,' + (0.25 + pulse * 0.2).toFixed(2) + ')');
+    ctx.fillStyle = vg; ctx.fillRect(0, L.hud, DW, DH - L.hud);
+    /* on a backing pill: on short phones it has to sit over the cat's head */
+    const ty = Math.max(c.rowY2 + 84, c.catY - 58 * s - 46);
+    const nudge = Math.sin(elapsed * 16) * 8;
+    rr(DW / 2 - 250, ty - 44, 500, 98, 30);
+    fillStroke('rgba(42,10,20,.82)', ALARM, 4);
+    outlined('‹‹  SWIPE TO RUN!  ››', DW / 2 + nudge, ty - 8, 42, '#fff');
+    text(motionSeen ? 'or shake your phone' : 'flick anywhere on the screen', DW / 2, ty + 30, 21, '#ffd0d0', 'center', 600);
+  }
+
+  /* the timing bar */
+  const bx = 48, bw = DW - 96, bh = c.bh, barY = c.barY;
   rr(bx, barY, bw, bh, bh / 2);
-  fillStroke('#2b1f4a', 'rgba(255,233,201,.18)', 3);
+  fillStroke('#241a40', 'rgba(255,233,201,.22)', 3);
 
   const zx = bx + e.zone * bw, zw = e.zoneW * bw;
   ctx.save();
   rr(bx, barY, bw, bh, bh / 2); ctx.clip();
   const zg = ctx.createLinearGradient(zx, 0, zx + zw, 0);
-  zg.addColorStop(0, 'rgba(157,245,200,.55)');
-  zg.addColorStop(0.5, 'rgba(157,245,200,.95)');
-  zg.addColorStop(1, 'rgba(157,245,200,.55)');
+  zg.addColorStop(0, 'rgba(157,245,200,.5)');
+  zg.addColorStop(0.5, 'rgba(157,245,200,.9)');
+  zg.addColorStop(1, 'rgba(157,245,200,.5)');
   ctx.fillStyle = zg;
   ctx.fillRect(zx, barY, zw, bh);
+  /* the perfect strip in the middle of the green */
+  const pw = zw * C.PERFECT_FRAC * 2;
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + anim.perfect).toFixed(2) + ')';
+  ctx.fillRect(zx + zw / 2 - pw / 2, barY, pw, bh);
   ctx.restore();
-  rr(zx, barY + 4, zw, bh - 8, (bh - 8) / 2);
-  fillStroke(null, 'rgba(255,255,255,.5)', 3);
 
+  /* marker: a paw */
   const mx = bx + e.t * bw;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   const mg = ctx.createRadialGradient(mx, barY + bh / 2, 2, mx, barY + bh / 2, 60);
-  mg.addColorStop(0, 'rgba(255,255,255,.4)');
-  mg.addColorStop(1, 'rgba(255,255,255,0)');
+  mg.addColorStop(0, 'rgba(255,255,255,.35)'); mg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = mg; circle(mx, barY + bh / 2, 60); ctx.fill();
   ctx.restore();
-  rr(mx - 7, barY - 10, 14, bh + 20, 7);
-  fillStroke('#fff', INK, 4);
+  rr(mx - 6, barY - 6, 12, bh + 12, 6);
+  fillStroke('#fff', INK, 3.5);
+  const py = barY - 4;
+  circle(mx, py - 14, 13); fillStroke('#fff', INK, 3.5);
+  for (const [ox, oy] of [[-13, -30], [-4, -36], [5, -36], [14, -30]]) {
+    circle(mx + ox * 0.9, py + oy * 0.95 + 4, 5.5); fillStroke('#fff', INK, 2.5);
+  }
+  circle(mx, py - 13, 6); fillStroke('#ffb0c8', null);
 
   if (e.flashGood > 0) {
     ctx.globalAlpha = Math.min(1, e.flashGood * 3);
-    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, MINT, 8);
+    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, MINT, 9);
     ctx.globalAlpha = 1;
   }
   if (e.flashBad > 0) {
     ctx.globalAlpha = Math.min(1, e.flashBad * 2.4);
-    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, ALARM, 8);
+    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, ALARM, 9);
     ctx.globalAlpha = 1;
   }
 
-  text(e.cool > 0 ? 'THE BOWL CLATTERED…' : 'TAP ANYWHERE TO BITE',
-       DW / 2, barY + bh + 42, 26,
+  text(e.cool > 0 ? 'CLATTER! THE NEIGHBOURS HEARD THAT' : 'TAP TO BITE · SWIPE TO RUN',
+       DW / 2, barY + bh + 42, 24,
        e.cool > 0 ? ALARM : 'rgba(255,233,201,.65)', 'center', 600);
 }
 
@@ -957,7 +1248,7 @@ function drawTitle() {
 
   [['TAP A HOUSE', 'the cat walks over and starts eating'],
    ['TAP TO BITE', 'time each bite on the green'],
-   ['TAP LEAVE',   'bolt before a neighbour registers you']].forEach((r, i) => {
+   ['SWIPE TO RUN', 'flick away when a neighbour spots you']].forEach((r, i) => {
     const ry = cardY + 54 + i * 62;
     circle(78, ry, 16); fillStroke(WARM, INK, 3);
     text(String(i + 1), 78, ry + 1, 20, INK, 'center', 800);
@@ -1030,7 +1321,7 @@ function draw() {
   drawCat(sx(g.cat.x), sy(g.cat.y), g.cat.face, !!g.eat);
   drawDog();
   drawOwner();
-  drawFloaters();
+  drawFloaters('street');
 
   /* vignette, to push the eye down the middle of the street */
   const vg = ctx.createRadialGradient(DW / 2, DH / 2, DH * 0.3, DW / 2, DH / 2, DH * 0.74);
@@ -1039,7 +1330,8 @@ function draw() {
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, DW, DH);
 
-  drawEatPanel();
+  drawCloseUp();
+  if (g.eat) drawFloaters('close');
   drawHud();
   drawWaveBanner();
   if (g.scene === 'caught') drawCaught();
@@ -1065,22 +1357,48 @@ function toDesign(ev) {
 }
 const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 
-function onTap(ev) {
+/* Getting off the bowl. A swipe or a shake both end here. */
+function bolt() {
+  if (g.scene !== 'play' || !g.eat) return;
+  const dir = g.cat.x < C.ROAD_X ? 1 : -1;
+  C.tapRoad(g, C.ROAD_X + dir * 0.12, g.cat.y);
+  Sfx.tone(700, 0.12, 'triangle', 0.1, 1200);
+}
+
+/* While eating, a touch is either a bite or the start of a swipe, and we
+   can't know which until the finger moves or lifts. So the bite is held
+   for a moment but judged where the marker was when the finger LANDED:
+   the wait never costs the player their timing. */
+let press = null;
+const SWIPE = 46;                   /* design units of travel that make a swipe */
+const HOLD  = 0.09;                 /* seconds before an unmoved touch counts as a bite */
+
+function biteFromPress() {
+  if (!press || press.bitten || !g.eat) return;
+  press.bitten = true;
+  C.tapEat(g, press.t);
+  handleEvents();
+}
+
+function onDown(ev) {
   ev.preventDefault();
   Sfx.boot();
   const p = toDesign(ev);
 
   if (inside(p, muteRect())) { Sfx.muted = !Sfx.muted; return; }
 
-  if (g.scene === 'title' || g.scene === 'over') { C.start(g); handleEvents(); return; }
+  if (g.scene === 'title' || g.scene === 'over') {
+    askForMotion();
+    C.start(g); handleEvents();
+    return;
+  }
   if (g.scene !== 'play') return;
 
-  /* While eating, the whole screen is the bite button, so the timing game
-     needs no aim at all -- except the one control that gets you out. */
   if (g.eat) {
     if (inside(p, leaveRect())) { C.tapRoad(g, C.ROAD_X, g.cat.y); Sfx.tap(); return; }
-    C.tapEat(g);
-    handleEvents();
+    if (press) biteFromPress();      /* a second finger: settle the first */
+    press = { x: p.x, y: p.y, t: g.eat.t, at: performance.now(), bitten: false };
+    try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
     return;
   }
 
@@ -1092,7 +1410,38 @@ function onTap(ev) {
   Sfx.tap();
 }
 
-cv.addEventListener('pointerdown', onTap, { passive: false });
+/* A finger that travels far enough is a run, whether it moved at once (no
+   bite taken) or slowly after the bite already landed. */
+function onMove(ev) {
+  if (!press) return;
+  const p = toDesign(ev);
+  if (Math.hypot(p.x - press.x, p.y - press.y) > SWIPE) { press = null; bolt(); }
+}
+
+function onUp() { biteFromPress(); press = null; }
+
+/* Shake to run, where the phone will tell us about motion. iOS asks the
+   player first, and only from a tap, so the ask rides on "tap to prowl". */
+function askForMotion() {
+  const DM = window.DeviceMotionEvent;
+  if (DM && typeof DM.requestPermission === 'function') DM.requestPermission().catch(() => {});
+}
+let lastJolt = 0;
+window.addEventListener('devicemotion', ev => {
+  const a = ev.acceleration;
+  if (!a || a.x == null) return;
+  motionSeen = true;
+  /* two hard jolts close together: a deliberate shake, not a firm tap */
+  if (Math.hypot(a.x, a.y, a.z) < 17) return;
+  const now = performance.now();
+  if (now - lastJolt < 450) { lastJolt = 0; bolt(); }
+  else lastJolt = now;
+});
+
+cv.addEventListener('pointerdown', onDown, { passive: false });
+cv.addEventListener('pointermove', onMove);
+cv.addEventListener('pointerup', onUp);
+cv.addEventListener('pointercancel', onUp);
 cv.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('resize', fit);
 window.addEventListener('orientationchange', () => setTimeout(fit, 120));
@@ -1108,6 +1457,7 @@ function frame(ts) {
   if (dt > 0.25) dt = 0.25;         /* tab was backgrounded; don't fast-forward */
   acc += dt;
   while (acc >= STEP) { C.update(g, STEP); acc -= STEP; }
+  if (press && !press.bitten && performance.now() - press.at >= HOLD * 1000) biteFromPress();
   handleEvents();
   updateVisuals(dt);
   draw();
@@ -1116,6 +1466,9 @@ function frame(ts) {
 
 fit();
 requestAnimationFrame(frame);
+
+/* ?debug exposes the game to the console, for setting up a scene by hand */
+if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */

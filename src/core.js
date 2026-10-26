@@ -53,6 +53,7 @@ const GAME_SECONDS = WAVES.reduce((n, w) => n + w.secs, 0);
 const GRACE        = 4.5;     // nobody stirs for the first few seconds
 const KEPT_BONUS   = 40;      // per neighbour still feeding you at the whistle
 const CAUGHT_SECS  = 1.6;
+const PERFECT_FRAC = 0.18;    // perfect = within this fraction of the green's width of its centre
 const PICKUP_SECS  = 3.4;
 
 const CAT_SPEED = 1.4;        // world units per second
@@ -152,9 +153,11 @@ function tapRoad(g, x, y) {
   g.cat.target = { x: clamp(x, BOWL_X[0], BOWL_X[1]), y: clamp(y, 0.2, ROWS - 0.2), house: null };
 }
 
-/* Tap to take a bite while eating. */
-function tapEat(g) {
-  if (g.scene === 'play' && g.eat) takeBite(g);
+/* Tap to take a bite while eating. `atT` is where the marker was when the
+   finger landed: the renderer waits a moment to tell a tap from a swipe, and
+   the bite is judged on the moment of touch, not on when it was sure. */
+function tapEat(g, atT) {
+  if (g.scene === 'play' && g.eat) takeBite(g, atT);
 }
 
 /* ---------- eating ---------- */
@@ -180,18 +183,23 @@ function placeZone(g) {
 
 function stopEating(g) { g.eat = null; }
 
-function takeBite(g) {
+function takeBite(g, atT) {
   const e = g.eat, h = e.h;
+  const t = atT == null ? e.t : atT;
   if (e.cool > 0) return;
-  if (e.t < e.zone || e.t > e.zone + e.zoneW) {
+  if (t < e.zone || t > e.zone + e.zoneW) {
     e.cool = 0.34; e.flashBad = 0.3;
     emit(g, 'miss', { house: h.id });
     makeNoise(g, h);
     return;
   }
+  /* the middle of the green is worth more: something to aim for beyond
+     merely not missing */
+  const perfect = Math.abs(t - (e.zone + e.zoneW / 2)) <= e.zoneW * PERFECT_FRAC;
+  const points = perfect ? 15 : 10;
   e.bites++; e.flashGood = 0.2;
-  g.score += 10;
-  emit(g, 'bite', { house: h.id, points: 10 });
+  g.score += points;
+  emit(g, 'bite', { house: h.id, points, perfect });
 
   h.bowl.food--;
   e.speed = Math.min(2.5, e.speed + 0.10);
@@ -476,7 +484,7 @@ function update(g, dt) {
 
 return {
   ROWS, HOUSES, ROAD_X, BOWL_X, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
-  CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS,
+  CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC,
   create, start, update, drainEvents,
   tapHouse, tapRoad, tapEat,
   bowlSpot, neighbourIds, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,

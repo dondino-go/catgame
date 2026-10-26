@@ -26,7 +26,9 @@ const sitAt = (g, id) => {
 };
 /* jump to a wave properly (the wave changeover resets waveIdx from the clock) */
 const setWave = (g, i) => { g.waveIdx = i; g.timeLeft = 120 - i * 30 - 1; g.dogTimer = 1e9; };
-const hit = g => { g.eat.t = g.eat.zone + g.eat.zoneW / 2; g.eat.cool = 0; C.tapEat(g); };
+/* a good bite, deliberately off-centre so it scores the plain 10 */
+const hit = g => { g.eat.t = g.eat.zone + g.eat.zoneW * 0.1; g.eat.cool = 0; C.tapEat(g); };
+const perfect = g => { g.eat.t = g.eat.zone + g.eat.zoneW / 2; g.eat.cool = 0; C.tapEat(g); };
 const miss = g => { g.eat.t = g.eat.zone > 0.5 ? 0.02 : 0.98; g.eat.cool = 0; C.tapEat(g); };
 
 console.log('\n=== STREET LAYOUT ===');
@@ -132,6 +134,25 @@ console.log('\n=== BITING ===');
   ok(!g2.eat && !g2.houses[1].bowl, 'eating the last ball clears the bowl and ends the minigame');
   ok(g2.bowlsCleared === 1 && g2.score === need * 10 + 25, 'clearing a bowl pays the 25 bonus');
   ok(C.drainEvents(g2).some(e => e.type === 'clear'), 'clearing emits an event');
+
+  const g5 = fresh(); quiet(g5); sitAt(g5, 2); C.drainEvents(g5);
+  perfect(g5);
+  const pe = C.drainEvents(g5).find(e => e.type === 'bite');
+  ok(g5.score === 15 && pe && pe.perfect === true && pe.points === 15, 'a bite dead centre is PERFECT and scores 15');
+  hit(g5);
+  ok(g5.score === 25, 'an edge-of-green bite is still the plain 10');
+
+  /* judged on the moment of touch, not the moment the renderer resolved it */
+  const g6 = fresh(); quiet(g6); sitAt(g6, 2);
+  const onGreen = g6.eat.zone + g6.eat.zoneW * 0.5;
+  g6.eat.t = g6.eat.zone > 0.5 ? 0.02 : 0.98;         // marker has since moved off the green
+  C.tapEat(g6, onGreen);
+  ok(g6.score === 15, 'tapEat(g, t) judges the bite where the marker was when the finger landed');
+  const g7 = fresh(); quiet(g7); sitAt(g7, 2);
+  const offGreen = g7.eat.zone > 0.5 ? 0.02 : 0.98;
+  g7.eat.t = g7.eat.zone + g7.eat.zoneW / 2;          // marker has since moved onto the green
+  C.tapEat(g7, offGreen);
+  ok(g7.score === 0 && g7.eat.cool > 0, '... and a touch off the green still misses even if the marker drifts on');
   g2.houses[1].respawn = 0.1; quiet(g2); run(g2, 0.5);
   ok(!!g2.houses[1].bowl, 'the bowl refills after a while');
 }
