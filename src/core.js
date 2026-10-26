@@ -60,6 +60,21 @@ const MAX_SPEED    = 1.4;
 const PERFECT_FRAC = 0.18;    // perfect = within this fraction of the green's width of its centre
 const PICKUP_SECS  = 3.4;
 
+/* What a final score makes you. Calibrated by simulation: a sloppy round lands
+   around 800, a strong one 1450-1800. */
+const RANKS = [
+  [0,    'Alley Amateur'],
+  [400,  'Bin Lid Regular'],
+  [800,  'Street Sweetheart'],
+  [1200, 'Bowl Bandit'],
+  [1600, 'Ghost of Marrow Street'],
+];
+function rankFor(score) {
+  let r = RANKS[0][1];
+  for (const [min, name] of RANKS) if (score >= min) r = name;
+  return r;
+}
+
 const CAT_SPEED = 1.4;        // world units per second
 const FOX_SPEED = 0.7;        // slower than the cat: you can beat it to a bowl
 const DOG_SPEED = 2.6;
@@ -111,6 +126,7 @@ function reset(g) {
   g.houses.forEach(h => spawnBowl(g, h));
   g.cat = { x: ROAD_X, y: ROWS / 2, face: 1, target: null };
   g.score = 0; g.bowlsCleared = 0; g.foxLosses = 0; g.keptBonus = 0;
+  g.bites = 0; g.perfects = 0; g.misses = 0; g.timesCaught = 0;   /* for the results */
   g.timeLeft = GAME_SECONDS; g.elapsed = 0;
   g.eat = null; g.caught = null; g.pickup = null;
   g.spot = { heat: 0, by: null };
@@ -193,6 +209,7 @@ function takeBite(g, atT) {
   if (e.cool > 0) return;
   if (t < e.zone || t > e.zone + e.zoneW) {
     e.cool = 0.34; e.flashBad = 0.3;
+    g.misses++;
     emit(g, 'miss', { house: h.id });
     makeNoise(g, h);
     return;
@@ -202,6 +219,7 @@ function takeBite(g, atT) {
   const perfect = Math.abs(t - (e.zone + e.zoneW / 2)) <= e.zoneW * PERFECT_FRAC;
   const points = perfect ? 15 : 10;
   e.bites++; e.flashGood = 0.2;
+  g.bites++; if (perfect) g.perfects++;
   g.score += points;
   emit(g, 'bite', { house: h.id, points, perfect });
 
@@ -289,6 +307,7 @@ function getCaught(g, witness, owner) {
   const grass = witness.angry;            // already stopped feeding -- they tell instead
   const loser = grass ? owner : witness;
   loser.angry = true; loser.bowl = null;
+  g.timesCaught++;
   witness.state = 'idle'; witness.t = rand(g, 2.2, 3.6);
   g.caught = { witness: witness.id, owner: owner.id, loser: loser.id, grass, t: CAUGHT_SECS };
   stopEating(g);
@@ -489,6 +508,7 @@ function update(g, dt) {
 return {
   ROWS, HOUSES, ROAD_X, BOWL_X, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED,
+  RANKS, rankFor,
   create, start, update, drainEvents,
   tapHouse, tapRoad, tapEat,
   bowlSpot, neighbourIds, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,

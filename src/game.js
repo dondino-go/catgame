@@ -266,6 +266,7 @@ function handleEvents() {
         break;
       case 'over':
         Sfx.over();
+        overAt = elapsed; rankRung = false;
         if (g.score > best) {
           best = g.score;
           try { localStorage.setItem('bowlbandit.best', String(best)); } catch (err) {}
@@ -1319,39 +1320,118 @@ function drawTitle() {
   if (best > 0) text('BEST ' + best, DW / 2, cardY + 430, 23, 'rgba(255,233,201,.55)', 'center', 600);
 }
 
+/* ---------- results ---------- *
+ * Revealed in order: the score counts up, then your rank lands, then the
+ * street shows who is still feeding you. Taps are ignored until it has all
+ * landed, so the bite you were mashing when the whistle went can't skip it. */
+const OVER_LOCK = 1.8;
+let overAt = -99, rankRung = false;
+
+function drawStreetMap(cx, top, rowH) {
+  const hw = 92, hh = rowH - 12, road = 64;
+  ctx.fillStyle = ROAD;
+  rr(cx - road / 2, top - 8, road, rowH * 4 + 16, 10); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,233,201,.28)'; ctx.lineWidth = 4; ctx.setLineDash([12, 12]);
+  ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, top + rowH * 4); ctx.stroke();
+  ctx.setLineDash([]);
+  for (const h of g.houses) {
+    const x = h.col === 0 ? cx - road / 2 - 10 - hw : cx + road / 2 + 10;
+    const y = top + h.row * rowH + 6;
+    /* each house pops in, one after another */
+    const t = clamp((elapsed - overAt - 1.0 - h.id * 0.06) / 0.25, 0, 1);
+    if (t <= 0) continue;
+    ctx.save();
+    ctx.translate(x + hw / 2, y + hh / 2);
+    ctx.scale(t, t);
+    rr(-hw / 2, -hh / 2, hw, hh, 9);
+    fillStroke(h.angry ? '#4a4065' : TINT[h.id].wall, INK, 3.5);
+    if (h.angry) {
+      ctx.strokeStyle = '#7a6442'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(-hw / 2 + 10, -6); ctx.lineTo(hw / 2 - 10, 2); ctx.stroke();
+      text('✕', 0, 0, 22, ALARM, 'center', 800);
+    } else {
+      circle(0, 0, 13); fillStroke('rgba(42,27,61,.25)', null);
+      text('✓', 0, 1, 22, INK, 'center', 800);
+    }
+    ctx.restore();
+  }
+}
+
 function drawOver() {
-  ctx.fillStyle = 'rgba(10,6,20,.84)';
+  const t = elapsed - overAt;
+  /* solid: the street behind would only be noise under the numbers */
+  const bg = ctx.createLinearGradient(0, 0, 0, DH);
+  bg.addColorStop(0, '#1c1233'); bg.addColorStop(1, '#0f0a1e');
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, DW, DH);
+
   const kept = g.houses.filter(h => !h.angry).length;
-  const y = DH * 0.19;
+  const food = g.score - g.keptBonus;
+  const tight = DH < 1300;                       /* shorter phones: tighten the map */
+  let y = tight ? 84 : 112;
 
-  outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME',
-           DW / 2, y, kept === 0 ? 40 : 46, kept === 0 ? ALARM : WARM);
+  outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
+           kept === 0 ? ALARM : WARM);
 
-  ctx.fillStyle = 'rgba(18,12,36,.93)';
-  rr(44, y + 54, DW - 88, 276, 26); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,233,201,.18)'; ctx.lineWidth = 2.5;
-  rr(44, y + 54, DW - 88, 276, 26); ctx.stroke();
+  /* score counts up */
+  const k = clamp((t - 0.25) / 1.0, 0, 1);
+  const shown = Math.round(g.score * (1 - Math.pow(1 - k, 3)));
+  y += tight ? 96 : 116;
+  outlined(String(shown), DW / 2, y, tight ? 96 : 116, MINT);
+  y += tight ? 62 : 74;
+  text('POINTS', DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 700);
 
-  const line = (label, value, i, colour) => {
-    const ly = y + 104 + i * 52;
-    text(label, 80, ly, 24, 'rgba(255,233,201,.72)', 'left', 500);
-    text(value, DW - 80, ly, 27, colour || CREAM, 'right', 700);
-  };
-  line('Bowls cleared', String(g.bowlsCleared), 0);
-  line('Lost to the fox', String(g.foxLosses), 1, g.foxLosses ? '#ff9d6b' : CREAM);
-  line('Still feeding you', kept + ' × ' + C.KEPT_BONUS, 2, kept ? MINT : ALARM);
-  ctx.strokeStyle = 'rgba(255,233,201,.18)'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(80, y + 264); ctx.lineTo(DW - 80, y + 264); ctx.stroke();
-  text('TOTAL', 80, y + 296, 26, CREAM, 'left', 700);
-  outlined(String(g.score), DW - 80, y + 296, 40, WARM, 'right');
+  /* the rank lands with a bump */
+  y += tight ? 52 : 62;
+  if (t > 1.15) {
+    if (!rankRung) { rankRung = true; Sfx.clear(); }
+    const pop = clamp((t - 1.15) / 0.2, 0, 1);
+    const sc = 1 + (1 - pop) * 0.6;
+    ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
+    ctx.globalAlpha = pop;
+    outlined('— ' + C.rankFor(g.score).toUpperCase() + ' —', 0, 0, 38, WARM);
+    ctx.restore();
+  }
 
-  if (g.score >= best && g.score > 0) outlined('NEW BEST', DW / 2, y + 370, 32, MINT);
-  else if (best > 0) text('BEST ' + best, DW / 2, y + 370, 25, 'rgba(255,233,201,.55)', 'center', 600);
+  /* who still feeds you, laid out like the street */
+  y += tight ? 42 : 56;
+  const rowH = tight ? 44 : 54;
+  drawStreetMap(DW / 2, y, rowH);
+  y += rowH * 4 + (tight ? 30 : 40);
+  text(kept === 8 ? 'ALL EIGHT STILL FEED YOU' : kept + ' OF 8 STILL FEED YOU', DW / 2, y, 22,
+       kept ? MINT : ALARM, 'center', 800);
 
-  ctx.globalAlpha = 0.72 + 0.28 * Math.sin(elapsed * 3);
-  outlined('TAP TO PROWL AGAIN', DW / 2, y + 446, 38, CREAM);
-  ctx.globalAlpha = 1;
+  /* the working */
+  y += tight ? 34 : 44;
+  const lines = [
+    ['Bowls licked clean', String(g.bowlsCleared)],
+    ['Bites', g.bites + (g.perfects ? '  (' + g.perfects + ' perfect)' : '')],
+  ];
+  if (g.misses)      lines.push(['Clatters', String(g.misses), '#ffb38f']);
+  if (g.timesCaught) lines.push(['Times spotted', String(g.timesCaught), ALARM]);
+  if (g.foxLosses)   lines.push(['Lost to the fox', String(g.foxLosses), '#ff9d6b']);
+  lines.push(['Points from food', String(food)]);
+  lines.push(['Still feeding you', kept + ' × ' + C.KEPT_BONUS + ' = ' + g.keptBonus, kept ? MINT : ALARM]);
+
+  const lh = tight ? 38 : 44;
+  const cardH = lines.length * lh + 28;
+  ctx.fillStyle = 'rgba(30,20,56,.95)';
+  rr(48, y, DW - 96, cardH, 24); ctx.fill();
+  lines.forEach((ln, i) => {
+    const ly = y + 14 + lh / 2 + i * lh;
+    text(ln[0], 80, ly, 22, 'rgba(255,233,201,.7)', 'left', 500);
+    text(ln[1], DW - 80, ly, 23, ln[2] || CREAM, 'right', 700);
+  });
+  y += cardH + (tight ? 36 : 48);
+
+  if (g.score >= best && g.score > 0) outlined('NEW BEST!', DW / 2, y, 30, MINT);
+  else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best), DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 600);
+
+  if (t > OVER_LOCK) {
+    ctx.globalAlpha = clamp((t - OVER_LOCK) / 0.4, 0, 1) * (0.72 + 0.28 * Math.sin(elapsed * 3));
+    outlined('TAP TO PROWL AGAIN', DW / 2, Math.min(DH - 52, y + (tight ? 56 : 76)), 36, CREAM);
+    ctx.globalAlpha = 1;
+  }
 }
 
 /* ---------- frame ---------- */
@@ -1437,6 +1517,7 @@ function onDown(ev) {
 
   if (inside(p, muteRect())) { Sfx.muted = !Sfx.muted; return; }
 
+  if (g.scene === 'over' && elapsed - overAt < OVER_LOCK) return;
   if (g.scene === 'title' || g.scene === 'over') {
     askForMotion();
     C.start(g); handleEvents();

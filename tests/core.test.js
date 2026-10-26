@@ -332,6 +332,21 @@ console.log('\n=== THE OWNER & SCORING ===');
   ok(full > 0 && 8 * C.KEPT_BONUS === 320, 'a clean sheet is worth 320');
 }
 
+console.log('\n=== RESULTS ===');
+{
+  const g = fresh(); quiet(g); sitAt(g, 2);
+  perfect(g); hit(g); miss(g);
+  ok(g.bites === 2 && g.perfects === 1 && g.misses === 1, 'the round counts bites, perfect bites and misses');
+  const w = g.houses[g.houses[2].neighbours[0]];
+  w.state = 'watch'; w.t = 9999; run(g, 1.5);
+  ok(g.timesCaught === 1, '... and how many times you were caught');
+  const g2 = fresh();
+  ok(g2.bites === 0 && g2.perfects === 0 && g2.misses === 0 && g2.timesCaught === 0, 'a new round starts the counts at zero');
+  ok(C.rankFor(0) === 'Alley Amateur' && C.rankFor(399) === 'Alley Amateur' && C.rankFor(400) === 'Bin Lid Regular', 'ranks start at the bottom and step at their threshold');
+  ok(C.rankFor(1599) === 'Bowl Bandit' && C.rankFor(5000) === 'Ghost of Marrow Street', 'the top rank has no ceiling');
+  ok(C.RANKS.every((r, i) => i === 0 || r[0] > C.RANKS[i - 1][0]), 'rank thresholds rise');
+}
+
 console.log('\n=== DETERMINISM & ROBUSTNESS ===');
 {
   const play = seed => {
