@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap');
+
+/* Bowl Bandit is a night street seen from above: one committed visual world,
+   so the page is single-theme by design rather than by omission. */
+:root {
+  --void: #0d0918;      /* outside the playfield */
+  --dusk: #150e22;
+  --ink:  #ffe9c9;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--void);
+  color: var(--ink);
+  font-family: 'Baloo 2', 'Trebuchet MS', system-ui, -apple-system, sans-serif;
+  overscroll-behavior: none;
+}
+
+/* Fixed, so it sits under the host's own padding and fills the screen itself.
+   The insets are re-applied here because fixed positioning escapes them. */
+#stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  background:
+    radial-gradient(ellipse at 50% 0%, #2a1a45 0%, var(--void) 72%);
+}
+
+canvas {
+  display: block;
+  touch-action: none;           /* taps are the controls; no pan, no double-tap zoom */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(255, 233, 201, .06), 0 30px 80px rgba(0, 0, 0, .6);
+}

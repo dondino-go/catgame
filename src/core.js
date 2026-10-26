@@ -22,7 +22,7 @@
 
 const ROWS = 4, HOUSES = 8;
 const ROAD_X = 0.5;
-const BOWL_X = [0.22, 0.78];
+const BOWL_X = [0.29, 0.71];
 
 const HOUSE_NAMES = [
   'The Pemburys', 'Old Nan', 'The Dobsons', 'Mr Quill',
