@@ -1279,6 +1279,42 @@ function drawCaught() {
   outlined(loser.name.toUpperCase() + ' STOPS FEEDING YOU', DW / 2, y + 52, 25, '#ffd0d0');
 }
 
+/* ---------- install ---------- *
+ * Android hands the page an install prompt to show on a tap. iPhone has no
+ * prompt, only Share > Add to Home Screen, so there the title says how.
+ * Neither shows once installed, or inside the Claude app's frame, where a
+ * page can't be installed.                                                */
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); installPrompt = ev; });
+window.addEventListener('appinstalled', () => { installPrompt = null; });
+const framed = (() => { try { return window.top !== window; } catch (e) { return true; } })();
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function installed() {
+  return navigator.standalone === true ||
+    (!!window.matchMedia && matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches);
+}
+function installMode() {
+  if (framed || installed()) return null;
+  if (installPrompt) return 'prompt';
+  return isIOS ? 'ios' : null;
+}
+function installRect() { return { x: DW / 2 - 190, y: DH - 136, w: 380, h: 72 }; }
+
+function drawInstall() {
+  const mode = installMode();
+  if (mode === 'prompt') {
+    const r = installRect();
+    rr(r.x, r.y, r.w, r.h, 36);
+    fillStroke('rgba(157,245,200,.14)', MINT, 3.5);
+    text('⬇  INSTALL THE GAME', DW / 2, r.y + r.h / 2 + 2, 26, MINT, 'center', 800);
+  } else if (mode === 'ios') {
+    text('PLAY IT FULL SCREEN', DW / 2, DH - 128, 20, 'rgba(157,245,200,.85)', 'center', 800);
+    text('tap Share ↑ in Safari, then “Add to Home Screen”', DW / 2, DH - 98, 20,
+         'rgba(255,233,201,.7)', 'center', 500);
+  }
+}
+
 function drawTitle() {
   ctx.fillStyle = 'rgba(10,6,20,.76)';
   ctx.fillRect(0, 0, DW, DH);
@@ -1315,6 +1351,7 @@ function drawTitle() {
   outlined('TAP TO PROWL', DW / 2, cardY + 382, 42, MINT);
   ctx.globalAlpha = 1;
   if (best > 0) text('BEST ' + best, DW / 2, cardY + 430, 23, 'rgba(255,233,201,.55)', 'center', 600);
+  drawInstall();
 }
 
 /* ---------- results ---------- *
@@ -1515,6 +1552,12 @@ function onDown(ev) {
   if (inside(p, muteRect())) { Sfx.muted = !Sfx.muted; return; }
 
   if (g.scene === 'over' && elapsed - overAt < OVER_LOCK) return;
+  if (g.scene === 'title' && installMode() === 'prompt' && inside(p, installRect())) {
+    const ip = installPrompt;
+    ip.prompt();
+    ip.userChoice.finally(() => { installPrompt = null; });
+    return;
+  }
   if (g.scene === 'title' || g.scene === 'over') {
     askForMotion();
     C.start(g); handleEvents();
