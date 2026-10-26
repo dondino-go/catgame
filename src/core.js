@@ -34,25 +34,29 @@ const HOUSE_NAMES = [
 const WAVES = [
   { name:'QUIET STREET', secs:30,
     warn:1.90, watch:1.15, idle:[7.5,12.0], awake:1, bites:3,
-    react:0.55, speed:0.68, zone:0.42, zoneMin:0.22,
+    react:0.90, speed:0.50, zone:0.42, zoneMin:0.22,
     dog:0,  fox:false, blurb:'nobody is paying much attention yet' },
   { name:'CURTAINS TWITCHING', secs:30,
     warn:1.45, watch:1.60, idle:[5.5,9.0],  awake:2, bites:4,
-    react:0.42, speed:0.85, zone:0.36, zoneMin:0.18,
+    react:0.75, speed:0.60, zone:0.36, zoneMin:0.18,
     dog:19, fox:false, blurb:'a DOG is loose - it sends everyone to the windows' },
   { name:'GETTING NOSY', secs:30,
     warn:1.05, watch:2.05, idle:[4.0,7.0],  awake:3, bites:5,
-    react:0.30, speed:1.02, zone:0.31, zoneMin:0.145,
+    react:0.60, speed:0.72, zone:0.31, zoneMin:0.145,
     dog:15, fox:true,  blurb:'a FOX is working the same street - it will rob your bowls' },
   { name:'NEIGHBOURHOOD WATCH', secs:30,
     warn:0.72, watch:2.50, idle:[2.6,4.8],  awake:4, bites:6,
-    react:0.18, speed:1.25, zone:0.26, zoneMin:0.115,
+    react:0.48, speed:0.85, zone:0.26, zoneMin:0.115,
     dog:11, fox:true,  blurb:'every curtain on Marrow Street is twitching' },
 ];
 const GAME_SECONDS = WAVES.reduce((n, w) => n + w.secs, 0);
 const GRACE        = 4.5;     // nobody stirs for the first few seconds
 const KEPT_BONUS   = 40;      // per neighbour still feeding you at the whistle
 const CAUGHT_SECS  = 1.6;
+/* Tuned for a thumb on glass, not a key: a swipe to run takes longer than a
+   key press, and the player is watching windows as well as the bar. */
+const BITE_SPEEDUP = 0.05;    // the marker quickens a little with every bite
+const MAX_SPEED    = 1.4;
 const PERFECT_FRAC = 0.18;    // perfect = within this fraction of the green's width of its centre
 const PICKUP_SECS  = 3.4;
 
@@ -202,7 +206,7 @@ function takeBite(g, atT) {
   emit(g, 'bite', { house: h.id, points, perfect });
 
   h.bowl.food--;
-  e.speed = Math.min(2.5, e.speed + 0.10);
+  e.speed = Math.min(MAX_SPEED, e.speed + BITE_SPEEDUP);
   e.zoneW = Math.max(e.zoneMin, e.zoneW - 0.022);
 
   if (h.bowl.food <= 0) {
@@ -484,7 +488,7 @@ function update(g, dt) {
 
 return {
   ROWS, HOUSES, ROAD_X, BOWL_X, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
-  CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC,
+  CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED,
   create, start, update, drainEvents,
   tapHouse, tapRoad, tapEat,
   bowlSpot, neighbourIds, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,

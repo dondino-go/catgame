@@ -201,6 +201,9 @@ function floater(x, y, str, colour, layer) {
   floaters.push({ x, y, str, colour, t: 0, layer: layer || 'street' });
 }
 let motionSeen = false;             /* a shake has a chance of working here */
+let wasSpotted = false;
+/* Haptics where the phone allows it (not iOS Safari); silently nothing elsewhere. */
+function buzz(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {} }
 
 /* ---------- events from the core ---------- */
 function handleEvents() {
@@ -211,12 +214,14 @@ function handleEvents() {
         Sfx.bite(); vis[h.id].pop = 0.22;
         anim.chomp = 0.22;
         const c = closeLayout();
+        /* pop the score off the marker: that is where the eyes are */
+        const popX = g.eat ? 48 + g.eat.t * (DW - 96) : DW / 2;
         if (e.perfect) {
           anim.perfect = 0.45;
           Sfx.tone(1180, 0.08, 'triangle', 0.1, 1500, 0.04);
-          floater(c.bowlX, c.catY - 30 * clamp(DH / 560, 2.1, 2.9), 'PERFECT +' + e.points, MINT, 'close');
+          floater(clamp(popX, 120, DW - 120), c.barY + c.bh / 2, 'PERFECT +' + e.points, MINT, 'close');
         } else {
-          floater(c.bowlX, c.catY - 30 * clamp(DH / 560, 2.1, 2.9), '+' + e.points, WARM, 'close');
+          floater(clamp(popX, 120, DW - 120), c.barY + c.bh / 2, '+' + e.points, WARM, 'close');
         }
         /* crumbs fly out of the bowl */
         const k = clamp(DH / 560, 2.1, 2.9);
@@ -239,7 +244,14 @@ function handleEvents() {
         Sfx.steal();
         floater(bowlX(h), rowY(h) - 56, 'FOX GOT IT', '#ff9d6b');
         break;
-      case 'stir': Sfx.stir(); break;
+      case 'stir':
+        if (g.eat && g.eat.h.neighbours.includes(e.house)) {
+          /* someone who can see THIS bowl: louder, and a nudge in the hand */
+          Sfx.tone(330, 0.16, 'triangle', 0.13, 470);
+          Sfx.tone(470, 0.12, 'triangle', 0.1, 360, 0.15);
+          buzz(25);
+        } else Sfx.stir();
+        break;
       case 'bark': Sfx.bark(); break;
       case 'call': Sfx.call(); break;
       case 'caught': {
@@ -277,6 +289,15 @@ function updateVisuals(dt) {
   for (const f of floaters) f.t += dt;
   floaters = floaters.filter(f => f.t < 1.3);
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
+
+  /* the moment you're seen gets its own sound, once, not every frame */
+  const spotted = g.spot.heat > 0 && !!g.eat;
+  if (spotted && !wasSpotted) {
+    Sfx.tone(880, 0.1, 'square', 0.09, 660);
+    Sfx.tone(880, 0.1, 'square', 0.09, 660, 0.14);
+    buzz([60, 40, 60]);
+  }
+  wasSpotted = spotted;
 
   for (const h of g.houses) {
     const v = vis[h.id];
@@ -792,18 +813,25 @@ const anim = { chomp: 0, flinch: 0, perfect: 0 };
 let crumbs = [];
 
 function closeLayout() {
-  const frontH  = clamp(DH * 0.2, 220, 330);
-  const winTop  = L.hud + 64;
-  const statusY = winTop + frontH + 30;
-  const bh      = 100;
-  const barY    = DH - 236;
-  const rowY2   = statusY + 60;                    /* "at X's bowl" / LEAVE row */
-  const catY    = Math.round((rowY2 + 40 + barY - 70) / 2 + 40);
+  /* Everything the eyes need sits in one band at the top: the windows, and
+     the bar right under them. The thumb taps anywhere, so the bar does not
+     have to be near it; the cat fills the space below as the reward. */
+  const frontH  = clamp(DH * 0.17, 190, 270);
+  const winTop  = L.hud + 58;
+  const statusY = winTop + frontH + 28;
+  const bh      = 88;
+  const barY    = statusY + 64;
+  const rowY2   = barY + bh + 62;                    /* "at X's bowl" / LEAVE row */
+  const catY    = Math.round((rowY2 + 50 + DH - 96) / 2 + 40);
   return { frontH, frontW: 206, winTop, statusY, bh, barY, rowY2, catY, bowlX: DW / 2 + 92 };
 }
 function leaveRect() {
   const c = closeLayout();
   return { x: DW - 182, y: c.rowY2 - 30, w: 158, h: 60 };
+}
+/* a neighbour of this bowl is at the curtain but not yet at the glass */
+function warned() {
+  return !!g.eat && g.eat.h.neighbours.some(id => g.houses[id].state === 'stir');
 }
 
 /* which slot a neighbour occupies in the close-up */
@@ -978,6 +1006,7 @@ function bowlShape(n, seed) {
    eating, chomping on a bite, wincing at a clatter, ears flat when seen. */
 function drawCatClose(x, y, s) {
   const alert  = g.spot.heat > 0;
+  const wary   = !alert && warned();
   const chomp  = anim.chomp > 0 ? Math.sin((1 - anim.chomp / 0.22) * Math.PI) : 0;
   const flinch = anim.flinch > 0 ? anim.flinch / 0.35 : 0;
   const breathe = Math.sin(elapsed * 3) * 1.2;
@@ -1016,7 +1045,7 @@ function drawCatClose(x, y, s) {
   ctx.save();
   ctx.translate(hx, hy);
   ctx.rotate(alert ? -0.1 : 0.32 - chomp * 0.2);
-  const earBack = alert ? 0.7 : 0;
+  const earBack = alert ? 0.7 : wary ? Math.sin(elapsed * 18) * 0.15 : 0;
   for (const side of [-1, 1]) {
     ctx.save();
     ctx.translate(side * 7, -10);
@@ -1033,6 +1062,11 @@ function drawCatClose(x, y, s) {
     circle(-6, -2, 5.4); fillStroke(MINT, INK, 2);
     circle(6, -2, 5.4); fillStroke(MINT, INK, 2);
     ctx.fillStyle = INK; circle(-6, -2, 2.2); ctx.fill(); circle(6, -2, 2.2); ctx.fill();
+  } else if (wary) {
+    /* still eating, but one eye on the street */
+    circle(-6, -3, 4); fillStroke(MINT, INK, 2);
+    circle(6, -3, 4); fillStroke(MINT, INK, 2);
+    ctx.fillStyle = INK; circle(-5, -5, 1.8); ctx.fill(); circle(7, -5, 1.8); ctx.fill();
   } else if (flinch > 0) {
     ctx.strokeStyle = MINT; ctx.lineWidth = 2.6;
     ctx.beginPath(); ctx.moveTo(-10, -5); ctx.lineTo(-3, -2); ctx.lineTo(-10, 1); ctx.stroke();
@@ -1057,11 +1091,22 @@ function drawCatClose(x, y, s) {
   ctx.restore();
 }
 
+/* A soft glow round the screen edge: danger the player feels without
+   looking away from the bar. */
+function edgeGlow(rgb, strength) {
+  const vg = ctx.createRadialGradient(DW / 2, DH / 2, DH * 0.28, DW / 2, DH / 2, DH * 0.72);
+  vg.addColorStop(0, 'rgba(' + rgb + ',0)');
+  vg.addColorStop(1, 'rgba(' + rgb + ',' + strength.toFixed(2) + ')');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, L.hud, DW, DH - L.hud);
+}
+
 function drawCloseUp() {
   const e = g.eat;
   if (!e) return;
   const h = e.h, c = closeLayout();
   const alert = g.spot.heat > 0;
+  const pulse = 0.5 + 0.5 * Math.sin(elapsed * 14);
 
   /* backdrop: night sky over the rooftops opposite, pavement under the cat */
   const sky = ctx.createLinearGradient(0, L.hud, 0, c.statusY);
@@ -1069,17 +1114,17 @@ function drawCloseUp() {
   ctx.fillStyle = sky;
   ctx.fillRect(0, L.hud, DW, DH - L.hud);
   ctx.fillStyle = '#2a1d47';
-  ctx.fillRect(0, c.winTop + c.frontH, DW, c.rowY2 + 30 - (c.winTop + c.frontH));
-  const pave = ctx.createLinearGradient(0, c.rowY2 + 30, 0, DH);
+  ctx.fillRect(0, c.winTop + c.frontH, DW, c.rowY2 + 34 - (c.winTop + c.frontH));
+  const pave = ctx.createLinearGradient(0, c.rowY2 + 34, 0, DH);
   pave.addColorStop(0, PAVE); pave.addColorStop(1, '#3d3266');
   ctx.fillStyle = pave;
-  ctx.fillRect(0, c.rowY2 + 30, DW, DH - (c.rowY2 + 30));
+  ctx.fillRect(0, c.rowY2 + 34, DW, DH - (c.rowY2 + 34));
   ctx.strokeStyle = 'rgba(42,27,61,.22)'; ctx.lineWidth = 3;
   for (let x = -40; x < DW; x += 120) {
-    ctx.beginPath(); ctx.moveTo(x + 60, c.rowY2 + 30); ctx.lineTo(x, DH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + 60, c.rowY2 + 34); ctx.lineTo(x, DH); ctx.stroke();
   }
 
-  /* the three windows that matter */
+  /* the windows that matter */
   const filled = [false, false, false];
   for (const id of h.neighbours) {
     const n = g.houses[id], slot = slotOf(h, n);
@@ -1087,6 +1132,67 @@ function drawCloseUp() {
     drawFront(h, n, slot, c);
   }
   filled.forEach((f, slot) => { if (!f) drawEmptySlot(slot, c); });
+
+  /* ---- the timing bar, straight under the windows ---- */
+  const bx = 48, bw = DW - 96, bh = c.bh, barY = c.barY;
+  rr(bx, barY, bw, bh, bh / 2);
+  fillStroke('#241a40', 'rgba(255,233,201,.22)', 3);
+
+  const zx = bx + e.zone * bw, zw = e.zoneW * bw;
+  ctx.save();
+  rr(bx, barY, bw, bh, bh / 2); ctx.clip();
+  const zg = ctx.createLinearGradient(zx, 0, zx + zw, 0);
+  zg.addColorStop(0, 'rgba(157,245,200,.5)');
+  zg.addColorStop(0.5, 'rgba(157,245,200,.9)');
+  zg.addColorStop(1, 'rgba(157,245,200,.5)');
+  ctx.fillStyle = zg;
+  ctx.fillRect(zx, barY, zw, bh);
+  const pw = zw * C.PERFECT_FRAC * 2;
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + anim.perfect).toFixed(2) + ')';
+  ctx.fillRect(zx + zw / 2 - pw / 2, barY, pw, bh);
+  ctx.restore();
+
+  const mx = bx + e.t * bw;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const mg = ctx.createRadialGradient(mx, barY + bh / 2, 2, mx, barY + bh / 2, 56);
+  mg.addColorStop(0, 'rgba(255,255,255,.35)'); mg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = mg; circle(mx, barY + bh / 2, 56); ctx.fill();
+  ctx.restore();
+  rr(mx - 6, barY - 6, 12, bh + 12, 6);
+  fillStroke('#fff', INK, 3.5);
+  /* the paw rides under the bar, clear of the window labels above */
+  if (!alert) {
+    const py = barY + bh + 20;
+    circle(mx, py, 12); fillStroke('#fff', INK, 3.5);
+    for (const [ox, oy] of [[-13, 13], [-4, 19], [5, 19], [14, 13]]) {
+      circle(mx + ox * 0.9, py + oy * 0.8, 5); fillStroke('#fff', INK, 2.5);
+    }
+    circle(mx, py, 5.5); fillStroke('#ffb0c8', null);
+  }
+
+  if (e.flashGood > 0) {
+    ctx.globalAlpha = Math.min(1, e.flashGood * 3);
+    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, MINT, 9);
+    ctx.globalAlpha = 1;
+  }
+  if (e.flashBad > 0) {
+    ctx.globalAlpha = Math.min(1, e.flashBad * 2.4);
+    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, ALARM, 9);
+    ctx.globalAlpha = 1;
+  }
+
+  /* spotted: the RUN call goes ON the bar, exactly where the eyes already are */
+  if (alert) {
+    const nudge = Math.sin(elapsed * 16) * 8;
+    rr(bx - 10, barY - 12, bw + 20, bh + 24, (bh + 24) / 2);
+    fillStroke('rgba(42,10,20,.9)', ALARM, 5);
+    outlined('‹‹  SWIPE TO RUN!  ››', DW / 2 + nudge, barY + bh / 2 - 9, 42, '#fff');
+    text(motionSeen ? 'or shake your phone' : 'flick anywhere on the screen', DW / 2, barY + bh / 2 + 26, 20,
+         '#ffd0d0', 'center', 600);
+  } else if (e.cool > 0) {
+    text('CLATTER! THE NEIGHBOURS HEARD', DW / 2, barY - 22, 20, ALARM, 'center', 800);
+  }
 
   /* whose bowl, and the calm way out */
   text('AT', 28, c.rowY2 - 14, 18, 'rgba(255,233,201,.5)', 'left', 600);
@@ -1108,15 +1214,12 @@ function drawCloseUp() {
   const s = clamp(DH / 560, 2.1, 2.9);
   drawCatClose(DW / 2 - 50, c.catY, s);
 
-  /* bowl, clattering on a miss */
   ctx.save();
   ctx.translate(c.bowlX, c.catY + 12 * s);
   if (anim.flinch > 0) ctx.rotate(Math.sin(anim.flinch * 60) * 0.12);
   ctx.scale(s * 0.95, s * 0.95);
   bowlShape(h.bowl ? h.bowl.food : 0, h.id);
   ctx.restore();
-  /* how much is left, by the bowl rather than by the bar, where the paw
-     would run over it */
   const left = h.bowl ? h.bowl.food : 0;
   text(left + (left === 1 ? ' BITE LEFT' : ' BITES LEFT'), c.bowlX, c.catY + 40 * s, 21,
        'rgba(255,233,201,.7)', 'center', 700);
@@ -1127,73 +1230,20 @@ function drawCloseUp() {
   }
   ctx.globalAlpha = 1;
 
-  /* spotted: the whole screen says so */
-  if (alert) {
-    const pulse = 0.5 + 0.5 * Math.sin(elapsed * 14);
-    const vg = ctx.createRadialGradient(DW / 2, DH / 2, DH * 0.25, DW / 2, DH / 2, DH * 0.7);
-    vg.addColorStop(0, 'rgba(255,60,60,0)');
-    vg.addColorStop(1, 'rgba(255,60,60,' + (0.25 + pulse * 0.2).toFixed(2) + ')');
-    ctx.fillStyle = vg; ctx.fillRect(0, L.hud, DW, DH - L.hud);
-    /* on a backing pill: on short phones it has to sit over the cat's head */
-    const ty = Math.max(c.rowY2 + 84, c.catY - 58 * s - 46);
-    const nudge = Math.sin(elapsed * 16) * 8;
-    rr(DW / 2 - 250, ty - 44, 500, 98, 30);
-    fillStroke('rgba(42,10,20,.82)', ALARM, 4);
-    outlined('‹‹  SWIPE TO RUN!  ››', DW / 2 + nudge, ty - 8, 42, '#fff');
-    text(motionSeen ? 'or shake your phone' : 'flick anywhere on the screen', DW / 2, ty + 30, 21, '#ffd0d0', 'center', 600);
+  /* the dog is coming: every window on the street is about to fill */
+  if (g.dog && g.dog.phase === 'bark') {
+    const ty = c.rowY2 + 96;
+    rr(40, ty - 40, DW - 80, 80, 26);
+    fillStroke('rgba(42,10,20,.9)', ALARM, 4);
+    outlined('WOOF! EVERYONE’S COMING TO LOOK', DW / 2, ty, 28, '#fff');
   }
 
-  /* the timing bar */
-  const bx = 48, bw = DW - 96, bh = c.bh, barY = c.barY;
-  rr(bx, barY, bw, bh, bh / 2);
-  fillStroke('#241a40', 'rgba(255,233,201,.22)', 3);
+  text('TAP ANYWHERE TO BITE · SWIPE TO RUN', DW / 2, DH - 46, 22,
+       'rgba(255,233,201,.55)', 'center', 600);
 
-  const zx = bx + e.zone * bw, zw = e.zoneW * bw;
-  ctx.save();
-  rr(bx, barY, bw, bh, bh / 2); ctx.clip();
-  const zg = ctx.createLinearGradient(zx, 0, zx + zw, 0);
-  zg.addColorStop(0, 'rgba(157,245,200,.5)');
-  zg.addColorStop(0.5, 'rgba(157,245,200,.9)');
-  zg.addColorStop(1, 'rgba(157,245,200,.5)');
-  ctx.fillStyle = zg;
-  ctx.fillRect(zx, barY, zw, bh);
-  /* the perfect strip in the middle of the green */
-  const pw = zw * C.PERFECT_FRAC * 2;
-  ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + anim.perfect).toFixed(2) + ')';
-  ctx.fillRect(zx + zw / 2 - pw / 2, barY, pw, bh);
-  ctx.restore();
-
-  /* marker: a paw */
-  const mx = bx + e.t * bw;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  const mg = ctx.createRadialGradient(mx, barY + bh / 2, 2, mx, barY + bh / 2, 60);
-  mg.addColorStop(0, 'rgba(255,255,255,.35)'); mg.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = mg; circle(mx, barY + bh / 2, 60); ctx.fill();
-  ctx.restore();
-  rr(mx - 6, barY - 6, 12, bh + 12, 6);
-  fillStroke('#fff', INK, 3.5);
-  const py = barY - 4;
-  circle(mx, py - 14, 13); fillStroke('#fff', INK, 3.5);
-  for (const [ox, oy] of [[-13, -30], [-4, -36], [5, -36], [14, -30]]) {
-    circle(mx + ox * 0.9, py + oy * 0.95 + 4, 5.5); fillStroke('#fff', INK, 2.5);
-  }
-  circle(mx, py - 13, 6); fillStroke('#ffb0c8', null);
-
-  if (e.flashGood > 0) {
-    ctx.globalAlpha = Math.min(1, e.flashGood * 3);
-    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, MINT, 9);
-    ctx.globalAlpha = 1;
-  }
-  if (e.flashBad > 0) {
-    ctx.globalAlpha = Math.min(1, e.flashBad * 2.4);
-    rr(bx, barY, bw, bh, bh / 2); fillStroke(null, ALARM, 9);
-    ctx.globalAlpha = 1;
-  }
-
-  text(e.cool > 0 ? 'CLATTER! THE NEIGHBOURS HEARD THAT' : 'TAP TO BITE · SWIPE TO RUN',
-       DW / 2, barY + bh + 42, 24,
-       e.cool > 0 ? ALARM : 'rgba(255,233,201,.65)', 'center', 600);
+  /* peripheral warnings, so the bar never has to be abandoned to see them */
+  if (alert)         edgeGlow('255,60,60', 0.3 + pulse * 0.22);
+  else if (warned()) edgeGlow('255,190,70', 0.3 + (0.5 + 0.5 * Math.sin(elapsed * 6)) * 0.2);
 }
 
 /* ---------- banners and screens ---------- */
