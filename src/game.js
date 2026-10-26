@@ -716,31 +716,158 @@ function drawFox() {
   ctx.restore();
 }
 
-function drawOwner() {
-  if (!g.pickup) return;
-  const p = g.pickup;
-  const t = clamp(p.t / 1.6, 0, 1);
-  const fromY = p.side ? L.bot + 80 : L.top - 80;
-  const y = lerp(fromY, sy(g.cat.y) + 50, t);
-  const x = sx(C.ROAD_X) + (g.cat.x > C.ROAD_X ? 64 : -64);
+/* ---------- the owner comes for you ---------- *
+ * The end of the round, played as a little scene: the owner walks up the
+ * road, crouches, scoops the cat up, says something fond and carries it home.
+ * The core only says how long it lasts; every beat is timed from here.     */
+let purred = false;
+
+function pickupPlan() {
+  const t = g.pickup.t;
+  const cx = sx(g.cat.x), cy = sy(g.cat.y);
+  /* they come from whichever end of the street is nearer */
+  const fromBottom = g.cat.y > C.ROWS / 2;
+  const startX = DW / 2, startY = fromBottom ? L.bot + 140 : L.top - 40;
+  const side = cx < DW / 2 ? 1 : -1;               /* stand on the road side of the cat */
+  const standX = cx + side * 60, standY = cy;
+  const walkT  = clamp(Math.hypot(standX - startX, standY - startY) / 320, 0.9, 1.8);
+  const reachT = walkT + 0.4;                      /* crouched, arms down */
+  const liftT  = reachT + 0.35;                    /* cat is in their arms */
+  const leaveT = liftT + 1.15;                     /* turn for home */
+
+  let ox, oy;
+  if (t < walkT) {
+    const k = t / walkT, e = 1 - Math.pow(1 - k, 2);
+    ox = lerp(startX, standX, e); oy = lerp(startY, standY, e);
+  } else if (t < leaveT) {
+    ox = standX; oy = standY;
+  } else {
+    const k = clamp((t - leaveT) / walkT, 0, 1);
+    ox = lerp(standX, startX, k * k); oy = lerp(standY, startY, k * k);
+  }
+  return { t, cx, cy, side, ox, oy, walkT, reachT, liftT, leaveT,
+           walking: t < walkT || t >= leaveT,
+           crouch: t >= walkT && t < liftT + 0.25 ? Math.sin(clamp((t - walkT) / (liftT + 0.25 - walkT), 0, 1) * Math.PI) : 0,
+           lift: clamp((t - reachT) / (liftT - reachT), 0, 1) };
+}
+
+/* Gentle push-in on the cat, then follow the owner home. Only the street
+   zooms; the HUD stays put. */
+function pickupCamera() {
+  if (!g.pickup || g.scene === 'over') return;
+  const P = pickupPlan();
+  const z = 1 + 0.75 * (1 - Math.pow(1 - clamp(P.t / 1.1, 0, 1), 3));
+  const follow = clamp((P.t - P.reachT) / 0.6, 0, 1);
+  const fx = lerp(P.cx, P.ox, follow), fy = lerp(P.cy, P.oy, follow) - 50;
+  const anchorY = DH * 0.55;
+  const e = clamp(P.t / 1.1, 0, 1);
+  ctx.translate(DW / 2, anchorY);
+  ctx.scale(z, z);
+  ctx.translate(-lerp(DW / 2, fx, e), -lerp(anchorY, fy, e));
+}
+
+/* the cat, scooped up: curled, eyes shut, purring */
+function drawHeldCat(x, y, face, t) {
+  const purr = Math.sin(t * 14) * 1.2;
   ctx.save();
   ctx.translate(x, y);
+  ctx.scale(face * 1.15, 1.15);
+  ctx.beginPath();
+  ctx.moveTo(-16, 4 + purr); ctx.quadraticCurveTo(-36, 14, -30, -6);
+  ctx.lineWidth = 11 * STROKE; ctx.lineCap = 'round'; ctx.strokeStyle = INK; ctx.stroke();
+  ctx.lineWidth = 7 * STROKE; ctx.strokeStyle = '#5b5884'; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0, purr, 21, 13, 0, 0, Math.PI * 2);
+  fillStroke('#5b5884', INK, 4);
+  ctx.save();
+  ctx.translate(15, -9 + purr);
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(s * 3 - 3, -8); ctx.lineTo(s * 8 - 2, -20); ctx.lineTo(s * 10 + 2, -7);
+    ctx.closePath(); fillStroke('#5b5884', INK, 3);
+  }
+  circle(0, 0, 12.5); fillStroke('#67648f', INK, 3.5);
+  ctx.strokeStyle = MINT; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(s * 4.5, -2, 3.2, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); }
+  circle(0, 4, 2.2); fillStroke('#ffb0c8', null);
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawOwner() {
+  if (!g.pickup) { purred = false; return; }
+  const P = pickupPlan();
+  const face = P.t >= P.leaveT ? P.side : -P.side;    /* towards the cat, then home */
+  const stride = P.walking ? Math.sin(P.t * 10) * 6 : 0;
+  const bob = P.walking ? Math.abs(Math.sin(P.t * 10)) * 3 : 0;
+  const dip = P.crouch * 22;                         /* knees bend to reach the cat */
+
+  ctx.save();
+  ctx.translate(P.ox, P.oy + 20);
   ctx.globalAlpha = 0.3;
-  ctx.beginPath(); ctx.ellipse(0, 46, 26, 9, 0, 0, 6.3);
+  ctx.beginPath(); ctx.ellipse(0, 4, 26, 8, 0, 0, Math.PI * 2);
   ctx.fillStyle = '#000'; ctx.fill();
   ctx.globalAlpha = 1;
-  const stride = Math.sin(p.t * 9) * 8 * (1 - t);
-  ctx.strokeStyle = '#3c5b8a'; ctx.lineWidth = 11 * STROKE; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-4, 20); ctx.lineTo(-4 + stride, 44); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(4, 20); ctx.lineTo(4 - stride, 44); ctx.stroke();
-  rr(-19, -18, 38, 42, 13); fillStroke('#4e74ad', INK, 4.5);
-  circle(0, -34, 17); fillStroke('#f2c49b', INK, 4);
-  ctx.fillStyle = '#4a3550';
-  ctx.beginPath(); ctx.arc(0, -36, 17, Math.PI * 1.02, Math.PI * 1.98); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = INK;
-  circle(-6, -32, 2.4); ctx.fill();
-  circle(6, -32, 2.4); ctx.fill();
+  ctx.scale(face, 1);
+
+  for (const s of [-1, 1]) {
+    rr(s * 8 - 6, -46 + dip * 0.5, 12, 48 - dip * 0.5, 5); fillStroke('#3f5aa8', INK, 3.5);
+    rr(s * 8 - 8, -2 + (s > 0 ? stride * 0.3 : -stride * 0.3), 17, 9, 4);
+    fillStroke('#2f2544', INK, 3);
+  }
+  ctx.translate(0, dip - bob);
+  rr(-20, -104, 40, 60, 12); fillStroke('#e0574f', INK, 4);
+  rr(-20, -104, 40, 16, 10); fillStroke('#c9455c', INK, 3);
+  /* arm: swinging, reaching down to the cat, then cradling it */
+  ctx.lineCap = 'round'; ctx.lineWidth = 11 * STROKE; ctx.strokeStyle = INK;
+  ctx.beginPath();
+  if (P.lift >= 1)       { ctx.moveTo(14, -86); ctx.quadraticCurveTo(32, -70, 18, -58); }
+  else if (P.crouch > 0) { ctx.moveTo(14, -86); ctx.quadraticCurveTo(34, -60, 30, -36 + P.lift * -18); }
+  else                   { ctx.moveTo(14, -86); ctx.quadraticCurveTo(24, -70, 18 + stride, -54); }
+  ctx.stroke();
+  ctx.lineWidth = 7 * STROKE; ctx.strokeStyle = '#e0574f'; ctx.stroke();
+
+  circle(0, -122, 19); fillStroke('#ffd0a8', INK, 4);
+  ctx.beginPath(); ctx.arc(0, -126, 20, Math.PI * 1.05, Math.PI * 1.95); ctx.lineTo(0, -126);
+  fillStroke('#5b3a2e', INK, 3.5);
+  for (const s of [-1, 1]) { circle(s * 6 + 3, -120, 2.6); fillStroke(INK, null); }
+  ctx.beginPath(); ctx.arc(3, -114, 5, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.strokeStyle = INK; ctx.lineWidth = 2.4 * STROKE; ctx.stroke();
   ctx.restore();
+
+  /* the cat: on the ground looking up, rising into the arms, then held */
+  if (P.lift > 0) {
+    if (!purred) { purred = true; Sfx.tone(480, 0.14, 'sine', 0.09, 640); Sfx.tone(640, 0.2, 'sine', 0.07, 520, 0.13); }
+    const hx = P.ox + face * 22, hy = P.oy + 20 - 66 + P.crouch * 22;
+    const k = 1 - Math.pow(1 - P.lift, 2);
+    drawHeldCat(lerp(P.cx, hx, k), lerp(P.cy - 8, hy, k), face, P.t);
+    /* hearts, once it's safe in their arms */
+    if (P.lift >= 1) {
+      for (let i = 0; i < 3; i++) {
+        const ht = ((P.t - P.liftT) * 0.9 + i * 0.33) % 1;
+        if (P.t - P.liftT < i * 0.3) continue;
+        ctx.globalAlpha = 1 - ht;
+        text('♥', hx + face * 10 + Math.sin(ht * 6 + i) * 10, hy - 26 - ht * 60, 24 + i * 3, '#ff9ecd', 'center', 800);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  /* what they say, as they say it */
+  if (P.t > 0.3 && P.t < P.leaveT + 0.6) {
+    const say = P.lift >= 1 ? 'Come on, you. Inside.' : 'There you are!';
+    const pop = clamp((P.t - 0.3) * 5, 0, 1);
+    ctx.font = '700 22px ' + FONT;
+    const bw = ctx.measureText(say).width + 40;
+    const bx = clamp(P.ox, bw / 2 + 12, DW - bw / 2 - 12), by = P.oy - 150;
+    ctx.save();
+    ctx.translate(bx, by); ctx.scale(pop, pop);
+    rr(-bw / 2, -26, bw, 50, 16); fillStroke('#fff3d6', INK, 4);
+    ctx.beginPath(); ctx.moveTo(P.ox - bx - 10, 22); ctx.lineTo(P.ox - bx + 12, 22); ctx.lineTo(P.ox - bx, 40);
+    ctx.closePath(); fillStroke('#fff3d6', INK, 4);
+    rr(-bw / 2 + 3, 14, bw - 6, 9, 4); fillStroke('#fff3d6', null);
+    text(say, 0, 0, 22, '#7a5fb0', 'center', 700);
+    ctx.restore();
+  }
 }
 
 /* ---------- HUD ---------- */
@@ -1473,6 +1600,8 @@ function draw() {
   ctx.save();
   if (shake > 0) ctx.translate(rand(-1, 1) * shake * 14, rand(-1, 1) * shake * 14);
 
+  ctx.save();
+  pickupCamera();
   drawStreet();
   /* lamps stand on the row boundaries, so they never sit on a bowl */
   drawLamp(L.roadL + 14, L.top + L.rowH, 1);
@@ -1482,10 +1611,16 @@ function draw() {
   for (const h of g.houses) drawBowl(h);
 
   drawFox();
-  drawCat(sx(g.cat.x), sy(g.cat.y), g.cat.face, !!g.eat);
+  /* once the owner has hold of the cat, drawOwner draws it in their arms */
+  const held = g.pickup && pickupPlan().lift > 0;
+  if (!held) {
+    const face = g.pickup ? (pickupPlan().ox > sx(g.cat.x) ? 1 : -1) : g.cat.face;
+    drawCat(sx(g.cat.x), sy(g.cat.y), face, !!g.eat);
+  }
   drawDog();
   drawOwner();
   drawFloaters('street');
+  ctx.restore();
 
   /* vignette, to push the eye down the middle of the street */
   const vg = ctx.createRadialGradient(DW / 2, DH / 2, DH * 0.3, DW / 2, DH / 2, DH * 0.74);

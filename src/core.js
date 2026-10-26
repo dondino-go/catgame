@@ -58,7 +58,7 @@ const CAUGHT_SECS  = 1.6;
 const BITE_SPEEDUP = 0.05;    // the marker quickens a little with every bite
 const MAX_SPEED    = 1.4;
 const PERFECT_FRAC = 0.18;    // perfect = within this fraction of the green's width of its centre
-const PICKUP_SECS  = 3.4;
+const PICKUP_SECS  = 4.8;    // walk up, scoop the cat, carry it home
 
 /* What a final score makes you. Calibrated by simulation: a sloppy round lands
    around 800, a strong one 1450-1800. */
