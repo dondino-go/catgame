@@ -1766,6 +1766,25 @@ function drawPoke() {
   ctx.globalAlpha = 1;
 }
 
+/* ---------- build stamp ---------- *
+ * Which build is running, so a tester can tell an update has landed. Read
+ * from src/version.js (written by tools/stamp-build.sh), and shown in the
+ * phone's own time zone. With the offline cache this is the copy actually
+ * running, which can be one launch behind the newest push. */
+function buildLabel() {
+  const b = window.BOWL_BUILD;
+  if (!b) return null;
+  const d = new Date(b.time);
+  if (isNaN(d)) return null;
+  const when = d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const branch = b.branch && b.branch !== 'main' ? ' \u00b7 ' + b.branch.replace(/^claude\//, '') : '';
+  return 'Build ' + when + branch;
+}
+function drawBuild() {
+  const s = buildLabel();
+  if (s) text(s, DW / 2, DH - 22, 17, 'rgba(255,233,201,.42)', 'center', 600);
+}
+
 /* ---------- title ---------- */
 function playRect() { return { x: DW / 2 - 180, y: DH * 0.6, w: 360, h: 108 }; }
 function howRect()  { const p = playRect(); return { x: DW / 2 - 150, y: p.y + p.h + 30, w: 300, h: 60 }; }
@@ -1798,6 +1817,7 @@ function drawTitle() {
   if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best), DW / 2, hr.y + hr.h + 34, 22,
                      'rgba(255,233,201,.5)', 'center', 600);
   drawInstall();
+  drawBuild();
 }
 
 /* ---------- results ---------- *
@@ -1910,9 +1930,10 @@ function drawOver() {
 
   if (t > OVER_LOCK) {
     ctx.globalAlpha = clamp((t - OVER_LOCK) / 0.4, 0, 1) * (0.72 + 0.28 * Math.sin(elapsed * 3));
-    outlined('TAP TO PROWL AGAIN', DW / 2, Math.min(DH - 52, y + (tight ? 56 : 76)), 36, CREAM);
+    outlined('TAP TO PROWL AGAIN', DW / 2, Math.min(DH - 74, y + (tight ? 56 : 76)), 36, CREAM);
     ctx.globalAlpha = 1;
   }
+  drawBuild();
 }
 
 /* ---------- frame ---------- */

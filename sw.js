@@ -11,6 +11,7 @@ const SHELL = [
   './mobile.html',
   './src/core.js',
   './src/game.js',
+  './src/version.js',
   './src/style.css',
   './manifest.webmanifest',
   './icons/icon-192.png',
