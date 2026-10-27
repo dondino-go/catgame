@@ -209,6 +209,7 @@ function buzz(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern)
 function handleEvents() {
   for (const e of C.drainEvents(g)) {
     const h = e.house != null ? g.houses[e.house] : null;
+    tutEvent(e);
     switch (e.type) {
       case 'bite': {
         Sfx.bite(); vis[h.id].pop = 0.22;
@@ -250,9 +251,10 @@ function handleEvents() {
           Sfx.tone(330, 0.16, 'triangle', 0.13, 470);
           Sfx.tone(470, 0.12, 'triangle', 0.1, 360, 0.15);
           buzz(25);
+          hintOnce('stir');
         } else Sfx.stir();
         break;
-      case 'bark': Sfx.bark(); break;
+      case 'bark': Sfx.bark(); hintOnce('dog'); break;
       case 'call': Sfx.call(); break;
       case 'caught': {
         Sfx.caught(); shake = 0.5; flash = 0.6;
@@ -261,6 +263,7 @@ function handleEvents() {
         break;
       }
       case 'wave':
+        if (tut) break;
         if (e.idx > 0) Sfx.waveUp();
         banner = { t: 2.8, idx: e.idx };
         break;
@@ -290,6 +293,9 @@ function updateVisuals(dt) {
   for (const f of floaters) f.t += dt;
   floaters = floaters.filter(f => f.t < 1.3);
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
+  if (hint) { hint.t -= dt; if (hint.t <= 0) hint = null; }
+  if (poke) { poke.t -= dt; if (poke.t <= 0) poke = null; }
+  if (g.fox && g.scene === 'play') hintOnce('fox');
 
   /* the moment you're seen gets its own sound, once, not every frame */
   const spotted = g.spot.heat > 0 && !!g.eat;
@@ -886,14 +892,15 @@ function drawHud() {
   const secs = Math.max(0, Math.ceil(g.timeLeft));
   const clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
   const low = g.timeLeft < 15 && g.scene === 'play';
-  outlined(clock, DW / 2, 50, 50, low && Math.sin(elapsed * 9) > 0 ? ALARM : CREAM);
+  if (tut) outlined('PRACTICE', DW / 2, 50, 40, MINT);
+  else outlined(clock, DW / 2, 50, 50, low && Math.sin(elapsed * 9) > 0 ? ALARM : CREAM);
 
   const kept = g.houses.filter(h => !h.angry).length;
   text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
   outlined(kept + '/8', DW - 24, 64, 42, kept <= 2 ? ALARM : MINT, 'right');
 
   /* second row: which wave we're in, and the sound toggle */
-  text('WAVE ' + (g.waveIdx + 1) + ' · ' + C.WAVES[g.waveIdx].name,
+  if (!tut) text('WAVE ' + (g.waveIdx + 1) + ' · ' + C.WAVES[g.waveIdx].name,
        24, 109, 20, 'rgba(255,233,201,.55)', 'left', 600);
   for (let i = 0; i < C.WAVES.length; i++) {
     circle(DW / 2 - 36 + i * 24, 109, 6);
@@ -977,7 +984,8 @@ function drawResident(mx, baseY, s, tint, rise, stare) {
 }
 
 function drawFront(owner, n, slot, c) {
-  const cx = DW / 2 + (slot - 1) * 230;
+  const wob = poke && poke.id === n.id ? Math.sin(poke.t * 40) * clamp((poke.t - 1.5) / 0.4, 0, 1) * 7 : 0;
+  const cx = DW / 2 + (slot - 1) * 230 + wob;
   const w = c.frontW, H = c.frontH, y = c.winTop;
   const t = TINT[n.id], v = vis[n.id];
   const watching = n.state === 'watch', stirring = n.state === 'stir';
@@ -1442,42 +1450,302 @@ function drawInstall() {
   }
 }
 
+/* ---------- onboarding ---------- *
+ * Nobody reads a rules card. The first launch plays a short practice night
+ * instead: one action at a time, a paw showing where, a few words at most,
+ * and the rule shown happening before it is ever stated. After that, new
+ * things (a curtain, the dog, the fox) are explained once, when they first
+ * turn up, rather than all up front.                                       */
+function loadJSON(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; }
+}
+function saveJSON(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
+
+let onboarded = loadJSON('bowlbandit.onboarded', false);
+const seenHints = loadJSON('bowlbandit.seen', {});
+let tut = null;                     /* the practice night, while it runs */
+let hint = null;                    /* a one-off explanation in a real round */
+
+const HINTS = {
+  stir: ['A curtain’s twitching!', 'Finish your bite, then go'],
+  dog:  ['A dog! Everyone comes to look', 'Get off the bowls'],
+  fox:  ['A fox! It steals bowls', 'Get there first'],
+};
+function hintOnce(key) {
+  if (tut || seenHints[key]) return;
+  seenHints[key] = true;
+  saveJSON('bowlbandit.seen', seenHints);
+  hint = { lines: HINTS[key], t: 3.2 };
+}
+
+function startTutorial() {
+  C.start(g);
+  C.drainEvents(g);
+  banner = null;
+  tut = { step: 'tap', t: 0, first: null, watcher: null };
+}
+function finishTutorial() {
+  tut = null;
+  onboarded = true;
+  saveJSON('bowlbandit.onboarded', true);
+  C.start(g);
+  handleEvents();
+}
+function tutGo(step) { tut.step = step; tut.t = 0; }
+
+/* the house the paw points at: near the cat, never the top row (the coach
+   bubble sits there), and not the bowl just eaten */
+function tutTarget() {
+  const ok = g.houses.filter(h => h.bowl && !h.angry && h.row > 0 && h !== tut.first);
+  ok.sort((a, b) => Math.abs(C.bowlSpot(a).y - g.cat.y) - Math.abs(C.bowlSpot(b).y - g.cat.y)
+                    || (a.col === g.cat.x > C.ROAD_X ? 1 : 0) - (b.col === g.cat.x > C.ROAD_X ? 1 : 0));
+  return ok[0];
+}
+
+/* runs after every fixed simulation step during the practice night */
+function tutStep(dt) {
+  if (!tut) return;
+  tut.t += dt;
+  g.timeLeft = C.GAME_SECONDS;      /* the clock doesn't run in practice */
+  for (const h of g.houses) {       /* only the resident we script ever wakes */
+    if (h !== tut.watcher && h.state !== 'idle') { h.state = 'idle'; h.t = 9999; }
+    if (h !== tut.watcher) h.t = Math.max(h.t, 9999);
+  }
+  /* seen in practice, you get about three seconds to work out the swipe */
+  if (g.spot.heat > 0) g.spot.heat = Math.max(1e-4, g.spot.heat - dt * 0.7);
+
+  const e = g.eat;
+  if (e && (tut.step === 'bite' || tut.step === 'eat2' || tut.step === 'stir' || tut.step === 'seen')) {
+    /* a slow marker and a wide green while learning */
+    e.speed = 0.42;
+    e.zoneW = 0.44;
+    if (e.zone + e.zoneW > 0.96) e.zone = 0.96 - e.zoneW;
+  }
+
+  switch (tut.step) {
+    case 'tap':
+      if (e) { tut.first = e.h; e.h.bowl.food = 3; e.h.bowl.max = 3; tutGo('bite'); }
+      break;
+    case 'bite':
+      if (!e) tutGo('tap');         /* wandered off: start again */
+      break;
+    case 'yum':
+      if (tut.t > 1.6) tutGo('tap2');
+      break;
+    case 'tap2':
+      if (e) {
+        e.h.bowl.food = 4; e.h.bowl.max = 4;
+        /* the neighbour across the road, so it's the obvious window */
+        tut.watcher = g.houses[e.h.neighbours.find(id => g.houses[id].col !== e.h.col)];
+        tutGo('eat2');
+      }
+      break;
+    case 'eat2':
+      if (!e) { tutGo('tap2'); break; }
+      if (tut.t > 1.4 || e.bites > 0) {
+        tut.watcher.state = 'stir'; tut.watcher.t = 9999;
+        tutGo('stir');
+      }
+      break;
+    case 'stir':
+    case 'seen':
+      /* don't let the lesson end by finishing the bowl */
+      if (e && e.h.bowl.food < 2) e.h.bowl.food = 2;
+      if (tut.step === 'stir' && tut.t > 1.8 && e) {
+        tut.watcher.state = 'watch'; tut.watcher.t = 9999;
+        tutGo('seen');
+      }
+      if (g.scene === 'caught') { tutGo('caughtLesson'); break; }
+      if (!e && g.scene === 'play') tutGo(tut.step === 'stir' ? 'early' : 'safe');
+      break;
+    case 'safe': case 'early': case 'caughtLesson':
+      if (tut.watcher) { tut.watcher.state = 'idle'; tut.watcher.t = 9999; }
+      if (tut.t > 3.2) tutGo('ready');
+      break;
+  }
+}
+
+function tutEvent(e) {
+  if (tut && e.type === 'clear' && tut.step === 'bite') tutGo('yum');
+}
+
+/* what the coach says at each step, and where the paw points */
+function tutCoach() {
+  const s = tut.step;
+  const c = closeLayout();
+  const front = id => {                             /* centre of a neighbour's window */
+    const n = g.houses[id], slot = slotOf(g.eat.h, n);
+    return { x: DW / 2 + (slot - 1) * 230, y: c.winTop + c.frontH * 0.45 };
+  };
+  const houseAt = h => { const r = houseRect(h); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };
+  switch (s) {
+    case 'tap':  { const h = tutTarget(); return { lines: ['Hungry?', 'Tap a house'], point: h && !g.cat.target ? houseAt(h) : null }; }
+    case 'bite': return { lines: ['Tap when the paw', 'is on the green'], ring: true };
+    case 'yum':  return { lines: ['Yum!', 'Bowl licked clean'] };
+    case 'tap2': { const h = tutTarget(); return { lines: ['Another one!', 'Tap a house'], point: h && !g.cat.target ? houseAt(h) : null }; }
+    case 'eat2': return { lines: ['Keep eating…'] };
+    case 'stir': return { lines: ['Uh oh.', 'A curtain’s twitching…'], point: g.eat ? front(tut.watcher.id) : null };
+    case 'seen': return { lines: ['They can see you!'], swipe: true };
+    case 'safe': return { lines: ['Phew!', 'Neighbours hate you eating', 'someone else’s food'] };
+    case 'early': return { lines: ['Good instinct!', 'Neighbours hate you eating', 'someone else’s food'] };
+    case 'caughtLesson': return { lines: ['Caught!', 'Now they won’t feed you'] };
+    case 'ready': return { lines: ['Keep the whole street', 'feeding you', '2 minutes. Tap to start!'], big: true };
+  }
+  return null;
+}
+
+/* a bubble of a few big words */
+function drawCoach(lines, y, alpha) {
+  const lh = 40, h = lines.length * lh + 34;
+  ctx.globalAlpha = alpha == null ? 1 : alpha;
+  rr(36, y, DW - 72, h, 28);
+  fillStroke('rgba(20,13,40,.94)', WARM, 3.5);
+  lines.forEach((ln, i) => {
+    if (i === 0) outlined(ln, DW / 2, y + 17 + lh / 2, 34, WARM);
+    else text(ln, DW / 2, y + 17 + lh / 2 + i * lh, 27, CREAM, 'center', 700);
+  });
+  ctx.globalAlpha = 1;
+  return h;
+}
+
+/* a paw tapping at a spot, with a pulsing ring */
+function drawPointer(x, y) {
+  const k = (elapsed * 1.4) % 1;
+  ctx.globalAlpha = 1 - k;
+  circle(x, y, 26 + k * 46);
+  fillStroke(null, MINT, 6);
+  ctx.globalAlpha = 1;
+  const bob = Math.abs(Math.sin(elapsed * 4.4)) * 14;
+  drawPaw(x + 22, y + 26 + bob, 1.4);
+}
+function drawPaw(x, y, s) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+  circle(0, 0, 13); fillStroke('#fff', INK, 3.5);
+  for (const [ox, oy] of [[-13, -13], [-4, -19], [5, -19], [14, -13]]) {
+    circle(ox * 0.9, oy * 0.8, 5.5); fillStroke('#fff', INK, 2.5);
+  }
+  circle(0, 0, 6); fillStroke('#ffb0c8', null);
+  ctx.restore();
+}
+
+function drawTutorial() {
+  if (!tut) return;
+  const co = tutCoach();
+  if (!co) return;
+  const c = closeLayout();
+  const inClose = !!g.eat;
+  const y = co.big ? DH * 0.36 : inClose ? c.rowY2 + 70 : L.hud + 26;
+
+  if (co.big) { ctx.fillStyle = 'rgba(10,6,20,.7)'; ctx.fillRect(0, 0, DW, DH); }
+  if (co.point) drawPointer(co.point.x, co.point.y);
+  if (co.ring && g.eat) {
+    /* circle the green */
+    const e = g.eat, bx = 48, bw = DW - 96;
+    const zx = bx + e.zone * bw, zw = e.zoneW * bw;
+    ctx.globalAlpha = 0.5 + 0.5 * Math.sin(elapsed * 6);
+    rr(zx - 8, c.barY - 8, zw + 16, c.bh + 16, (c.bh + 16) / 2);
+    fillStroke(null, MINT, 6);
+    ctx.globalAlpha = 1;
+  }
+  const ch = drawCoach(co.lines, y);
+  if (co.swipe) {
+    /* a paw sweeping across under the bubble, over and over */
+    const k = (elapsed * 0.9) % 1;
+    ctx.globalAlpha = Math.sin(k * Math.PI);
+    drawPaw(lerp(DW * 0.22, DW * 0.78, k), y + ch + 48, 1.7);
+    ctx.globalAlpha = 1;
+  }
+
+  /* a way out, for anyone who already knows */
+  const r = skipRect();
+  rr(r.x, r.y, r.w, r.h, r.h / 2);
+  fillStroke('rgba(255,233,201,.1)', 'rgba(255,233,201,.35)', 2.5);
+  text('SKIP ›', r.x + r.w / 2, r.y + r.h / 2 + 1, 20, CREAM, 'center', 800);
+}
+function skipRect() { return { x: 16, y: 90, w: 116, h: 36 }; }
+
+function drawHint() {
+  if (!hint || tut || g.scene !== 'play') return;
+  const a = clamp(Math.min(hint.t / 0.4, (3.2 - hint.t) / 0.25), 0, 1);
+  const y = g.eat ? closeLayout().rowY2 + 70 : L.hud + 26;
+  drawCoach(hint.lines, y, a);
+}
+
+/* ---------- poking a window ---------- *
+ * Players tap the windows to see what they do. They used to count as bites,
+ * so curiosity clattered the bowl. Now a poke makes the window wobble and
+ * says, in a few words, what it means.                                     */
+let poke = null;
+function frontAt(p) {
+  if (!g.eat) return null;
+  const c = closeLayout();
+  for (const id of g.eat.h.neighbours) {
+    const slot = slotOf(g.eat.h, g.houses[id]);
+    const cx = DW / 2 + (slot - 1) * 230;
+    if (p.x > cx - c.frontW / 2 && p.x < cx + c.frontW / 2 && p.y > c.winTop - 46 && p.y < c.statusY + 28) return id;
+  }
+  return null;
+}
+/* the strip the windows sit in never takes a bite */
+function inWindowBand(p) {
+  const c = closeLayout();
+  return p.y > L.hud && p.y < c.statusY + 28;
+}
+function pokeSays(n) {
+  if (n.angry) return n.state === 'watch' ? ['They’ll tell on you!', 'Run!'] : ['Already cross', 'They’ll tell if they see you'];
+  if (n.state === 'watch') return ['They can see you!', 'Swipe sideways to run'];
+  if (n.state === 'stir')  return ['Curtain’s twitching!', 'Finish up and go'];
+  return ['Asleep', 'Safe for now'];
+}
+function drawPoke() {
+  if (!poke || !g.eat) return;
+  const n = g.houses[poke.id];
+  if (!g.eat.h.neighbours.includes(n.id)) { poke = null; return; }
+  const c = closeLayout();
+  const slot = slotOf(g.eat.h, n);
+  const cx = clamp(DW / 2 + (slot - 1) * 230, 170, DW - 170);
+  const [a, b] = pokeSays(n);
+  const al = clamp(poke.t / 0.3, 0, 1);
+  ctx.globalAlpha = al;
+  const y = c.winTop + c.frontH * 0.62;
+  rr(cx - 160, y - 40, 320, 84, 22);
+  fillStroke('rgba(20,13,40,.96)', n.state === 'watch' ? ALARM : WARM, 3.5);
+  text(a, cx, y - 14, 25, n.state === 'watch' ? ALARM : WARM, 'center', 800);
+  text(b, cx, y + 18, 20, CREAM, 'center', 600);
+  ctx.globalAlpha = 1;
+}
+
+/* ---------- title ---------- */
+function playRect() { return { x: DW / 2 - 180, y: DH * 0.6, w: 360, h: 108 }; }
+function howRect()  { const p = playRect(); return { x: DW / 2 - 150, y: p.y + p.h + 30, w: 300, h: 60 }; }
+
 function drawTitle() {
-  ctx.fillStyle = 'rgba(10,6,20,.76)';
+  ctx.fillStyle = 'rgba(10,6,20,.78)';
   ctx.fillRect(0, 0, DW, DH);
 
-  const y = DH * 0.22;
-  outlined('BOWL', DW / 2, y, 94, WARM);
-  outlined('BANDIT', DW / 2, y + 84, 94, '#ff9ecd');
-  text('one cat · eight bowls · two minutes', DW / 2, y + 148, 25, CREAM, 'center', 500);
+  const y = DH * 0.25;
+  outlined('BOWL', DW / 2, y, 104, WARM);
+  outlined('BANDIT', DW / 2, y + 94, 104, '#ff9ecd');
 
-  const cardY = y + 196;
-  ctx.fillStyle = 'rgba(18,12,36,.93)';
-  rr(36, cardY, DW - 72, 318, 26); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,233,201,.18)'; ctx.lineWidth = 2.5;
-  rr(36, cardY, DW - 72, 318, 26); ctx.stroke();
+  text('Every house feeds you.', DW / 2, y + 196, 32, CREAM, 'center', 700);
+  text('Don’t get caught.', DW / 2, y + 240, 32, CREAM, 'center', 700);
 
-  [['TAP A HOUSE', 'the cat walks over and starts eating'],
-   ['TAP TO BITE', 'time each bite on the green'],
-   ['SWIPE SIDEWAYS', 'flick left or right when you\u2019re spotted']].forEach((r, i) => {
-    const ry = cardY + 54 + i * 62;
-    circle(78, ry, 16); fillStroke(WARM, INK, 3);
-    text(String(i + 1), 78, ry + 1, 20, INK, 'center', 800);
-    text(r[0], 112, ry - 11, 25, CREAM, 'left', 700);
-    text(r[1], 112, ry + 16, 20, 'rgba(255,233,201,.6)', 'left', 500);
-  });
+  const p = playRect();
+  const pulse = 1 + Math.sin(elapsed * 3) * 0.03;
+  ctx.save();
+  ctx.translate(p.x + p.w / 2, p.y + p.h / 2); ctx.scale(pulse, pulse);
+  rr(-p.w / 2, -p.h / 2, p.w, p.h, p.h / 2);
+  fillStroke(MINT, INK, 5);
+  outlined('PLAY', 0, 3, 54, '#fff');
+  ctx.restore();
 
-  text('A bowl’s owner never minds — they put it there for you.',
-       DW / 2, cardY + 244, 20, 'rgba(255,233,201,.75)', 'center', 500);
-  text('Their NEIGHBOURS do. Get seen and someone',
-       DW / 2, cardY + 270, 20, 'rgba(255,233,201,.75)', 'center', 500);
-  text('stops feeding you for good.',
-       DW / 2, cardY + 294, 20, 'rgba(255,233,201,.75)', 'center', 500);
+  const hr = howRect();
+  text('How to play', DW / 2, hr.y + hr.h / 2, 25, 'rgba(255,233,201,.75)', 'center', 700);
+  ctx.fillStyle = 'rgba(255,233,201,.4)';
+  ctx.fillRect(DW / 2 - 70, hr.y + hr.h / 2 + 18, 140, 2);
 
-  ctx.globalAlpha = 0.72 + 0.28 * Math.sin(elapsed * 3);
-  outlined('TAP TO PROWL', DW / 2, cardY + 382, 42, MINT);
-  ctx.globalAlpha = 1;
-  if (best > 0) text('BEST ' + best, DW / 2, cardY + 430, 23, 'rgba(255,233,201,.55)', 'center', 600);
+  if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best), DW / 2, hr.y + hr.h + 34, 22,
+                     'rgba(255,233,201,.5)', 'center', 600);
   drawInstall();
 }
 
@@ -1631,9 +1899,12 @@ function draw() {
 
   drawCloseUp();
   if (g.eat) drawFloaters('close');
+  drawPoke();
   drawHud();
   drawWaveBanner();
-  if (g.scene === 'caught') drawCaught();
+  drawHint();
+  drawTutorial();
+  if (g.scene === 'caught' && !tut) drawCaught();
   if (g.scene === 'title')  drawTitle();
   if (g.scene === 'over')   drawOver();
 
@@ -1675,6 +1946,10 @@ const HOLD  = 0.09;                 /* seconds before an unmoved touch counts as
 function biteFromPress() {
   if (!press || press.bitten || !g.eat) return;
   press.bitten = true;
+  if (press.kind === 'look') {
+    if (press.front != null) { poke = { id: press.front, t: 1.9 }; Sfx.tap(); }
+    return;
+  }
   C.tapEat(g, press.t);
   handleEvents();
 }
@@ -1693,17 +1968,27 @@ function onDown(ev) {
     ip.userChoice.finally(() => { installPrompt = null; });
     return;
   }
-  if (g.scene === 'title' || g.scene === 'over') {
+  if (g.scene === 'title') {
     askForMotion();
-    C.start(g); handleEvents();
+    if (inside(p, howRect()) || !onboarded) startTutorial();
+    else { C.start(g); handleEvents(); }
     return;
+  }
+  if (g.scene === 'over') { C.start(g); handleEvents(); return; }
+
+  if (tut) {
+    if (inside(p, skipRect()) || tut.step === 'ready') { finishTutorial(); return; }
+    /* while the coach is talking, taps wait */
+    if (['yum', 'safe', 'early', 'caughtLesson'].includes(tut.step)) return;
   }
   if (g.scene !== 'play') return;
 
   if (g.eat) {
     if (inside(p, leaveRect())) { C.tapRoad(g, C.ROAD_X, g.cat.y); Sfx.tap(); return; }
     if (press) biteFromPress();      /* a second finger: settle the first */
-    press = { x: p.x, y: p.y, t: g.eat.t, at: performance.now(), bitten: false };
+    /* the window strip pokes, never bites; a swipe from anywhere still runs */
+    const kind = inWindowBand(p) ? 'look' : 'bite';
+    press = { x: p.x, y: p.y, t: g.eat.t, at: performance.now(), bitten: false, kind, front: frontAt(p) };
     try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
     return;
   }
@@ -1767,7 +2052,7 @@ function frame(ts) {
   last = ts;
   if (dt > 0.25) dt = 0.25;         /* tab was backgrounded; don't fast-forward */
   acc += dt;
-  while (acc >= STEP) { C.update(g, STEP); acc -= STEP; }
+  while (acc >= STEP) { C.update(g, STEP); tutStep(STEP); acc -= STEP; }
   if (press && !press.bitten && performance.now() - press.at >= HOLD * 1000) biteFromPress();
   handleEvents();
   updateVisuals(dt);
@@ -1779,7 +2064,7 @@ fit();
 requestAnimationFrame(frame);
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
-if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C };
+if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C, tut: () => tut };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */
