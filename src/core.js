@@ -57,17 +57,31 @@ const CAUGHT_SECS  = 1.6;
    key press, and the player is watching windows as well as the bar. */
 const BITE_SPEEDUP = 0.05;    // the marker quickens a little with every bite
 const MAX_SPEED    = 1.4;
-const PERFECT_FRAC = 0.18;    // perfect = within this fraction of the green's width of its centre
+const PERFECT_FRAC = 0.18;
+
+/* The streak. Clean bites build it (+1, or +2 for a perfect) and every
+   STREAK_STEP points lift the multiplier by half, up to x3. Being SEEN wipes
+   it, even if you get away; a twitching curtain doesn't. That is what makes
+   leaving at the twitch worth something: playing it safe protects a
+   multiplier, and better timing builds it faster. A clatter halves it. */
+const STREAK_STEP = 3;
+const STREAK_CAP  = 12;
+function multFor(streak) {
+  return 1 + Math.floor(Math.min(streak, STREAK_CAP) / STREAK_STEP) * 0.5;
+}    // perfect = within this fraction of the green's width of its centre
 const PICKUP_SECS  = 4.8;    // walk up, scoop the cat, carry it home
 
-/* What a final score makes you. Calibrated by simulation: a sloppy round lands
-   around 800, a strong one 1450-1800. */
+/* What a final score makes you. Calibrated by simulating bots with timing
+   error and reaction delay, with the streak in play: a greedy novice lands
+   near 900, a careful novice 1600, careful decent play 2600, and careful
+   expert play 3200. Real players spot windows slower than bots, so the top
+   rank stays rare. */
 const RANKS = [
   [0,    'Alley Amateur'],
-  [400,  'Bin Lid Regular'],
-  [800,  'Street Sweetheart'],
-  [1200, 'Bowl Bandit'],
-  [1600, 'Ghost of Marrow Street'],
+  [700,  'Bin Lid Regular'],
+  [1400, 'Street Sweetheart'],
+  [2200, 'Bowl Bandit'],
+  [3000, 'Ghost of Marrow Street'],
 ];
 function rankFor(score) {
   let r = RANKS[0][1];
@@ -127,6 +141,7 @@ function reset(g) {
   g.cat = { x: ROAD_X, y: ROWS / 2, face: 1, target: null };
   g.score = 0; g.bowlsCleared = 0; g.foxLosses = 0; g.keptBonus = 0;
   g.bites = 0; g.perfects = 0; g.misses = 0; g.timesCaught = 0;   /* for the results */
+  g.streak = 0; g.bestMult = 1;
   g.timeLeft = GAME_SECONDS; g.elapsed = 0;
   g.eat = null; g.caught = null; g.pickup = null;
   g.spot = { heat: 0, by: null };
@@ -210,18 +225,24 @@ function takeBite(g, atT) {
   if (t < e.zone || t > e.zone + e.zoneW) {
     e.cool = 0.34; e.flashBad = 0.3;
     g.misses++;
-    emit(g, 'miss', { house: h.id });
+    const before = g.streak;
+    g.streak = Math.floor(g.streak / 2);
+    emit(g, 'miss', { house: h.id, streakBefore: before, streak: g.streak });
     makeNoise(g, h);
     return;
   }
   /* the middle of the green is worth more: something to aim for beyond
      merely not missing */
   const perfect = Math.abs(t - (e.zone + e.zoneW / 2)) <= e.zoneW * PERFECT_FRAC;
-  const points = perfect ? 15 : 10;
+  const mult = multFor(g.streak);               /* this bite is paid at the current rate */
+  const points = Math.round((perfect ? 15 : 10) * mult);
   e.bites++; e.flashGood = 0.2;
   g.bites++; if (perfect) g.perfects++;
   g.score += points;
-  emit(g, 'bite', { house: h.id, points, perfect });
+  g.streak = Math.min(STREAK_CAP, g.streak + (perfect ? 2 : 1));
+  const newMult = multFor(g.streak);
+  g.bestMult = Math.max(g.bestMult, newMult);
+  emit(g, 'bite', { house: h.id, points, perfect, mult, streak: g.streak, multUp: newMult > mult ? newMult : null });
 
   h.bowl.food--;
   e.speed = Math.min(MAX_SPEED, e.speed + BITE_SPEEDUP);
@@ -229,8 +250,9 @@ function takeBite(g, atT) {
 
   if (h.bowl.food <= 0) {
     h.bowl = null; h.respawn = rand(g, 5.5, 9);
-    g.bowlsCleared++; g.score += 25;
-    emit(g, 'clear', { house: h.id, points: 25 });
+    const bonus = Math.round(25 * multFor(g.streak));
+    g.bowlsCleared++; g.score += bonus;
+    emit(g, 'clear', { house: h.id, points: bonus });
     stopEating(g);
     return;
   }
@@ -291,6 +313,11 @@ function watchersOfBowl(g, owner) {
 function checkSpotted(g, dt) {
   const seer = g.eat ? watchersOfBowl(g, g.eat.h)[0] || null : null;
   if (seer) {
+    /* the moment you're seen, the streak is gone, whether or not you escape */
+    if (g.spot.heat === 0 && g.streak > 0) {
+      emit(g, 'streakLost', { streak: g.streak, by: seer.id });
+      g.streak = 0;
+    }
     g.spot.by = seer.id;
     g.spot.heat += dt;
     if (g.spot.heat >= wave(g).react) {
@@ -507,7 +534,7 @@ function update(g, dt) {
 
 return {
   ROWS, HOUSES, ROAD_X, BOWL_X, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
-  CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED,
+  CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor,
   create, start, update, drainEvents,
   tapHouse, tapRoad, tapEat,

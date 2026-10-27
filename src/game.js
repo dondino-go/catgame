@@ -201,6 +201,35 @@ function floater(x, y, str, colour, layer) {
   floaters.push({ x, y, str, colour, t: 0, layer: layer || 'street' });
 }
 let motionSeen = false;             /* a shake has a chance of working here */
+let streakFx = null;                /* a flash on the streak badge: up, halved, or lost */
+
+/* The multiplier, with pips for progress to the next step. Pulses when it
+   steps up; shakes red when it is lost. */
+function drawStreak(x, y, align) {
+  const mult = C.multFor(g.streak);
+  const fx = streakFx;
+  const lost = fx && !fx.up && !fx.half;
+  const colour = lost ? ALARM : mult > 1 ? WARM : 'rgba(255,233,201,.45)';
+  const pop = fx && fx.up ? 1 + Math.sin((0.9 - fx.t) / 0.9 * Math.PI) * 0.35 : 1;
+  const jig = fx && !fx.up ? Math.sin(fx.t * 60) * 5 * fx.t : 0;
+  const label = lost ? 'STREAK LOST' : '\u00d7' + mult;
+  ctx.save();
+  ctx.translate(x + jig, y);
+  ctx.font = '800 28px ' + FONT;
+  const w = ctx.measureText(label).width;
+  const ox = align === 'right' ? -w : 0;
+  ctx.save(); ctx.translate(ox + w / 2, 0); ctx.scale(pop, pop);
+  outlined(label, 0, 0, 28, colour);
+  ctx.restore();
+  if (!lost && g.streak < C.STREAK_CAP) {
+    const into = g.streak % C.STREAK_STEP;
+    for (let i = 0; i < C.STREAK_STEP; i++) {
+      circle(ox + w + 16 + i * 15, 2, 5);
+      fillStroke(i < into ? WARM : 'rgba(255,233,201,.18)', null);
+    }
+  }
+  ctx.restore();
+}
 let wasSpotted = false;
 /* Haptics where the phone allows it (not iOS Safari); silently nothing elsewhere. */
 function buzz(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {} }
@@ -217,12 +246,18 @@ function handleEvents() {
         const c = closeLayout();
         /* pop the score off the marker: that is where the eyes are */
         const popX = g.eat ? 48 + g.eat.t * (DW - 96) : DW / 2;
+        const xm = e.mult > 1 ? '  \u00d7' + e.mult : '';
         if (e.perfect) {
           anim.perfect = 0.45;
           Sfx.tone(1180, 0.08, 'triangle', 0.1, 1500, 0.04);
-          floater(clamp(popX, 120, DW - 120), c.barY + c.bh / 2, 'PERFECT +' + e.points, MINT, 'close');
+          floater(clamp(popX, 150, DW - 150), c.barY + c.bh / 2, 'PERFECT +' + e.points + xm, MINT, 'close');
         } else {
-          floater(clamp(popX, 120, DW - 120), c.barY + c.bh / 2, '+' + e.points, WARM, 'close');
+          floater(clamp(popX, 150, DW - 150), c.barY + c.bh / 2, '+' + e.points + xm, WARM, 'close');
+        }
+        if (e.multUp && !tut) {
+          streakFx = { t: 0.9, up: true };
+          [784, 988, 1175].forEach((f, i) => Sfx.tone(f, 0.12, 'triangle', 0.11, null, 0.1 + i * 0.06));
+          hintOnce('streak');
         }
         /* crumbs fly out of the bowl */
         const k = clamp(DH / 560, 2.1, 2.9);
@@ -236,10 +271,17 @@ function handleEvents() {
       case 'miss':
         Sfx.miss(); vis[h.id].shake = 0.3;
         anim.flinch = 0.35;
+        if (e.streakBefore > e.streak && !tut) streakFx = { t: 0.9, up: false, half: true };
+        break;
+      case 'streakLost':
+        if (tut) break;
+        streakFx = { t: 1.2, up: false };
+        [523, 392, 262].forEach((f, i) => Sfx.tone(f, 0.16, 'sawtooth', 0.07, null, i * 0.09));
+        hintOnce('streakLost');
         break;
       case 'clear':
         Sfx.clear();
-        floater(bowlX(h), rowY(h) - 70, 'CLEARED +25', MINT);
+        floater(bowlX(h), rowY(h) - 70, 'CLEARED +' + e.points, MINT);
         break;
       case 'steal':
         Sfx.steal();
@@ -293,6 +335,7 @@ function updateVisuals(dt) {
   for (const f of floaters) f.t += dt;
   floaters = floaters.filter(f => f.t < 1.3);
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
+  if (streakFx) { streakFx.t -= dt; if (streakFx.t <= 0) streakFx = null; }
   if (hint) { hint.t -= dt; if (hint.t <= 0) hint = null; }
   if (poke) { poke.t -= dt; if (poke.t <= 0) poke = null; }
   if (g.fox && g.scene === 'play') hintOnce('fox');
@@ -888,6 +931,10 @@ function drawHud() {
 
   text('SCORE', 24, 28, 21, 'rgba(255,233,201,.5)', 'left', 600);
   outlined(String(g.score), 24, 64, 42, CREAM, 'left');
+  if (!tut && g.scene !== 'title') {
+    ctx.font = '800 42px ' + FONT;
+    drawStreak(24 + ctx.measureText(String(g.score)).width + 18, 66, 'left');
+  }
 
   const secs = Math.max(0, Math.ceil(g.timeLeft));
   const clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
@@ -1324,8 +1371,10 @@ function drawCloseUp() {
     text(motionSeen ? 'flick left or right \u00b7 or shake' : 'flick left or right to run', DW / 2, barY + bh / 2 + 26, 20,
          '#ffd0d0', 'center', 600);
   } else if (e.cool > 0) {
-    text('CLATTER! THE NEIGHBOURS HEARD', DW / 2, barY - 22, 20, ALARM, 'center', 800);
+    text('CLATTER! THE NEIGHBOURS HEARD', DW / 2 - 60, barY - 22, 20, ALARM, 'center', 800);
   }
+
+  if (!tut && !alert) drawStreak(DW - 48 - 3 * 15 - 8, barY - 24, 'right');
 
   /* whose bowl, and the calm way out */
   text('AT', 28, c.rowY2 - 14, 18, 'rgba(255,233,201,.5)', 'left', 600);
@@ -1470,6 +1519,8 @@ const HINTS = {
   stir: ['A curtain’s twitching!', 'Finish your bite, then go'],
   dog:  ['A dog! Everyone comes to look', 'Get off the bowls'],
   fox:  ['A fox! It steals bowls', 'Get there first'],
+  streak:     ['Streak \u00d71.5!', 'Don\u2019t get seen and it keeps growing'],
+  streakLost: ['Seen! Streak lost', 'Leave when curtains twitch'],
 };
 function hintOnce(key) {
   if (tut || seenHints[key]) return;
@@ -1835,6 +1886,7 @@ function drawOver() {
   const lines = [
     ['Bowls licked clean', String(g.bowlsCleared)],
     ['Bites', g.bites + (g.perfects ? '  (' + g.perfects + ' perfect)' : '')],
+    ['Best streak', '\u00d7' + g.bestMult, g.bestMult > 1 ? WARM : CREAM],
   ];
   if (g.misses)      lines.push(['Clatters', String(g.misses), '#ffb38f']);
   if (g.timesCaught) lines.push(['Times spotted', String(g.timesCaught), ALARM]);

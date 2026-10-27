@@ -132,7 +132,11 @@ console.log('\n=== BITING ===');
   const need = g2.houses[1].bowl.food;
   for (let i = 0; i < need; i++) { g2.eat && hit(g2); }
   ok(!g2.eat && !g2.houses[1].bowl, 'eating the last ball clears the bowl and ends the minigame');
-  ok(g2.bowlsCleared === 1 && g2.score === need * 10 + 25, 'clearing a bowl pays the 25 bonus');
+  /* plain bites: x1 until the streak reaches a step, and the clear bonus at whatever rate you've reached */
+  let expect = 0;
+  for (let i = 0; i < need; i++) expect += Math.round(10 * C.multFor(i));
+  expect += Math.round(25 * C.multFor(need));
+  ok(g2.bowlsCleared === 1 && g2.score === expect, 'clearing a bowl pays the 25 bonus, multiplied by the streak (' + expect + ')');
   ok(C.drainEvents(g2).some(e => e.type === 'clear'), 'clearing emits an event');
 
   const g5 = fresh(); quiet(g5); sitAt(g5, 2); C.drainEvents(g5);
@@ -332,6 +336,53 @@ console.log('\n=== THE OWNER & SCORING ===');
   ok(full > 0 && 8 * C.KEPT_BONUS === 320, 'a clean sheet is worth 320');
 }
 
+console.log('\n=== STREAK ===');
+{
+  ok(C.multFor(0) === 1 && C.multFor(2) === 1 && C.multFor(3) === 1.5 && C.multFor(6) === 2 && C.multFor(12) === 3,
+     'the multiplier steps by half every 3 streak points: x1, x1.5, x2 ... x3');
+  ok(C.multFor(99) === 3, '... and tops out at x3');
+
+  let g = fresh(); quiet(g); sitAt(g, 2);
+  g.houses[2].bowl.food = 99;
+  hit(g);
+  ok(g.streak === 1, 'a good bite adds 1 to the streak');
+  perfect(g);
+  ok(g.streak === 3, 'a perfect bite adds 2');
+  const s0 = g.score; hit(g);
+  ok(g.score - s0 === 15, 'once the streak reaches 3, a plain bite pays 10 x1.5 = 15');
+  const s1 = g.score; perfect(g);
+  ok(g.score - s1 === Math.round(15 * C.multFor(4)), 'and a perfect pays 15 at the same rate');
+  const ev = C.drainEvents(g).filter(e => e.type === 'bite');
+  ok(ev.some(e => e.multUp === 1.5), 'stepping up a tier is announced in the bite event');
+
+  /* the streak survives walking away and carries to the next bowl */
+  const kept = g.streak;
+  C.tapHouse(g, 5); run(g, 4);
+  ok(g.eat && g.eat.h.id === 5 && g.streak === kept, 'leaving a bowl calmly keeps the streak for the next one');
+
+  /* a twitching curtain does not cost it; being seen does, even if you escape */
+  const n = g.houses[g.eat.h.neighbours[0]];
+  n.state = 'stir'; n.t = 9999; run(g, 1);
+  ok(g.streak === kept, 'a twitching curtain does not touch the streak');
+  C.drainEvents(g);
+  n.state = 'watch'; n.t = 9999; run(g, 0.05);
+  const lost = C.drainEvents(g).find(e => e.type === 'streakLost');
+  ok(g.streak === 0 && lost && lost.streak === kept && lost.by === n.id, 'the moment a neighbour sees you the streak is gone, and it says who');
+  C.tapRoad(g, 0.5, 2); run(g, 1.5);
+  ok(g.scene === 'play' && !n.angry && g.streak === 0, '... even though you got away');
+
+  /* a clatter halves it */
+  g = fresh(); quiet(g); sitAt(g, 2); g.houses[2].bowl.food = 99;
+  for (let i = 0; i < 4; i++) perfect(g);
+  ok(g.streak === 8, 'four perfects build a streak of 8');
+  miss(g);
+  ok(g.streak === 4, 'a clatter halves it');
+
+  /* the round remembers how high you got */
+  ok(g.bestMult === C.multFor(8), 'the round remembers the best multiplier reached');
+  ok(fresh().streak === 0 && fresh().bestMult === 1, 'a new round starts with no streak');
+}
+
 console.log('\n=== RESULTS ===');
 {
   const g = fresh(); quiet(g); sitAt(g, 2);
@@ -342,8 +393,10 @@ console.log('\n=== RESULTS ===');
   ok(g.timesCaught === 1, '... and how many times you were caught');
   const g2 = fresh();
   ok(g2.bites === 0 && g2.perfects === 0 && g2.misses === 0 && g2.timesCaught === 0, 'a new round starts the counts at zero');
-  ok(C.rankFor(0) === 'Alley Amateur' && C.rankFor(399) === 'Alley Amateur' && C.rankFor(400) === 'Bin Lid Regular', 'ranks start at the bottom and step at their threshold');
-  ok(C.rankFor(1599) === 'Bowl Bandit' && C.rankFor(5000) === 'Ghost of Marrow Street', 'the top rank has no ceiling');
+  const [r1, r2] = [C.RANKS[1], C.RANKS[C.RANKS.length - 1]];
+  ok(C.rankFor(0) === C.RANKS[0][1] && C.rankFor(r1[0] - 1) === C.RANKS[0][1] && C.rankFor(r1[0]) === r1[1],
+     'ranks start at the bottom and step exactly at their threshold');
+  ok(C.rankFor(r2[0] - 1) === C.RANKS[C.RANKS.length - 2][1] && C.rankFor(99999) === r2[1], 'the top rank has no ceiling');
   ok(C.RANKS.every((r, i) => i === 0 || r[0] > C.RANKS[i - 1][0]), 'rank thresholds rise');
 }
 
