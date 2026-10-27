@@ -411,27 +411,32 @@ function drawStreet() {
     ctx.moveTo(L.roadL + 14, dy + i * 6); ctx.lineTo(L.roadL + 50, dy + i * 6);
     ctx.stroke();
   }
-  const py = L.top + L.rowH * 2.74;
+  /* The puddle sits in the lower lamp's light, just below it, and reflects
+     it warm. It used to sit above the lamp with a pale highlight, which the
+     eye read as the centre of the light, so the glow looked shifted up. */
+  const px = L.roadR - 74, py = L.top + L.rowH * 3 + 50;
   ctx.save();
   ctx.globalAlpha = 0.45;
-  ctx.beginPath(); ctx.ellipse(L.roadR - 62, py, 46, 24, 0, 0, 6.3);
+  ctx.beginPath(); ctx.ellipse(px, py, 46, 22, 0, 0, 6.3);
   ctx.fillStyle = '#6a5ba0'; ctx.fill();
-  ctx.globalAlpha = 0.28;
-  ctx.beginPath(); ctx.ellipse(L.roadR - 62, py + 3, 30, 12, 0, 0, 6.3);
-  ctx.fillStyle = '#cfe6ff'; ctx.fill();
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.ellipse(px + 10, py - 2, 18, 7, 0, 0, 6.3);
+  ctx.fillStyle = WARM; ctx.fill();
   ctx.restore();
 }
 
 /* Lamps stand on the kerb between rows, so they light the bowls without
    sitting on top of one. */
 function drawLamp(x, y, dir) {
+  /* the pool of light is centred on the lamp's head, where the light is */
+  const hx = x + dir * 36, hy = y - 11;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const grad = ctx.createRadialGradient(x + dir * 40, y, 8, x + dir * 40, y, 190);
-  grad.addColorStop(0, 'rgba(255,214,120,.26)');
+  const grad = ctx.createRadialGradient(hx, hy, 8, hx, hy, 190);
+  grad.addColorStop(0, 'rgba(255,214,120,.28)');
   grad.addColorStop(1, 'rgba(255,214,120,0)');
   ctx.fillStyle = grad;
-  circle(x + dir * 40, y, 190); ctx.fill();
+  circle(hx, hy, 190); ctx.fill();
   ctx.restore();
 
   ctx.beginPath(); ctx.ellipse(x, y + 4, 16, 7, 0, 0, 6.3);
