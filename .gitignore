@@ -1,3 +1,6 @@
 .DS_Store
-.claude/
+# personal Claude Code files stay local; the shared settings and hooks are tracked
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 node_modules/
