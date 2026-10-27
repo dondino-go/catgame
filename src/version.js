@@ -1,2 +1,2 @@
 /* Written by tools/stamp-build.sh. Don't edit by hand. */
-window.BOWL_BUILD = { time: '2026-10-27T21:55:24Z', branch: 'claude/data-driven-streets' };
+window.BOWL_BUILD = { time: '2026-10-27T21:58:44Z', branch: 'claude/data-driven-streets' };

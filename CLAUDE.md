@@ -9,7 +9,7 @@ build step, no dependencies (Playwright is used by one optional test only).
 | Branch | What it is |
 |---|---|
 | `main` | The original desktop game (`index.html`). Untouched since the redesign began. |
-| `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones. Only push finished, tested changes. |
+| `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
 | `claude/data-driven-streets` | Refactor making the street a data description, so new streets and minigames can be added. |
 
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
@@ -28,6 +28,7 @@ into the refactor branch, not the other way round.
   app. `sw.js` is network first with an offline fallback.
 - `index.html`: the legacy desktop game, kept until the mobile one replaces it.
 - `tools/stamp-build.sh`: writes `src/version.js` (time and branch).
+- `tools/preview.html`: the page the Claude artifact preview is published from.
 
 ## Commands
 
@@ -78,6 +79,32 @@ steps frames itself with `__bb.advance(seconds)`.
   Match that density and tone.
 - **Commits**: one clear subject line, then a body that says what was wrong or
   wanted and why this fixes it.
+
+## Preview before shipping
+
+- Changes meant for testers go to the Claude artifact preview first, not
+  straight to `claude/mobile-redesign`. Publish the change there, say what to
+  try, and wait for the user to say "ship it" before pushing to
+  `claude/mobile-redesign` (it's live on testers' phones via GitHub Pages).
+- Exceptions: changes the user has explicitly asked to go straight to the
+  branch, and docs or test-only changes that don't affect the game.
+- Say which build stamp the preview should show, so the user can confirm
+  they're looking at the right version. Stamp the build first
+  (`sh tools/stamp-build.sh`), since the preview isn't a commit.
+- The preview link is <https://claude.ai/artifact/MnG5ZjmTZpgai9BN9SydKL>.
+  Publish `tools/preview.html` with the Artifact tool, passing `src/core.js`,
+  `src/game.js`, `src/style.css` and `src/version.js` as files at those same
+  paths. From a new session, pass the link as `url` so it updates in place
+  rather than creating a second preview.
+
+## Backlog lives in GitHub issues
+
+- Playtest feedback, review findings that weren't fixed, and feature ideas
+  are tracked as issues in `dondino-go/catgame`, not just in chat.
+- When the user reports a bug or idea, offer to file it as an issue. When work
+  starts on one, reference it in the commit message (e.g. "Fixes #12"), and
+  close it once the work is done and pushed.
+- Labels: `playtest`, `review`, `bug`, `idea`, `refactor`.
 
 ## Code review
 
