@@ -428,15 +428,31 @@ function drawStreet() {
 /* Lamps stand on the kerb between rows, so they light the bowls without
    sitting on top of one. */
 function drawLamp(x, y, dir) {
-  /* the pool of light is centred on the lamp's head, where the light is */
+  /* The light lands on the ground UNDER the lamp: in this angled view that
+     is below the head on screen, as a flattened pool, with a faint cone
+     falling to it. Centring the glow on the head put half of it up in the
+     air, which read as the light being shifted up. */
   const hx = x + dir * 36, hy = y - 11;
+  const gy = y + 34;                                 /* centre of the pool on the ground */
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const grad = ctx.createRadialGradient(hx, hy, 8, hx, hy, 190);
-  grad.addColorStop(0, 'rgba(255,214,120,.28)');
+  ctx.save();
+  ctx.translate(hx, gy); ctx.scale(1, 0.78);
+  const grad = ctx.createRadialGradient(0, 0, 8, 0, 0, 200);
+  grad.addColorStop(0, 'rgba(255,214,120,.30)');
+  grad.addColorStop(0.55, 'rgba(255,214,120,.12)');
   grad.addColorStop(1, 'rgba(255,214,120,0)');
   ctx.fillStyle = grad;
-  circle(hx, hy, 190); ctx.fill();
+  circle(0, 0, 200); ctx.fill();
+  ctx.restore();
+  const cone = ctx.createLinearGradient(0, hy, 0, gy + 60);
+  cone.addColorStop(0, 'rgba(255,220,140,.14)');
+  cone.addColorStop(1, 'rgba(255,220,140,0)');
+  ctx.fillStyle = cone;
+  ctx.beginPath();
+  ctx.moveTo(hx - 12, hy); ctx.lineTo(hx + 12, hy);
+  ctx.lineTo(hx + 95, gy + 60); ctx.lineTo(hx - 95, gy + 60);
+  ctx.closePath(); ctx.fill();
   ctx.restore();
 
   ctx.beginPath(); ctx.ellipse(x, y + 4, 16, 7, 0, 0, 6.3);
