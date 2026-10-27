@@ -195,6 +195,7 @@ let floaters = [];
 let shake = 0, flash = 0, elapsed = 0;
 let banner = null;                  /* wave announcement */
 let best = 0;
+let newBest = false;                /* this round beat the previous best (not merely equalled it) */
 try { best = parseInt(localStorage.getItem('bowlbandit.best') || '0', 10) || 0; } catch (e) {}
 
 function floater(x, y, str, colour, layer) {
@@ -245,7 +246,7 @@ function handleEvents() {
         anim.chomp = 0.22;
         const c = closeLayout();
         /* pop the score off the marker: that is where the eyes are */
-        const popX = g.eat ? 48 + g.eat.t * (DW - 96) : DW / 2;
+        const popX = 48 + (lastBiteT != null ? lastBiteT : 0.5) * (DW - 96);
         const xm = e.mult > 1 ? '  \u00d7' + e.mult : '';
         if (e.perfect) {
           anim.perfect = 0.45;
@@ -281,7 +282,14 @@ function handleEvents() {
         break;
       case 'clear':
         Sfx.clear();
-        floater(bowlX(h), rowY(h) - 70, 'CLEARED +' + e.points, MINT);
+        if (!g.eat && eatSnap && eatSnap.h.id === h.id) {
+          /* the bowl you were eating: hold the close-up a moment to enjoy it */
+          linger = { e: eatSnap, t: 0.9 };
+          const c = closeLayout();
+          floater(c.bowlX, c.catY - 30 * clamp(DH / 560, 2.1, 2.9), 'LICKED CLEAN +' + e.points, MINT, 'close');
+        } else {
+          floater(bowlX(h), rowY(h) - 70, 'CLEARED +' + e.points, MINT);
+        }
         break;
       case 'steal':
         Sfx.steal();
@@ -312,7 +320,8 @@ function handleEvents() {
       case 'over':
         Sfx.over();
         overAt = elapsed; rankRung = false;
-        if (g.score > best) {
+        newBest = g.score > best;
+        if (newBest) {
           best = g.score;
           try { localStorage.setItem('bowlbandit.best', String(best)); } catch (err) {}
         }
@@ -331,12 +340,13 @@ function updateVisuals(dt) {
   anim.perfect = Math.max(0, anim.perfect - dt);
   for (const cr of crumbs) { cr.t += dt; cr.vy += 1500 * dt; cr.x += cr.vx * dt; cr.y += cr.vy * dt; }
   crumbs = crumbs.filter(cr => cr.t < 0.8);
-  if (!g.eat) crumbs = [];
+  if (linger) { linger.t -= dt; if (linger.t <= 0 || g.eat || g.scene !== 'play') linger = null; }
+  if (!g.eat && !linger) crumbs = [];
   for (const f of floaters) f.t += dt;
   floaters = floaters.filter(f => f.t < 1.3);
   if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
   if (streakFx) { streakFx.t -= dt; if (streakFx.t <= 0) streakFx = null; }
-  if (hint) { hint.t -= dt; if (hint.t <= 0) hint = null; }
+  if (hint && !banner) { hint.t -= dt; if (hint.t <= 0) hint = null; }
   if (poke) { poke.t -= dt; if (poke.t <= 0) poke = null; }
   if (g.fox && g.scene === 'play') hintOnce('fox');
 
@@ -979,6 +989,10 @@ function drawFloaters(layer) {
  * is down the road, so the picture keeps the street's geography.            */
 const anim = { chomp: 0, flinch: 0, perfect: 0 };
 let crumbs = [];
+/* The core stops eating the moment a bowl is cleared, so the renderer keeps
+   the last bite's marker position and the eating state it ended, and holds
+   the close-up for a moment after the final bite instead of cutting away. */
+let lastBiteT = null, eatSnap = null, linger = null;
 
 function closeLayout() {
   /* Everything the eyes need sits in one band at the top: the windows, and
@@ -1187,8 +1201,9 @@ function bowlShape(n, seed) {
 /* The cat, big. Its face is the second tell after the windows: content while
    eating, chomping on a bite, wincing at a clatter, ears flat when seen. */
 function drawCatClose(x, y, s) {
-  const alert  = g.spot.heat > 0;
+  const alert  = g.spot.heat > 0 && !!g.eat;
   const wary   = !alert && warned();
+  const smug   = !g.eat && !!linger;
   const chomp  = anim.chomp > 0 ? Math.sin((1 - anim.chomp / 0.22) * Math.PI) : 0;
   const flinch = anim.flinch > 0 ? anim.flinch / 0.35 : 0;
   const breathe = Math.sin(elapsed * 3) * 1.2;
@@ -1244,6 +1259,11 @@ function drawCatClose(x, y, s) {
     circle(-6, -2, 5.4); fillStroke(MINT, INK, 2);
     circle(6, -2, 5.4); fillStroke(MINT, INK, 2);
     ctx.fillStyle = INK; circle(-6, -2, 2.2); ctx.fill(); circle(6, -2, 2.2); ctx.fill();
+  } else if (smug) {
+    /* licked clean: eyes squeezed shut, very pleased */
+    ctx.strokeStyle = MINT; ctx.lineWidth = 2.8;
+    ctx.beginPath(); ctx.arc(-6, -1, 4, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(6, -1, 4, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
   } else if (wary) {
     /* still eating, but one eye on the street */
     circle(-6, -3, 4); fillStroke(MINT, INK, 2);
@@ -1284,7 +1304,7 @@ function edgeGlow(rgb, strength) {
 }
 
 function drawCloseUp() {
-  const e = g.eat;
+  const e = g.eat || (linger && linger.e);
   if (!e) return;
   const h = e.h, c = closeLayout();
   const alert = g.spot.heat > 0;
@@ -1436,6 +1456,17 @@ function drawWaveBanner() {
   const w = C.WAVES[banner.idx];
   const a = clamp(banner.t > 2.3 ? (2.8 - banner.t) / 0.5 : Math.min(1, banner.t / 0.5), 0, 1);
   ctx.globalAlpha = a;
+  if (g.eat || linger) {
+    /* Eating: the bar and the windows must stay in sight, so the news goes
+       below them, over the cat, as a compact strip. */
+    const c = closeLayout(), y = c.rowY2 + 70;
+    rr(36, y, DW - 72, 104, 24);
+    fillStroke('rgba(18,12,36,.94)', WARM, 3);
+    outlined('WAVE ' + (banner.idx + 1) + ' \u00b7 ' + w.name, DW / 2, y + 34, 28, WARM);
+    text(w.blurb, DW / 2, y + 72, 20, CREAM, 'center', 500);
+    ctx.globalAlpha = 1;
+    return;
+  }
   const y = DH * 0.34;
   ctx.fillStyle = 'rgba(18,12,36,.94)';
   rr(30, y - 76, DW - 60, 152, 26); ctx.fill();
@@ -1548,10 +1579,11 @@ function tutGo(step) { tut.step = step; tut.t = 0; }
 
 /* the house the paw points at: near the cat, never the top row (the coach
    bubble sits there), and not the bowl just eaten */
+const catSide = () => g.cat.x > C.ROAD_X ? 1 : 0;   /* which column the cat is nearer */
 function tutTarget() {
   const ok = g.houses.filter(h => h.bowl && !h.angry && h.row > 0 && h !== tut.first);
   ok.sort((a, b) => Math.abs(C.bowlSpot(a).y - g.cat.y) - Math.abs(C.bowlSpot(b).y - g.cat.y)
-                    || (a.col === g.cat.x > C.ROAD_X ? 1 : 0) - (b.col === g.cat.x > C.ROAD_X ? 1 : 0));
+                    || (a.col === catSide() ? 0 : 1) - (b.col === catSide() ? 0 : 1));
   return ok[0];
 }
 
@@ -1718,7 +1750,7 @@ function drawTutorial() {
 function skipRect() { return { x: 16, y: 90, w: 116, h: 36 }; }
 
 function drawHint() {
-  if (!hint || tut || g.scene !== 'play') return;
+  if (!hint || tut || banner || g.scene !== 'play') return;
   const a = clamp(Math.min(hint.t / 0.4, (3.2 - hint.t) / 0.25), 0, 1);
   const y = g.eat ? closeLayout().rowY2 + 70 : L.hud + 26;
   drawCoach(hint.lines, y, a);
@@ -1806,10 +1838,25 @@ async function checkForUpdate() {
     const res = await fetch('src/version.js?check=' + Date.now(), { cache: 'no-store' });
     const m = (await res.text()).match(/time: '([^']+)'/);
     if (m && m[1] !== window.BOWL_BUILD.time) {
-      updateReady = true;
-      if (g.scene === 'title') location.reload();
+      updateReady = m[1];
+      if (g.scene === 'title') loadUpdate(false);
     }
   } catch (e) { /* offline: keep playing what we have */ }
+}
+
+/* A plain reload can still take the game's scripts from the browser's cache,
+   in which case the stamp never changes and the title screen would reload
+   forever. So refresh every file first, and reload on our own at most once
+   per new build; if that didn't take, wait for the player's tap. */
+const GAME_FILES = ['mobile.html', 'src/version.js', 'src/core.js', 'src/game.js', 'src/style.css'];
+async function loadUpdate(byTap) {
+  const stamp = updateReady;
+  let tried = null;
+  try { tried = sessionStorage.getItem('bowlbandit.reloadedFor'); } catch (e) {}
+  if (!byTap && tried === stamp) return;
+  try { sessionStorage.setItem('bowlbandit.reloadedFor', stamp); } catch (e) {}
+  try { await Promise.all(GAME_FILES.map(u => fetch(u, { cache: 'reload' }))); } catch (e) {}
+  location.reload();
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
 setTimeout(checkForUpdate, 1500);
@@ -1954,7 +2001,7 @@ function drawOver() {
   });
   y += cardH + (tight ? 36 : 48);
 
-  if (g.score >= best && g.score > 0) outlined('NEW BEST!', DW / 2, y, 30, MINT);
+  if (newBest) outlined('NEW BEST!', DW / 2, y, 30, MINT);
   else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best), DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 600);
 
   if (t > OVER_LOCK) {
@@ -2000,7 +2047,7 @@ function draw() {
   ctx.fillRect(0, 0, DW, DH);
 
   drawCloseUp();
-  if (g.eat) drawFloaters('close');
+  if (g.eat || linger) drawFloaters('close');
   drawPoke();
   drawHud();
   drawWaveBanner();
@@ -2052,6 +2099,8 @@ function biteFromPress() {
     if (press.front != null) { poke = { id: press.front, t: 1.9 }; Sfx.tap(); }
     return;
   }
+  lastBiteT = press.t;
+  eatSnap = g.eat;
   C.tapEat(g, press.t);
   handleEvents();
 }
@@ -2070,7 +2119,7 @@ function onDown(ev) {
     ip.userChoice.finally(() => { installPrompt = null; });
     return;
   }
-  if ((g.scene === 'title' || g.scene === 'over') && updateReady) { location.reload(); return; }
+  if ((g.scene === 'title' || g.scene === 'over') && updateReady) { loadUpdate(true); return; }
   if (g.scene === 'title') {
     askForMotion();
     if (inside(p, howRect()) || !onboarded) startTutorial();
@@ -2085,6 +2134,7 @@ function onDown(ev) {
     if (['yum', 'safe', 'early', 'caughtLesson'].includes(tut.step)) return;
   }
   if (g.scene !== 'play') return;
+  if (linger && !g.eat) return;     /* the close-up is still up: the street isn't on screen */
 
   if (g.eat) {
     if (inside(p, leaveRect())) { C.tapRoad(g, C.ROAD_X, g.cat.y); Sfx.tap(); return; }

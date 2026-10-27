@@ -252,6 +252,18 @@ console.log('\n=== CORE RULE ===');
   const reacts = C.WAVES.map(w => w.react);
   ok(reacts.every((r, i) => i === 0 || r < reacts[i - 1]), 'time to bolt shrinks every wave: ' + reacts.join(' > '));
 
+  // review finding: the catch that takes the last friendly house still shows SPOTTED!
+  g = fresh(); quiet(g);
+  const last = g.houses[2], lw = g.houses[last.neighbours[0]];
+  g.houses.forEach(h => { if (h !== last) { h.angry = true; h.bowl = null; } });
+  sitAt(g, 2);
+  lw.state = 'watch'; lw.t = 9999;
+  run(g, 1.5);
+  ok(g.scene === 'caught' && last.angry && g.caught && g.caught.grass === true,
+     'losing the last friendly house to a catch shows the caught scene first');
+  run(g, C.CAUGHT_SECS + 0.1);
+  ok(g.scene === 'over' && g.caught === null, '... then ends the round, with nothing left dangling');
+
   // everyone gone: round ends early
   g = fresh(); quiet(g);
   g.houses.forEach(h => { h.angry = true; h.bowl = null; });
@@ -371,7 +383,24 @@ console.log('\n=== STREAK ===');
   C.tapRoad(g, 0.5, 2); run(g, 1.5);
   ok(g.scene === 'play' && !n.angry && g.streak === 0, '... even though you got away');
 
-  /* a clatter halves it */
+  /* review finding: a second look while the meter is still cooling must clear it too */
+  g = fresh(); quiet(g); sitAt(g, 2); g.houses[2].bowl.food = 99;
+  const w = g.houses[g.eat.h.neighbours[0]];
+  hit(g); hit(g);
+  w.state = 'watch'; w.t = 9999; run(g, 0.3);              /* seen: streak gone */
+  w.state = 'idle'; w.t = 9999; run(g, 0.05);              /* looks away; meter still warm */
+  ok(g.spot.heat > 0, '(setup) the RUN meter is still cooling when they look away');
+  for (let i = 0; i < 3; i++) hit(g);
+  ok(g.streak === 3, '(setup) three bites rebuild the streak to 3');
+  C.drainEvents(g);
+  w.state = 'watch'; w.t = 9999; run(g, 0.05);
+  ok(g.streak === 0 && C.drainEvents(g).some(e => e.type === 'streakLost'),
+     'a second look while the meter is still cooling clears the streak too');
+  hit(g);
+  ok(g.streak === 0, 'bites taken in full view do not rebuild it');
+  C.tapRoad(g, 0.5, 2); run(g, 1);
+
+
   g = fresh(); quiet(g); sitAt(g, 2); g.houses[2].bowl.food = 99;
   for (let i = 0; i < 4; i++) perfect(g);
   ok(g.streak === 8, 'four perfects build a streak of 8');
