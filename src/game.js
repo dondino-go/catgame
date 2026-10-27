@@ -2149,6 +2149,9 @@ window.addEventListener('orientationchange', () => setTimeout(fit, 120));
 const STEP = 1 / 120;               /* fixed timestep: the bite window must not
                                        depend on the phone's frame rate */
 let last = 0, acc = 0;
+/* ?manual (tests only): no animation timer; the test steps frames itself
+   with __bb.advance(), so every run sees exactly the same frames */
+const MANUAL = /[?&]manual\b/.test(location.search);
 function frame(ts) {
   if (!last) last = ts;
   let dt = (ts - last) / 1000;
@@ -2160,14 +2163,18 @@ function frame(ts) {
   handleEvents();
   updateVisuals(dt);
   draw();
-  requestAnimationFrame(frame);
+  if (!MANUAL) requestAnimationFrame(frame);
 }
 
 fit();
-requestAnimationFrame(frame);
+if (!MANUAL) requestAnimationFrame(frame);
+let manualT = 0;
+function advance(secs) {
+  for (let i = 0; i < Math.round(secs * 60); i++) { manualT += 1000 / 60; frame(manualT); }
+}
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
-if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady };
+if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */
