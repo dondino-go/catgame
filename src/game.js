@@ -240,6 +240,10 @@ function handleEvents() {
   for (const e of C.drainEvents(g)) {
     const h = e.house != null ? g.houses[e.house] : null;
     tutEvent(e);
+    if (e.type === 'eatStart' && !tut && bowlsEaten < HOWTO_BOWLS) {
+      bowlsEaten++;
+      try { localStorage.setItem('bowlbandit.bowls', String(bowlsEaten)); } catch (err) {}
+    }
     switch (e.type) {
       case 'bite': {
         Sfx.bite(); vis[h.id].pop = 0.22;
@@ -943,7 +947,7 @@ function drawHud() {
 
   text('SCORE', 24, 28, 21, 'rgba(255,233,201,.5)', 'left', 600);
   outlined(String(g.score), 24, 64, 42, CREAM, 'left');
-  if (!tut && g.scene !== 'title') {
+  if (!tut && g.scene !== 'title' && !g.eat) {
     ctx.font = '800 42px ' + FONT;
     drawStreak(24 + ctx.measureText(String(g.score)).width + 18, 66, 'left');
   }
@@ -958,6 +962,8 @@ function drawHud() {
   text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
   outlined(kept + '/8', DW - 24, 64, 42, kept <= 2 ? ALARM : MINT, 'right');
 
+  /* while eating, the second row goes: less to look at above the windows */
+  if (g.eat) return;
   /* second row: which wave we're in, and the sound toggle */
   if (!tut) text('WAVE ' + (g.waveIdx + 1) + ' · ' + C.WAVES[g.waveIdx].name,
        24, 109, 20, 'rgba(255,233,201,.55)', 'left', 600);
@@ -993,35 +999,36 @@ let crumbs = [];
    the last bite's marker position and the eating state it ended, and holds
    the close-up for a moment after the final bite instead of cutting away. */
 let lastBiteT = null, eatSnap = null, linger = null;
+/* the how-to line under the eating screen shows for a player's first few
+   bowls only; after that the screen is the bar, the windows and the cat */
+const HOWTO_BOWLS = 3;
+let bowlsEaten = 0;
+try { bowlsEaten = parseInt(localStorage.getItem('bowlbandit.bowls') || '0', 10) || 0; } catch (e) {}
 
 function closeLayout() {
   /* Everything the eyes need sits in one band at the top: the windows, and
      the bar right under them. The thumb taps anywhere, so the bar does not
      have to be near it; the cat fills the space below as the reward. */
-  const frontH  = clamp(DH * 0.17, 190, 270);
-  const winTop  = L.hud + 58;
-  const statusY = winTop + frontH + 28;
+  const frontH  = clamp(DH * 0.19, 210, 300);
+  const winTop  = L.hud + 40;
+  const statusY = winTop + frontH + 2;
   const bh      = 88;
   const barY    = statusY + 64;
-  const rowY2   = barY + bh + 62;                    /* "at X's bowl" / LEAVE row */
+  const rowY2   = barY + bh + 30;                    /* where the cat's space begins */
   const catY    = Math.round((rowY2 + 50 + DH - 96) / 2 + 40);
   return { frontH, frontW: 206, winTop, statusY, bh, barY, rowY2, catY, bowlX: DW / 2 + 92 };
-}
-function leaveRect() {
-  const c = closeLayout();
-  return { x: DW - 182, y: c.rowY2 - 30, w: 158, h: 60 };
 }
 /* a neighbour of this bowl is at the curtain but not yet at the glass */
 function warned() {
   return !!g.eat && g.eat.h.neighbours.some(id => g.houses[id].state === 'stir');
 }
 
-/* which slot a neighbour occupies in the close-up */
+/* which slot a neighbour occupies in the close-up: left is up the road,
+   middle is across it, right is down it, matching the street's geography */
 function slotOf(owner, n) {
   if (n.col !== owner.col) return 1;
   return n.row < owner.row ? 0 : 2;
 }
-const SLOT_LABEL = ['UP THE ROAD', 'OPPOSITE', 'DOWN THE ROAD'];
 
 /* a resident at the glass: s scales from the street-sized figure */
 function drawResident(mx, baseY, s, tint, rise, stare) {
@@ -1055,7 +1062,6 @@ function drawFront(owner, n, slot, c) {
   const dull = n.angry;
   const pulse = 0.5 + 0.5 * Math.sin(elapsed * 10);
 
-  text(SLOT_LABEL[slot], cx, y - 34, 18, 'rgba(255,233,201,.45)', 'center', 600);
 
   /* red halo behind a window that can see you */
   if (watching) {
@@ -1135,9 +1141,6 @@ function drawFront(owner, n, slot, c) {
     const by = y - 8 + Math.sin(elapsed * 12) * 3;
     circle(cx + w / 2 - 14, by, 22); fillStroke(ALARM, INK, 4);
     text('!', cx + w / 2 - 14, by + 2, 32, '#2a0f14', 'center', 800);
-  } else if (stirring) {
-    circle(cx + w / 2 - 14, y - 8, 18); fillStroke(WARM, INK, 3.5);
-    text('?', cx + w / 2 - 14, y - 6, 26, INK, 'center', 800);
   }
 
   /* this window's own RUN timer, draining while they register what they see */
@@ -1148,13 +1151,6 @@ function drawFront(owner, n, slot, c) {
     rr(mx2, my, mw * (1 - frac), 18, 9); fillStroke(ALARM, null);
   }
 
-  /* status, in words */
-  const st = dull
-    ? (watching ? ['WILL TELL ON YOU!', ALARM] : stirring ? ['STIRRING', WARM] : ['ALREADY CROSS', 'rgba(233,182,255,.85)'])
-    : (watching ? ['WATCHING YOU!', ALARM] : stirring ? ['CURTAIN TWITCHING', WARM] : ['ASLEEP', 'rgba(255,233,201,.5)']);
-  text(st[0], cx, c.statusY - 8, 19, st[1], 'center', 800);
-  text(dull && !watching ? 'will tell on you' : n.name, cx, c.statusY + 16, 17,
-       'rgba(255,233,201,.42)', 'center', 500);
 }
 
 function drawEmptySlot(slot, c) {
@@ -1396,16 +1392,9 @@ function drawCloseUp() {
     text('CLATTER! THE NEIGHBOURS HEARD', DW / 2 - 60, barY - 22, 20, ALARM, 'center', 800);
   }
 
-  if (!tut && !alert) drawStreak(DW - 48 - 3 * 15 - 8, barY - 24, 'right');
-
-  /* whose bowl, and the calm way out */
-  text('AT', 28, c.rowY2 - 14, 18, 'rgba(255,233,201,.5)', 'left', 600);
-  const nm = h.name.toUpperCase();
-  outlined(nm + (nm.endsWith('S') ? '’' : '’S') + ' BOWL', 28, c.rowY2 + 14, 30, TINT[h.id].wall, 'left');
-  const lr = leaveRect();
-  rr(lr.x, lr.y, lr.w, lr.h, 30);
-  fillStroke('rgba(255,233,201,.12)', 'rgba(255,233,201,.35)', 3);
-  text('LEAVE', lr.x + lr.w / 2, lr.y + lr.h / 2 + 2, 26, CREAM, 'center', 800);
+  /* the one streak badge while eating, lifted clear of the RUN pill when seen
+     so STREAK LOST is visible at the moment it happens */
+  if (!tut) drawStreak(DW - 48 - 3 * 15 - 8, barY - (alert ? 36 : 24), 'right');
 
   /* lamplight on the cat */
   ctx.save();
@@ -1424,9 +1413,7 @@ function drawCloseUp() {
   ctx.scale(s * 0.95, s * 0.95);
   bowlShape(h.bowl ? h.bowl.food : 0, h.id);
   ctx.restore();
-  const left = h.bowl ? h.bowl.food : 0;
-  text(left + (left === 1 ? ' BITE LEFT' : ' BITES LEFT'), c.bowlX, c.catY + 40 * s, 21,
-       'rgba(255,233,201,.7)', 'center', 700);
+
 
   for (const cr of crumbs) {
     ctx.globalAlpha = 1 - cr.t / 0.8;
@@ -1442,8 +1429,9 @@ function drawCloseUp() {
     outlined('WOOF! EVERYONE’S COMING TO LOOK', DW / 2, ty, 28, '#fff');
   }
 
-  text('TAP TO BITE · SWIPE SIDEWAYS TO RUN', DW / 2, DH - 46, 22,
-       'rgba(255,233,201,.55)', 'center', 600);
+  if (tut || bowlsEaten < HOWTO_BOWLS)
+    text('TAP TO BITE \u00b7 SWIPE SIDEWAYS TO RUN', DW / 2, DH - 46, 22,
+         'rgba(255,233,201,.55)', 'center', 600);
 
   /* peripheral warnings, so the bar never has to be abandoned to see them */
   if (alert)         edgeGlow('255,60,60', 0.3 + pulse * 0.22);
@@ -2110,7 +2098,7 @@ function onDown(ev) {
   Sfx.boot();
   const p = toDesign(ev);
 
-  if (inside(p, muteRect())) { Sfx.muted = !Sfx.muted; return; }
+  if (!g.eat && inside(p, muteRect())) { Sfx.muted = !Sfx.muted; return; }
 
   if (g.scene === 'over' && elapsed - overAt < OVER_LOCK) return;
   if (g.scene === 'title' && installMode() === 'prompt' && inside(p, installRect())) {
@@ -2137,7 +2125,6 @@ function onDown(ev) {
   if (linger && !g.eat) return;     /* the close-up is still up: the street isn't on screen */
 
   if (g.eat) {
-    if (inside(p, leaveRect())) { C.tapRoad(g, C.ROAD_X, g.cat.y); Sfx.tap(); return; }
     if (press) biteFromPress();      /* a second finger: settle the first */
     /* the window strip pokes, never bites; a swipe from anywhere still runs */
     const kind = inWindowBand(p) ? 'look' : 'bite';
