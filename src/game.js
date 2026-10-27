@@ -411,48 +411,29 @@ function drawStreet() {
     ctx.moveTo(L.roadL + 14, dy + i * 6); ctx.lineTo(L.roadL + 50, dy + i * 6);
     ctx.stroke();
   }
-  /* The puddle sits in the lower lamp's light, just below it, and reflects
-     it warm. It used to sit above the lamp with a pale highlight, which the
-     eye read as the centre of the light, so the glow looked shifted up. */
-  const px = L.roadR - 14 - 36 - 6, py = L.top + L.rowH * 3 + 72;   /* in the lower lamp's pool */
-  ctx.save();
-  ctx.globalAlpha = 0.45;
-  ctx.beginPath(); ctx.ellipse(px, py, 46, 22, 0, 0, 6.3);
-  ctx.fillStyle = '#6a5ba0'; ctx.fill();
-  ctx.globalAlpha = 0.35;
-  ctx.beginPath(); ctx.ellipse(px + 10, py - 2, 18, 7, 0, 0, 6.3);
-  ctx.fillStyle = WARM; ctx.fill();
-  ctx.restore();
 }
 
 /* Lamps stand on the kerb between rows, so they light the bowls without
    sitting on top of one. */
 function drawLamp(x, y, dir) {
-  /* The light falls from the head as a cone and lands as an oval pool exactly
-     where the cone meets the ground, the same width as the cone's foot. A
-     wider soft glow around it read as a separate halo floating on the road. */
-  const hx = x + dir * 36, hy = y - 11;
-  const gy = y + 70;                                 /* where the cone meets the ground */
-  const foot = 92;                                   /* half-width of the cone's foot */
+  /* A small halo round the head, and a soft pool on the ground just below
+     it, where a hanging lamp's light lands in this angled view. Both are
+     edgeless gradients: hard-edged cones and discs read as extra shapes
+     floating on the road. */
+  const hx = x + dir * 36, hy = y - 11, gy = y + 40;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  const cone = ctx.createLinearGradient(0, hy, 0, gy);
-  cone.addColorStop(0, 'rgba(255,220,140,.16)');
-  cone.addColorStop(1, 'rgba(255,220,140,.05)');
-  ctx.fillStyle = cone;
-  ctx.beginPath();
-  ctx.moveTo(hx - 12, hy); ctx.lineTo(hx + 12, hy);
-  ctx.lineTo(hx + foot, gy); ctx.lineTo(hx - foot, gy);
-  ctx.closePath(); ctx.fill();
-  ctx.save();
-  ctx.translate(hx, gy); ctx.scale(1, 0.36);
-  const pool = ctx.createRadialGradient(0, 0, 4, 0, 0, foot);
-  pool.addColorStop(0, 'rgba(255,214,120,.34)');
-  pool.addColorStop(0.7, 'rgba(255,214,120,.16)');
-  pool.addColorStop(1, 'rgba(255,214,120,0)');
-  ctx.fillStyle = pool;
-  circle(0, 0, foot); ctx.fill();
-  ctx.restore();
+  const halo = ctx.createRadialGradient(hx, hy, 4, hx, hy, 46);
+  halo.addColorStop(0, 'rgba(255,220,140,.35)');
+  halo.addColorStop(1, 'rgba(255,220,140,0)');
+  ctx.fillStyle = halo; circle(hx, hy, 46); ctx.fill();
+  ctx.translate(hx, gy); ctx.scale(1, 0.8);
+  const grad = ctx.createRadialGradient(0, 0, 6, 0, 0, 160);
+  grad.addColorStop(0, 'rgba(255,214,120,.24)');
+  grad.addColorStop(0.45, 'rgba(255,214,120,.10)');
+  grad.addColorStop(1, 'rgba(255,214,120,0)');
+  ctx.fillStyle = grad;
+  circle(0, 0, 160); ctx.fill();
   ctx.restore();
 
   ctx.beginPath(); ctx.ellipse(x, y + 4, 16, 7, 0, 0, 6.3);
