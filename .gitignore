@@ -4,3 +4,4 @@
 !.claude/settings.json
 !.claude/hooks/
 node_modules/
+tests/screens/out/
