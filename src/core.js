@@ -239,7 +239,8 @@ function takeBite(g, atT) {
   e.bites++; e.flashGood = 0.2;
   g.bites++; if (perfect) g.perfects++;
   g.score += points;
-  g.streak = Math.min(STREAK_CAP, g.streak + (perfect ? 2 : 1));
+  /* only an unseen bite builds the streak */
+  if (!watchersOfBowl(g, h).length) g.streak = Math.min(STREAK_CAP, g.streak + (perfect ? 2 : 1));
   const newMult = multFor(g.streak);
   g.bestMult = Math.max(g.bestMult, newMult);
   emit(g, 'bite', { house: h.id, points, perfect, mult, streak: g.streak, multUp: newMult > mult ? newMult : null });
@@ -313,8 +314,11 @@ function watchersOfBowl(g, owner) {
 function checkSpotted(g, dt) {
   const seer = g.eat ? watchersOfBowl(g, g.eat.h)[0] || null : null;
   if (seer) {
-    /* the moment you're seen, the streak is gone, whether or not you escape */
-    if (g.spot.heat === 0 && g.streak > 0) {
+    /* While a neighbour can see you there is no streak, whether or not you
+       escape. Checked every tick rather than only when the meter is empty:
+       a second look while the meter is still cooling must clear it too, and
+       bites taken in full view must not quietly rebuild it. */
+    if (g.streak > 0) {
       emit(g, 'streakLost', { streak: g.streak, by: seer.id });
       g.streak = 0;
     }
@@ -529,7 +533,9 @@ function update(g, dt) {
   updateFox(g, dt);
   checkSpotted(g, dt);
 
-  if (g.houses.every(h => h.angry)) endRound(g);
+  /* Only from open play: if this tick's catch took the last friendly house,
+     the 'caught' scene shows SPOTTED! first and ends the round itself. */
+  if (g.scene === 'play' && g.houses.every(h => h.angry)) endRound(g);
 }
 
 return {

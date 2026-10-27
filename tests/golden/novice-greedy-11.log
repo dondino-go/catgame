@@ -39,13 +39,13 @@
 960 @ play cat=0.29,0.5 score=163 streak=5 st=i1.i3.i3.i3.s3.i3.i3.i3
 1020 @ play cat=0.29,0.5 score=163 streak=5 st=i1.i3.i3.i3.s3.i3.i3.i3
 1027 streakLost by=4 streak=5
-1046 bite house=0 mult=1 multUp=null perfect=false points=10 streak=1
+1046 bite house=0 mult=1 multUp=null perfect=false points=10 streak=0
 1046 clear house=0 points=25
 1065 eatStart house=4
-1080 @ play cat=0.71,0.5 score=198 streak=1 st=i-.i3.i3.i3.w3.i3.i3.i3
+1080 @ play cat=0.71,0.5 score=198 streak=0 st=i-.i3.i3.i3.w3.i3.i3.i3
 1127 stir house=1
-1140 @ play cat=0.71,0.5 score=198 streak=1 st=i-.s3.i3.i3.i3.i3.i3.i3
-1198 miss house=4 streak=0 streakBefore=1
+1140 @ play cat=0.71,0.5 score=198 streak=0 st=i-.s3.i3.i3.i3.i3.i3.i3
+1198 miss house=4 streak=0 streakBefore=0
 1200 @ play cat=0.71,0.5 score=198 streak=0 st=i-.s3.i3.i3.i3.i3.i3.i3
 1260 bite house=4 mult=1 multUp=null perfect=false points=10 streak=1
 1260 @ play cat=0.71,0.5 score=208 streak=1 st=i-.w3.i3.i3.i2.i3.i3.i3
@@ -78,16 +78,16 @@
 1860 @ play cat=0.29,1.5 score=414 streak=6 st=i3.i1.s3.s3.i-.i-.i3.i3
 1890 streakLost by=2 streak=6
 1920 @ play cat=0.29,1.5 score=414 streak=0 st=i3.i1.w3.w3.i4.i-.i3.i3
-1926 bite house=1 mult=1 multUp=null perfect=true points=15 streak=2
+1926 bite house=1 mult=1 multUp=null perfect=true points=15 streak=0
 1926 clear house=1 points=25
 1969 eatStart house=0
-1980 @ play cat=0.29,0.5 score=454 streak=2 st=i3.i-.w3.i3.i4.i-.i3.i3
+1980 @ play cat=0.29,0.5 score=454 streak=0 st=i3.i-.w3.i3.i4.i-.i3.i3
 2006 stir house=4
 2019 stir house=7
-2040 @ play cat=0.29,0.5 score=454 streak=2 st=i3.i-.i3.i3.s4.i-.i3.s3
-2051 miss house=0 streak=1 streakBefore=2
-2075 bite house=0 mult=1 multUp=1.5 perfect=true points=15 streak=3
-2094 streakLost by=4 streak=3
+2040 @ play cat=0.29,0.5 score=454 streak=0 st=i3.i-.i3.i3.s4.i-.i3.s3
+2051 miss house=0 streak=0 streakBefore=0
+2075 bite house=0 mult=1 multUp=null perfect=true points=15 streak=2
+2094 streakLost by=4 streak=2
 2100 @ play cat=0.29,0.5 score=469 streak=0 st=i2.i-.i3.i3.w4.i4.i3.s3
 2152 eatStart house=4
 2160 @ play cat=0.71,0.5 score=469 streak=0 st=i2.i-.i3.i3.w4.i4.i3.w3
@@ -135,144 +135,145 @@
 3068 bite house=1 mult=1.5 multUp=null perfect=false points=15 streak=5
 3120 @ play cat=0.29,1.5 score=675 streak=5 st=s4.i1.i3.s3.i4.i4.i3.i3
 3124 streakLost by=0 streak=5
-3131 bite house=1 mult=1 multUp=null perfect=false points=10 streak=1
+3131 bite house=1 mult=1 multUp=null perfect=false points=10 streak=0
 3131 clear house=1 points=25
 3150 eatStart house=5
-3180 @ play cat=0.71,1.5 score=710 streak=1 st=w4.i-.i3.w3.i4.i4.i3.i3
-3185 bite house=5 mult=1 multUp=null perfect=false points=10 streak=2
+3180 @ play cat=0.71,1.5 score=710 streak=0 st=w4.i-.i3.w3.i4.i4.i3.i3
+3185 bite house=5 mult=1 multUp=null perfect=false points=10 streak=1
 3226 stir house=7
-3240 @ play cat=0.71,1.5 score=720 streak=2 st=i4.i-.i3.i3.i4.i3.i3.s3
+3240 @ play cat=0.71,1.5 score=720 streak=1 st=i4.i-.i3.i3.i4.i3.i3.s3
 3257 stir house=2
-3267 bite house=5 mult=1 multUp=1.5 perfect=true points=15 streak=4
-3300 @ play cat=0.71,1.5 score=735 streak=4 st=i4.i-.s3.i3.i4.i2.i3.s3
-3358 bite house=5 mult=1.5 multUp=null perfect=false points=15 streak=5
-3360 @ play cat=0.71,1.5 score=750 streak=5 st=i4.i-.w3.i3.i4.i1.i3.w3
+3267 bite house=5 mult=1 multUp=1.5 perfect=true points=15 streak=3
+3300 @ play cat=0.71,1.5 score=735 streak=3 st=i4.i-.s3.i3.i4.i2.i3.s3
+3358 bite house=5 mult=1.5 multUp=null perfect=false points=15 streak=4
+3360 @ play cat=0.71,1.5 score=750 streak=4 st=i4.i-.w3.i3.i4.i1.i3.w3
 3418 stir house=1
-3420 @ play cat=0.71,1.5 score=750 streak=5 st=i4.s-.w3.i3.i4.i1.i3.i3
-3455 bite house=5 mult=1.5 multUp=2 perfect=false points=15 streak=6
-3455 clear house=5 points=50
-3480 @ play cat=0.71,0.916667 score=815 streak=6 st=i4.s4.i3.i3.i4.i-.i3.i3
+3420 @ play cat=0.71,1.5 score=750 streak=4 st=i4.s-.w3.i3.i4.i1.i3.i3
+3455 bite house=5 mult=1.5 multUp=null perfect=false points=15 streak=5
+3455 clear house=5 points=38
+3480 @ play cat=0.71,0.916667 score=803 streak=5 st=i4.s4.i3.i3.i4.i-.i3.i3
 3484 stir house=6
 3498 eatStart house=4
-3540 @ play cat=0.71,0.5 score=815 streak=6 st=i4.w4.i3.i3.i4.i-.s3.i3
+3540 @ play cat=0.71,0.5 score=803 streak=5 st=i4.w4.i3.i3.i4.i-.s3.i3
 3600 wave idx=2
-3600 @ play cat=0.71,0.5 score=815 streak=6 st=i4.w4.i3.i3.i4.i-.w3.i3
-3601 bite house=4 mult=2 multUp=null perfect=true points=30 streak=8
+3600 @ play cat=0.71,0.5 score=803 streak=5 st=i4.w4.i3.i3.i4.i-.w3.i3
+3601 bite house=4 mult=1.5 multUp=2 perfect=true points=23 streak=7
 3611 stir house=5
-3660 @ play cat=0.71,0.5 score=845 streak=8 st=i4.i4.i3.i3.i3.s-.w3.i3
-3674 streakLost by=5 streak=8
+3660 @ play cat=0.71,0.5 score=826 streak=7 st=i4.i4.i3.i3.i3.s-.w3.i3
+3674 streakLost by=5 streak=7
 3691 stir house=4
 3709 caught grass=false loser=5 owner=4 witness=5
 3714 stir house=3
-3720 @ caught cat=0.71,0.5 score=845 streak=0 st=i4.i4.i3.s3.s3.Xi-.i3.i3
+3720 @ caught cat=0.71,0.5 score=826 streak=0 st=i4.i4.i3.s3.s3.Xi-.i3.i3
 3756 stir house=0
-3780 @ caught cat=0.71,0.5 score=845 streak=0 st=s4.i4.i3.w3.w3.Xi-.i3.i3
-3840 @ play cat=0.71,1.293333 score=845 streak=0 st=w4.i4.i3.w3.w3.Xi-.i3.i3
+3780 @ caught cat=0.71,0.5 score=826 streak=0 st=s4.i4.i3.w3.w3.Xi-.i3.i3
+3840 @ play cat=0.71,1.293333 score=826 streak=0 st=w4.i4.i3.w3.w3.Xi-.i3.i3
 3892 eatStart house=6
 3897 stir house=7
-3900 @ play cat=0.71,2.5 score=845 streak=0 st=w4.i4.i3.w2.i3.Xi-.i3.s3
+3900 @ play cat=0.71,2.5 score=826 streak=0 st=w4.i4.i3.w2.i3.Xi-.i3.s3
 3932 stir house=2
 3945 miss house=6 streak=0 streakBefore=0
-3960 @ play cat=0.71,2.5 score=845 streak=0 st=i4.i4.s3.i1.i3.Xi-.i3.w3
-3966 bite house=6 mult=1 multUp=null perfect=true points=15 streak=2
+3960 @ play cat=0.71,2.5 score=826 streak=0 st=i4.i4.s3.i1.i3.Xi-.i3.w3
+3966 bite house=6 mult=1 multUp=null perfect=true points=15 streak=0
 3969 steal house=3
 3987 stir house=1
 3995 caught grass=false loser=2 owner=6 witness=2
 4020 stir house=6
-4020 @ caught cat=0.71,2.5 score=860 streak=2 st=i4.s4.Xi-.i-.i3.Xi-.s2.w3
-4080 @ caught cat=0.71,2.5 score=860 streak=2 st=i4.w4.Xi-.i-.i3.Xi-.s2.w3
+4020 @ caught cat=0.71,2.5 score=841 streak=0 st=i4.s4.Xi-.i-.i3.Xi-.s2.w3
+4080 @ caught cat=0.71,2.5 score=841 streak=0 st=i4.w4.Xi-.i-.i3.Xi-.s2.w3
 4093 eatStart house=6
 4093 stir house=5
-4137 miss house=6 streak=1 streakBefore=2
-4140 @ play cat=0.71,2.5 score=860 streak=1 st=i4.w4.Xi-.i-.i3.Xs-.w2.i3
-4156 streakLost by=5 streak=1
+4137 miss house=6 streak=0 streakBefore=0
+4140 @ play cat=0.71,2.5 score=841 streak=0 st=i4.w4.Xi-.i-.i3.Xs-.w2.i3
 4191 caught grass=true loser=6 owner=6 witness=5
 4197 stir house=0
-4200 @ caught cat=0.71,2.5 score=860 streak=0 st=s4.i4.Xi-.i-.i3.Xi-.Xw-.i3
+4200 @ caught cat=0.71,2.5 score=841 streak=0 st=s4.i4.Xi-.i-.i3.Xi-.Xw-.i3
 4230 stir house=3
 4232 stir house=4
-4260 @ caught cat=0.71,2.5 score=860 streak=0 st=w4.i4.Xi-.s-.s3.Xi-.Xi-.i3
-4320 @ play cat=0.420866,1.811587 score=860 streak=0 st=w4.i4.Xi-.w-.w3.Xi-.Xi-.i3
+4260 @ caught cat=0.71,2.5 score=841 streak=0 st=w4.i4.Xi-.s-.s3.Xi-.Xi-.i3
+4320 @ play cat=0.420866,1.811587 score=841 streak=0 st=w4.i4.Xi-.w-.w3.Xi-.Xi-.i3
 4323 bark
 4335 eatStart house=1
 4336 miss house=1 streak=0 streakBefore=0
 4358 eatStart house=1
-4380 @ play cat=0.29,1.5 score=860 streak=0 st=w4.s4.Xs-.w-.w3.Xs-.Xs-.s2
+4380 @ play cat=0.29,1.5 score=841 streak=0 st=w4.s4.Xs-.w-.w3.Xs-.Xs-.s2
 4392 bark
 4393 caught grass=false loser=0 owner=1 witness=0
-4440 @ caught cat=0.29,1.5 score=860 streak=0 st=Xi-.i4.Xi-.i5.i3.Xi-.Xi-.i2
+4440 @ caught cat=0.29,1.5 score=841 streak=0 st=Xi-.i4.Xi-.i5.i3.Xi-.Xi-.i2
 4491 eatStart house=1
 4492 miss house=1 streak=0 streakBefore=0
-4500 @ play cat=0.43,1.5 score=860 streak=0 st=Xw-.w4.Xw-.w5.w3.Xw-.Xw-.w1
+4500 @ play cat=0.43,1.5 score=841 streak=0 st=Xw-.w4.Xw-.w5.w3.Xw-.Xw-.w1
 4514 eatStart house=1
 4549 caught grass=true loser=1 owner=1 witness=0
-4560 @ caught cat=0.29,1.5 score=860 streak=0 st=Xi-.Xw-.Xw-.w5.w3.Xw-.Xw-.w1
-4620 @ caught cat=0.29,1.5 score=860 streak=0 st=Xi-.Xi-.Xi-.i5.i3.Xi-.Xi-.i1
+4560 @ caught cat=0.29,1.5 score=841 streak=0 st=Xi-.Xw-.Xw-.w5.w3.Xw-.Xw-.w1
+4620 @ caught cat=0.29,1.5 score=841 streak=0 st=Xi-.Xi-.Xi-.i5.i3.Xi-.Xi-.i1
 4654 steal house=7
-4680 @ play cat=0.597204,0.768561 score=860 streak=0 st=Xw-.Xw-.Xw-.w5.w3.Xw-.Xw-.w-
+4680 @ play cat=0.597204,0.768561 score=841 streak=0 st=Xw-.Xw-.Xw-.w5.w3.Xw-.Xw-.w-
 4693 eatStart house=4
 4716 eatStart house=4
-4740 @ play cat=0.71,0.5 score=860 streak=0 st=Xw-.Xw-.Xw-.w5.w3.Xw-.Xw-.w-
+4740 @ play cat=0.71,0.5 score=841 streak=0 st=Xw-.Xw-.Xw-.w5.w3.Xw-.Xw-.w-
 4751 caught grass=true loser=4 owner=4 witness=0
-4800 @ caught cat=0.71,0.5 score=860 streak=0 st=Xi-.Xi-.Xi-.i5.Xi-.Xi-.Xi-.i-
-4860 @ play cat=0.671179,0.777296 score=860 streak=0 st=Xi-.Xi-.Xi-.i5.Xi-.Xi-.Xi-.i-
-4920 @ play cat=0.477072,2.163774 score=860 streak=0 st=Xi-.Xi-.Xi-.i5.Xi-.Xi-.Xi-.i-
+4800 @ caught cat=0.71,0.5 score=841 streak=0 st=Xi-.Xi-.Xi-.i5.Xi-.Xi-.Xi-.i-
+4860 @ play cat=0.671179,0.777296 score=841 streak=0 st=Xi-.Xi-.Xi-.i5.Xi-.Xi-.Xi-.i-
+4920 @ play cat=0.477072,2.163774 score=841 streak=0 st=Xi-.Xi-.Xi-.i5.Xi-.Xi-.Xi-.i-
 4958 stir house=0
 4978 eatStart house=3
-4980 @ play cat=0.29,3.5 score=860 streak=0 st=Xs-.Xi-.Xi-.i4.Xi-.Xi-.Xi-.i-
-5040 @ play cat=0.29,3.5 score=860 streak=0 st=Xw-.Xi-.Xi-.i3.Xi-.Xi-.Xi-.i-
+4980 @ play cat=0.29,3.5 score=841 streak=0 st=Xs-.Xi-.Xi-.i4.Xi-.Xi-.Xi-.i-
+5040 @ play cat=0.29,3.5 score=841 streak=0 st=Xw-.Xi-.Xi-.i3.Xi-.Xi-.Xi-.i-
 5045 stir house=5
 5047 stir house=1
-5100 @ play cat=0.29,3.5 score=860 streak=0 st=Xw-.Xs-.Xi-.i2.Xi-.Xs-.Xi-.i-
+5100 @ play cat=0.29,3.5 score=841 streak=0 st=Xw-.Xs-.Xi-.i2.Xi-.Xs-.Xi-.i-
 5108 miss house=3 streak=0 streakBefore=0
 5159 bite house=3 mult=1 multUp=null perfect=false points=10 streak=1
 5159 clear house=3 points=25
-5160 @ play cat=0.29,3.5 score=895 streak=1 st=Xi-.Xw-.Xi-.i-.Xi-.Xw-.Xi-.i-
+5160 @ play cat=0.29,3.5 score=876 streak=1 st=Xi-.Xw-.Xi-.i-.Xi-.Xw-.Xi-.i-
 5165 stir house=2
 5193 eatStart house=7
 5205 bite house=7 mult=1 multUp=null perfect=false points=10 streak=2
-5220 @ play cat=0.71,3.5 score=905 streak=2 st=Xi-.Xw-.Xs-.i-.Xi-.Xw-.Xi-.i4
+5220 @ play cat=0.71,3.5 score=886 streak=2 st=Xi-.Xw-.Xs-.i-.Xi-.Xw-.Xi-.i4
 5240 stir house=6
 5260 stir house=3
-5280 @ play cat=0.71,3.5 score=905 streak=2 st=Xi-.Xi-.Xw-.s-.Xi-.Xi-.Xs-.i3
+5280 @ play cat=0.71,3.5 score=886 streak=2 st=Xi-.Xi-.Xw-.s-.Xi-.Xi-.Xs-.i3
 5285 miss house=7 streak=1 streakBefore=2
 5303 streakLost by=6 streak=1
 5338 caught grass=false loser=3 owner=7 witness=3
-5340 @ caught cat=0.71,3.5 score=905 streak=0 st=Xi-.Xi-.Xw-.Xi-.Xi-.Xi-.Xw-.i2
+5340 @ caught cat=0.71,3.5 score=886 streak=0 st=Xi-.Xi-.Xw-.Xi-.Xi-.Xi-.Xw-.i2
 5358 stir house=4
-5400 @ caught cat=0.71,3.5 score=905 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xs-.Xi-.Xw-.i2
+5400 @ caught cat=0.71,3.5 score=886 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xs-.Xi-.Xw-.i2
 5414 stir house=7
 5436 eatStart house=7
 5459 eatStart house=7
-5460 @ play cat=0.71,3.5 score=905 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xw-.Xi-.Xi-.s2
-5520 @ play cat=0.71,3.5 score=905 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xw-.Xi-.Xi-.w1
+5460 @ play cat=0.71,3.5 score=886 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xw-.Xi-.Xi-.s2
+5520 @ play cat=0.71,3.5 score=886 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xw-.Xi-.Xi-.w1
 5521 stir house=3
 5535 steal house=7
-5580 @ play cat=0.71,3.5 score=905 streak=0 st=Xi-.Xi-.Xi-.Xs-.Xi-.Xi-.Xi-.w-
+5580 @ play cat=0.71,3.5 score=886 streak=0 st=Xi-.Xi-.Xi-.Xs-.Xi-.Xi-.Xi-.w-
 5582 stir house=5
 5621 stir house=0
-5640 @ play cat=0.71,3.5 score=905 streak=0 st=Xs-.Xi-.Xi-.Xw-.Xi-.Xs-.Xi-.i-
-5700 @ play cat=0.71,3.5 score=905 streak=0 st=Xw-.Xi-.Xi-.Xw-.Xi-.Xw-.Xi-.i-
+5640 @ play cat=0.71,3.5 score=886 streak=0 st=Xs-.Xi-.Xi-.Xw-.Xi-.Xs-.Xi-.i-
+5700 @ play cat=0.71,3.5 score=886 streak=0 st=Xw-.Xi-.Xi-.Xw-.Xi-.Xw-.Xi-.i-
 5757 stir house=2
-5760 @ play cat=0.71,3.5 score=905 streak=0 st=Xw-.Xi-.Xs-.Xi-.Xi-.Xw-.Xi-.i-
+5760 @ play cat=0.71,3.5 score=886 streak=0 st=Xw-.Xi-.Xs-.Xi-.Xi-.Xw-.Xi-.i-
 5794 bark
-5820 @ play cat=0.71,3.5 score=905 streak=0 st=Xw-.Xs-.Xs-.Xs-.Xs-.Xs-.Xs-.s-
+5820 @ play cat=0.71,3.5 score=886 streak=0 st=Xw-.Xs-.Xs-.Xs-.Xs-.Xs-.Xs-.s-
 5863 bark
-5880 @ play cat=0.71,3.5 score=905 streak=0 st=Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.w-
-5940 @ play cat=0.71,3.5 score=905 streak=0 st=Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.w-
-6000 @ play cat=0.71,3.5 score=905 streak=0 st=Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.w-
+5880 @ play cat=0.71,3.5 score=886 streak=0 st=Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.w-
+5940 @ play cat=0.71,3.5 score=886 streak=0 st=Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.w-
+6000 @ play cat=0.71,3.5 score=886 streak=0 st=Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.Xw-.w-
 6040 eatStart house=7
 6048 miss house=7 streak=0 streakBefore=0
-6060 @ play cat=0.71,3.5 score=905 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xi-.Xi-.Xi-.i5
+6060 @ play cat=0.71,3.5 score=886 streak=0 st=Xi-.Xi-.Xi-.Xi-.Xi-.Xi-.Xi-.i5
 6079 wave idx=3
 6083 bite house=7 mult=1 multUp=null perfect=false points=10 streak=1
 6107 stir house=7
 6118 stir house=2
-6120 @ play cat=0.71,3.5 score=915 streak=1 st=Xi-.Xi-.Xs-.Xi-.Xi-.Xi-.Xi-.s4
+6120 @ play cat=0.71,3.5 score=896 streak=1 st=Xi-.Xi-.Xs-.Xi-.Xi-.Xi-.Xi-.s4
 6123 stir house=3
 6147 stir house=6
 6164 miss house=7 streak=0 streakBefore=1
-6180 @ play cat=0.71,3.5 score=915 streak=0 st=Xi-.Xi-.Xw-.Xw-.Xi-.Xi-.Xs-.w4
+6180 @ play cat=0.71,3.5 score=896 streak=0 st=Xi-.Xi-.Xw-.Xw-.Xi-.Xi-.Xs-.w4
 6195 caught grass=true loser=7 owner=7 witness=3
-6195 over score=915
-end over score=915 kept=0 cleared=11 bites=38 perfects=13 misses=17 caught=8 fox=3 bestMult=2
+6219 stir house=5
+6240 @ caught cat=0.71,3.5 score=896 streak=0 st=Xi-.Xi-.Xw-.Xi-.Xi-.Xs-.Xw-.Xw-
+6292 over score=896
+end over score=896 kept=0 cleared=11 bites=38 perfects=13 misses=17 caught=8 fox=3 bestMult=2

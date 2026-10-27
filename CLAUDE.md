@@ -79,6 +79,21 @@ steps frames itself with `__bb.advance(seconds)`.
 - **Commits**: one clear subject line, then a body that says what was wrong or
   wanted and why this fixes it.
 
+## Code review
+
+- Suggest a `/code-review` (high) at the end of each refactor phase, before
+  merging a branch into `claude/mobile-redesign` or `main`, and after a new
+  street, minigame or scoring change.
+- Review only the commits since the last review, and update the marker below
+  after each one.
+- Report findings first; fix only what the user picks. Don't push review
+  fixes to `claude/mobile-redesign` without asking: it's live on testers'
+  phones.
+- Small visual tweaks don't need a review; the golden and screenshot tests
+  cover them.
+
+last reviewed: `bcc0f84` (`claude/mobile-redesign` against `main`, high, 10 findings; 1-7 fixed in `69b99dd`)
+
 ## Things learnt the hard way
 
 - Vertical swipes belong to the phone (home gesture, closing the app's sheet).
