@@ -29,6 +29,8 @@ into the refactor branch, not the other way round.
 - `index.html`: the legacy desktop game, kept until the mobile one replaces it.
 - `tools/stamp-build.sh`: writes `src/version.js` (time and branch).
 - `tools/preview.html`: the page the Claude artifact preview is published from.
+- `tools/simulate.js`: the balance simulator (bots of four skill levels, careful
+  or greedy). Re-run after any scoring change.
 
 ## Commands
 
@@ -73,8 +75,10 @@ steps frames itself with `__bb.advance(seconds)`.
   phone's aspect (`DH`). Lay things out in those units, never CSS pixels.
 - **World units** in the core: one row of houses is 1.0 tall; x runs 0..1
   across the street.
-- **Difficulty and scoring are tuned by simulation.** If scoring changes,
-  re-run a bot simulation and re-check the `RANKS` thresholds in `src/core.js`.
+- **Difficulty and scoring are tuned by simulation.** After any change to
+  scoring, the streak, the waves or the reaction windows, run
+  `node tools/simulate.js` and re-check the `RANKS` thresholds in
+  `src/core.js` against its output.
 - **Comments explain why**, especially for anything learnt from a playtest.
   Match that density and tone.
 - **Commits**: one clear subject line, then a body that says what was wrong or
