@@ -1780,10 +1780,37 @@ function buildLabel() {
   const branch = b.branch && b.branch !== 'main' ? ' \u00b7 ' + b.branch.replace(/^claude\//, '') : '';
   return 'Build ' + when + branch;
 }
+/* high enough to clear a phone's gesture bar in full-screen mode */
 function drawBuild() {
+  if (updateReady) {
+    text('Update ready \u00b7 it loads when you tap', DW / 2, DH - 44, 19, MINT, 'center', 700);
+    return;
+  }
   const s = buildLabel();
-  if (s) text(s, DW / 2, DH - 22, 17, 'rgba(255,233,201,.42)', 'center', 600);
+  if (s) text(s, DW / 2, DH - 44, 17, 'rgba(255,233,201,.45)', 'center', 600);
 }
+
+/* ---------- picking up new builds ---------- *
+ * An installed app is usually resumed rather than restarted, so it can keep
+ * running an old build long after a new one is pushed. Whenever the game is
+ * opened or brought back, it asks the server for the current build stamp.
+ * If it has changed: on the title screen it reloads at once; anywhere else it
+ * waits for the next PLAY, so it never cuts into a round or skips results. */
+let updateReady = false;
+const canUpdate = !framed && /^https?:/.test(location.protocol);
+async function checkForUpdate() {
+  if (!canUpdate || !window.BOWL_BUILD) return;
+  try {
+    const res = await fetch('src/version.js?check=' + Date.now(), { cache: 'no-store' });
+    const m = (await res.text()).match(/time: '([^']+)'/);
+    if (m && m[1] !== window.BOWL_BUILD.time) {
+      updateReady = true;
+      if (g.scene === 'title') location.reload();
+    }
+  } catch (e) { /* offline: keep playing what we have */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+setTimeout(checkForUpdate, 1500);
 
 /* ---------- title ---------- */
 function playRect() { return { x: DW / 2 - 180, y: DH * 0.6, w: 360, h: 108 }; }
@@ -2041,6 +2068,7 @@ function onDown(ev) {
     ip.userChoice.finally(() => { installPrompt = null; });
     return;
   }
+  if ((g.scene === 'title' || g.scene === 'over') && updateReady) { location.reload(); return; }
   if (g.scene === 'title') {
     askForMotion();
     if (inside(p, howRect()) || !onboarded) startTutorial();
@@ -2137,7 +2165,7 @@ fit();
 requestAnimationFrame(frame);
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
-if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C, tut: () => tut };
+if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */
