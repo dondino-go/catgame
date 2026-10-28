@@ -8,6 +8,7 @@
  *
  *   node tools/simulate.js              60 rounds per row
  *   node tools/simulate.js --rounds 200
+ *   node tools/simulate.js --street terrace
  *
  * Bots have human-ish limits: they aim at the centre of the green with a
  * timing error (sigma, in bar widths) and react to windows after a delay.
@@ -22,6 +23,7 @@ const C = require(path.join(__dirname, '..', 'src', 'core.js'));
 
 const arg = name => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : null; };
 const ROUNDS = parseInt(arg('--rounds') || '60', 10);
+const STREET = arg('--street') === 'terrace' ? C.TERRACE_STREET : C.MARROW_STREET;   // --street terrace
 
 const SKILLS = {
   novice: { sigma: 0.16, react: 0.65 },
@@ -34,7 +36,7 @@ function play(skill, style, seed) {
   let a = seed >>> 0;
   const rng = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
   const randn = () => Math.sqrt(-2 * Math.log(rng() + 1e-9)) * Math.cos(6.2832 * rng());
-  const g = C.create({ rng }); C.start(g);
+  const g = C.create({ rng, street: STREET }); C.start(g);
   const DT = 1 / 60;
   let react = 0, aim = null, cool = 0;
   while (g.scene !== 'over') {
@@ -62,7 +64,7 @@ function play(skill, style, seed) {
     cool -= DT;
     C.update(g, DT); C.drainEvents(g);
   }
-  return { score: g.score, kept: g.houses.filter(h => !h.angry).length, mult: g.bestMult, rank: C.rankFor(g.score) };
+  return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length, mult: g.bestMult, rank: C.rankFor(g.score) };
 }
 
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];

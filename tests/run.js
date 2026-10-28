@@ -3,7 +3,7 @@ const { execFileSync } = require('child_process');
 const path = require('path');
 
 const BOLD = '\u001b[1m', OFF = '\u001b[0m';
-const suites = ['core.test.js', 'golden.test.js', 'behaviour.test.js', 'geometry.test.js', 'layout.test.js'];
+const suites = ['core.test.js', 'golden.test.js', 'terrace.test.js', 'behaviour.test.js', 'geometry.test.js', 'layout.test.js'];
 let failed = 0;
 
 for (const f of suites) {

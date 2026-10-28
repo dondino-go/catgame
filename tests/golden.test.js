@@ -29,10 +29,10 @@ const r6 = v => (Math.round(v * 1e6) / 1e6).toString();
 /* A bot with human-ish limits: aims at the centre of the green with a timing
    error, and reacts to windows after a delay. "cautious" leaves at the first
    twitching curtain; "greedy" eats until seen. */
-function playthrough(skill, style, seed) {
+function playthrough(skill, style, seed, street) {
   const rng = lcg(seed), botRng = lcg(seed * 31 + 7);
   const randn = () => Math.sqrt(-2 * Math.log(botRng() + 1e-9)) * Math.cos(6.2832 * botRng());
-  const g = C.create({ rng }); C.start(g);
+  const g = C.create({ rng, street }); C.start(g);
   const DT = 1 / 60, log = [];
   let react = 0, aim = null, cool = 0;
   for (let f = 0; f < 60 * 140 && g.scene !== 'over'; f++) {
@@ -68,7 +68,7 @@ function playthrough(skill, style, seed) {
                ' streak=' + g.streak + ' st=' + g.houses.map(h => (h.angry ? 'X' : '') + h.state[0] + (h.bowl ? h.bowl.food : '-')).join('.'));
     }
   }
-  log.push('end ' + g.scene + ' score=' + g.score + ' kept=' + g.houses.filter(h => !h.angry).length +
+  log.push('end ' + g.scene + ' score=' + g.score + ' kept=' + g.houses.filter(h => !h.venue && !h.angry).length +
            ' cleared=' + g.bowlsCleared + ' bites=' + g.bites + ' perfects=' + g.perfects +
            ' misses=' + g.misses + ' caught=' + g.timesCaught + ' fox=' + g.foxLosses + ' bestMult=' + g.bestMult);
   return log;
@@ -83,11 +83,15 @@ for (const [k, s] of Object.entries(SKILLS))
   for (const style of ['cautious', 'greedy'])
     for (const seed of [11, 4242])
       RUNS.push({ name: k + '-' + style + '-' + seed, skill: s, style, seed });
+/* Terrace Row: the same bots on the second street, so the pub's rules are pinned too */
+for (const [k, s] of Object.entries(SKILLS))
+  for (const style of ['cautious', 'greedy'])
+    RUNS.push({ name: 'terrace-' + k + '-' + style + '-11', skill: s, style, seed: 11, street: C.TERRACE_STREET });
 
 console.log('\n=== GOLDEN PLAYTHROUGHS ===');
 if (!fs.existsSync(DIR)) fs.mkdirSync(DIR);
 for (const run of RUNS) {
-  const log = playthrough(run.skill, run.style, run.seed);
+  const log = playthrough(run.skill, run.style, run.seed, run.street);
   const file = path.join(DIR, run.name + '.log');
   if (UPDATE || !fs.existsSync(file)) {
     fs.writeFileSync(file, log.join('\n') + '\n');

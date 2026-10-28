@@ -70,11 +70,36 @@ const MARROW_STREET = {
   fox: { x: 0.5, ends: [-0.6, 4.6], patrol: { y: [0.3, 3.7], speed: 0.3 } },
 };
 
+/* Terrace Row: five houses in a terrace along the left of the road, and the
+ * Stag's Head opposite. A terrace house is watched only by the houses either
+ * side of it; the pub is a venue (no bowl, nothing to tap) that watches every
+ * bowl, but only from `venue.from` (a wave number): last orders. It lists all
+ * five houses as neighbours, and each house lists it back, so a terrace house
+ * has at most two terrace neighbours plus the pub, which is the three windows
+ * the close-up has. The right-hand strip beside the pub is empty street. */
+const TERRACE_STREET = {
+  name: 'Terrace Row',
+  rows: 5,
+  roadX: 0.5,
+  walk: { x: [0.29, 0.71], y: [0.2, 4.8] },
+  catStart: { x: 0.5, y: 2.5 },
+  houses: [
+    { name: 'No. 1',        col: 0, row: 0, side: -1, bowl: { x: 0.29, y: 0.5 }, neighbours: [1, 5] },
+    { name: 'No. 3',        col: 0, row: 1, side: -1, bowl: { x: 0.29, y: 1.5 }, neighbours: [0, 2, 5] },
+    { name: 'No. 5',        col: 0, row: 2, side: -1, bowl: { x: 0.29, y: 2.5 }, neighbours: [1, 3, 5] },
+    { name: 'No. 7',        col: 0, row: 3, side: -1, bowl: { x: 0.29, y: 3.5 }, neighbours: [2, 4, 5] },
+    { name: 'No. 9',        col: 0, row: 4, side: -1, bowl: { x: 0.29, y: 4.5 }, neighbours: [3, 5] },
+    { name: 'The Stag\'s Head', col: 1, row: 1, side: 1, venue: { from: 2, span: 3 }, neighbours: [0, 1, 2, 3, 4] },
+  ],
+  dog: { x: 0.5, ends: [-0.6, 5.6], overrun: 0.2 },
+  fox: { x: 0.5, ends: [-0.6, 5.6], patrol: { y: [0.3, 4.7], speed: 0.3 } },
+};
+
 function deepFreeze(o) {
   if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze); }
   return o;
 }
-deepFreeze(MARROW_STREET);   // shared by every default game: nothing may edit it mid-round
+deepFreeze(MARROW_STREET); deepFreeze(TERRACE_STREET);   // shared by every default game: nothing may edit it mid-round
 
 /* Everything wrong with a street, as a list of messages (empty if it is fine).
    create() throws on a non-empty list; tests and tools can read it. */
@@ -101,6 +126,22 @@ function validateStreet(st) {
     if (!h || typeof h.name !== 'string' || !h.name) bad.push(at + ': needs a name');
     if (!h || !num(h.col) || !num(h.row)) { bad.push(at + ': col and row must be numbers'); return; }
     if (h.side !== -1 && h.side !== 1) bad.push(at + ': side must be -1 (left of the road) or 1 (right)');
+    if (h.venue) {
+      /* a venue (the pub) has no bowl and no tap target of its own: it only watches */
+      const v = h.venue;
+      if (h.bowl) bad.push(at + ': a venue has no bowl');
+      if (!(Number.isInteger(v.from) && v.from >= 0 && v.from < WAVES.length)) bad.push(at + ': venue.from must be a wave number');
+      if (!(Number.isInteger(v.span) && v.span >= 1 && h.row >= 0 && h.row + v.span <= st.rows)) bad.push(at + ': venue.span must keep it inside the street');
+      if (!Array.isArray(h.neighbours) || !h.neighbours.length) { bad.push(at + ': a venue needs someone to watch'); return; }
+      if (new Set(h.neighbours).size !== h.neighbours.length) bad.push(at + ': neighbours repeat');
+      for (const n of h.neighbours) {
+        if (!Number.isInteger(n) || n < 0 || n >= hs.length) bad.push(at + ': neighbour ' + n + ' is not a house id');
+        else if (n === id) bad.push(at + ': is its own neighbour');
+        else if (hs[n].venue) bad.push(at + ': a venue cannot watch a venue');
+        else if (!(hs[n].neighbours || []).includes(id)) bad.push(at + ': neighbour ' + n + ' does not list it back');
+      }
+      return;
+    }
     if (!inWalk(h.bowl)) bad.push(at + ': bowl must be inside the walkable area');
     else if (num(st.roadX)) {
       /* on its own side's pavement: between the kerb and the road's edge */
@@ -119,9 +160,10 @@ function validateStreet(st) {
   });
   /* a house's whole strip is its tap target, so two on one side must not overlap */
   hs.forEach((a, i) => hs.forEach((b, j) => {
-    if (j > i && a && b && a.side === b.side && a.bowl && b.bowl && Math.abs(a.bowl.y - b.bowl.y) < 1 - eps)
+    if (j > i && a && b && a.side === b.side && a.bowl && b.bowl && !a.venue && !b.venue && Math.abs(a.bowl.y - b.bowl.y) < 1 - eps)
       bad.push('houses ' + i + ' and ' + j + ' overlap: same-side houses need bowls at least one row apart');
   }));
+  if (!hs.some(h => h && !h.venue)) bad.push('a street needs at least one house with a bowl');
   const ends = o => o && Array.isArray(o.ends) && o.ends.length === 2 && o.ends.every(num) && o.ends[0] !== o.ends[1];
   if (!(st.dog && num(st.dog.x) && ends(st.dog) && num(st.dog.overrun) && st.dog.overrun >= 0)) bad.push('dog needs x, two ends and an overrun');
   const pt = st.fox && st.fox.patrol;
@@ -233,7 +275,8 @@ function buildHouses(g) {
   g.street.houses.forEach((d, id) => {
     g.houses.push({
       id, col: d.col, row: d.row, side: d.side, name: d.name,
-      neighbours: d.neighbours.slice(), bowlAt: { x: d.bowl.x, y: d.bowl.y },
+      neighbours: d.neighbours.slice(), bowlAt: d.bowl ? { x: d.bowl.x, y: d.bowl.y } : null,
+      venue: d.venue ? { from: d.venue.from, span: d.venue.span } : null,
       angry: false, state: 'idle', t: GRACE + rand(g, 0, 6),   // idle | stir | watch
       bowl: null, respawn: rand(g, 0, 2),
     });
@@ -248,7 +291,7 @@ function spawnBowl(g, h) {
 function reset(g) {
   buildHouses(g);
   g.waveIdx = 0;
-  g.houses.forEach(h => spawnBowl(g, h));
+  g.houses.forEach(h => { if (!h.venue) spawnBowl(g, h); });
   g.cat = { x: g.street.catStart.x, y: g.street.catStart.y, face: 1, target: null };
   g.score = 0; g.bowlsCleared = 0; g.foxLosses = 0; g.keptBonus = 0;
   g.bites = 0; g.perfects = 0; g.misses = 0; g.timesCaught = 0;   /* for the results */
@@ -299,6 +342,7 @@ function played(g) { return GAME_SECONDS - g.timeLeft; }
 function tapHouse(g, id) {
   if (g.scene !== 'play') return;
   const h = g.houses[id];
+  if (h.venue) return;          // nothing to eat at the pub
   if (g.eat && g.eat.h === h) return;
   if (g.eat) stopEating(g);
   const s = bowlSpot(h);
@@ -396,7 +440,7 @@ function makeNoise(g, bowlHouse) {
   const reach = lerp(1.1, 2.0, wt(g));
   const lo = lerp(1.8, 0.35, wt(g)), hi = lerp(3.0, 1.1, wt(g));
   for (const h of g.houses) {
-    if (h.state !== 'idle') continue;
+    if (h.state !== 'idle' || !isOpen(g, h)) continue;
     if (dist(bowlHouse.col, bowlHouse.row, h.col, h.row) <= reach) h.t = Math.min(h.t, rand(g, lo, hi));
   }
 }
@@ -408,7 +452,7 @@ function updateHouses(g, dt) {
 
   for (const h of g.houses) {
     // An angry resident stops feeding you but never stops watching.
-    if (!h.angry && !h.bowl) {
+    if (!h.venue && !h.angry && !h.bowl) {
       h.respawn -= dt;
       if (h.respawn <= 0 && !(g.eat && g.eat.h === h) && !(g.fox && g.fox.target === h)) spawnBowl(g, h);
     }
@@ -417,7 +461,9 @@ function updateHouses(g, dt) {
     h.t -= dt;
     if (h.t <= 0) {
       if (h.state === 'idle') {
-        if (awake >= w.awake) {
+        if (!isOpen(g, h)) {
+          h.t = 1;            // the pub is shut until last orders: look again next second
+        } else if (awake >= w.awake) {
           h.t = rand(g, 0.5, 1.5);
         } else {
           h.state = 'stir'; h.t = w.warn; awake++;
@@ -457,6 +503,10 @@ function practiceHoldBowl(g, on) {
   if (g.practice) g.practice.holdBowl = !!on;
 }
 
+/* A venue (the pub) only watches from its wave on: "closing time". Houses are
+   always open. */
+function isOpen(g, h) { return !h.venue || g.waveIdx >= h.venue.from; }
+
 /* w is a threat to a bowl if w is one of its owner's neighbours */
 function isThreat(w, owner) { return w !== owner && owner.neighbours.includes(w.id); }
 
@@ -490,7 +540,9 @@ function checkSpotted(g, dt) {
 }
 
 function getCaught(g, witness, owner) {
-  const grass = witness.angry;            // already stopped feeding -- they tell instead
+  /* a house that is already angry, or the pub (it has no bowl to withhold),
+     tells on the owner instead */
+  const grass = witness.angry || !!witness.venue;
   const loser = grass ? owner : witness;
   loser.angry = true; loser.bowl = null;
   g.timesCaught++;
@@ -613,7 +665,7 @@ function beginPickup(g) {
 
 function endRound(g) {
   if (g.scene === 'over') return;
-  g.keptBonus = g.houses.filter(h => !h.angry).length * KEPT_BONUS;
+  g.keptBonus = g.houses.filter(h => !h.venue && !h.angry).length * KEPT_BONUS;
   g.score += g.keptBonus;
   stopEating(g);
   g.scene = 'over';
@@ -665,7 +717,7 @@ function update(g, dt) {
     updateHouses(g, dt);
     if (g.caught.t <= 0) {
       g.caught = null;
-      if (g.houses.every(h => h.angry)) endRound(g);
+      if (g.houses.every(h => h.venue || h.angry)) endRound(g);
       else g.scene = 'play';
     }
     return;
@@ -695,11 +747,11 @@ function update(g, dt) {
 
   /* Only from open play: if this tick's catch took the last friendly house,
      the 'caught' scene shows SPOTTED! first and ends the round itself. */
-  if (g.scene === 'play' && g.houses.every(h => h.angry)) endRound(g);
+  if (g.scene === 'play' && g.houses.every(h => h.venue || h.angry)) endRound(g);
 }
 
 return {
-  MARROW_STREET, validateStreet, ROAD_HALF, PAVE_W,
+  MARROW_STREET, TERRACE_STREET, validateStreet, ROAD_HALF, PAVE_W,
   PRACTICE, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor,
