@@ -10,10 +10,11 @@ build step, no dependencies (Playwright is used by one optional test only).
 |---|---|
 | `main` | The original desktop game (`index.html`). Untouched since the redesign began. |
 | `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
-| `claude/data-driven-streets` | Refactor making the street a data description, so new streets and minigames can be added. |
+| `claude/new-streets` | Where new features are built (new streets, minigames), branched from `claude/mobile-redesign`. Merged back after a preview and a `/code-review`. |
+| `claude/data-driven-streets` | The refactor that made the street a data description (Phases 1 and 2). **Merged into `claude/mobile-redesign`; don't commit here any more.** |
 
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
-into the refactor branch, not the other way round.
+into the feature branch (`claude/new-streets`), not the other way round.
 
 ## Layout
 
