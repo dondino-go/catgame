@@ -46,6 +46,7 @@ const cv    = document.getElementById('c');
 const ctx   = cv.getContext('2d');
 
 const DW = 720;                     /* design width, always */
+const DEBUG = /[?&]debug\b/.test(location.search);
 let   DH = 1280;                    /* design height, from the screen's aspect */
 
 /* ---------- helpers ---------- */
@@ -127,20 +128,22 @@ const Sfx = {
 };
 
 /* ---------- layout ---------- *
- * A ribbon of road down the middle, a pavement either side carrying the bowls,
- * then a front garden and the house itself. The two columns of houses land
- * exactly where the core's grid says they are.                              */
+ * A ribbon of road down the street's roadX, a pavement either side carrying
+ * the bowls, then a front garden and the house itself. Each house is drawn on
+ * the side of the road the street description puts it (house.side), at its
+ * row, facing the road; bowls are drawn where the description puts them. */
+const ROAD_HALF = 128;              /* half the road's width, in design units */
 const L = {};
 function layout() {
   L.hud    = 132;
   L.footer = 24;
   L.paveW  = 44;
-  L.roadL  = 232;
-  L.roadR  = DW - 232;
+  L.roadL  = sx(g.street.roadX) - ROAD_HALF;
+  L.roadR  = sx(g.street.roadX) + ROAD_HALF;
   L.bodyW  = 150;
   L.top    = L.hud;
   L.bot    = DH - L.footer;
-  L.rowH   = (L.bot - L.top) / C.ROWS;
+  L.rowH   = (L.bot - L.top) / g.street.rows;
   L.bodyH  = Math.min(L.rowH - 44, 290);
 }
 
@@ -165,31 +168,34 @@ function fit() {
 /* world -> screen */
 const sx = wx => wx * DW;
 const sy = wy => L.top + wy * L.rowH;
-const bowlX = h => sx(C.BOWL_X[h.col]);
-const rowY  = h => L.top + (h.row + 0.5) * L.rowH;
+const bowlX = h => sx(h.bowlAt.x);
+const rowY  = h => sy(h.bowlAt.y);
+const onLeft = h => h.side < 0;
 
 /* the house's whole strip, garden included: all of it is one tap target */
 function houseRect(h) {
   const y = rowY(h) - L.rowH / 2;
-  return h.col === 0
+  return onLeft(h)
     ? { x: 0, y, w: L.roadL, h: L.rowH }
     : { x: L.roadR, y, w: DW - L.roadR, h: L.rowH };
 }
 /* the building itself */
 function bodyRect(h) {
   const cy = rowY(h);
-  const x = h.col === 0 ? 12 : DW - 12 - L.bodyW;
+  const x = onLeft(h) ? 12 : DW - 12 - L.bodyW;
   return { x, y: cy - L.bodyH / 2, w: L.bodyW, h: L.bodyH };
 }
 /* where the garden meets the pavement -- the fence line */
-function fenceX(col) {
-  return col === 0 ? L.roadL - L.paveW : L.roadR + L.paveW;
+function fenceX(side) {
+  return side < 0 ? L.roadL - L.paveW : L.roadR + L.paveW;
 }
 
 /* ---------- game + presentation state ---------- */
-const g = C.create();
+/* ?debug lets a test page hand in its own street (window.__bbStreet) to check
+   the renderer draws from the description, not from Marrow Street's shape. */
+const g = C.create(DEBUG && window.__bbStreet ? { street: window.__bbStreet } : undefined);
 const vis = [];                     /* eased per-house visuals */
-for (let i = 0; i < C.HOUSES; i++) vis.push({ glow: 0, curtain: 0, shake: 0, pop: 0 });
+for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake: 0, pop: 0 });
 
 let floaters = [];
 let shake = 0, flash = 0, elapsed = 0;
@@ -250,7 +256,7 @@ function handleEvents() {
         anim.chomp = 0.22;
         const c = closeLayout();
         /* pop the score off the marker: that is where the eyes are */
-        const popX = 48 + (lastBiteT != null ? lastBiteT : 0.5) * (DW - 96);
+        const popX = c.barX + (lastBiteT != null ? lastBiteT : 0.5) * c.barW;
         const xm = e.mult > 1 ? '  \u00d7' + e.mult : '';
         if (e.perfect) {
           anim.perfect = 0.45;
@@ -367,10 +373,9 @@ function updateVisuals(dt) {
     const v = vis[h.id];
     v.shake = Math.max(0, v.shake - dt);
     v.pop   = Math.max(0, v.pop - dt);
-    const wantGlow    = h.state === 'watch' ? 1 : h.state === 'stir' ? 0.5 : 0;
-    const wantCurtain = h.state === 'watch' ? 1 : h.state === 'stir' ? 0.5 : 0;
-    v.glow    = lerp(v.glow, wantGlow, dt * 7);
-    v.curtain = lerp(v.curtain, wantCurtain, dt * 8);
+    const awake = h.state === 'watch' ? 1 : h.state === 'stir' ? 0.5 : 0;   /* how far the curtain is open */
+    v.glow    = lerp(v.glow, awake, dt * 7);
+    v.curtain = lerp(v.curtain, awake, dt * 8);
   }
 }
 
@@ -412,7 +417,7 @@ function drawStreet() {
   ctx.lineWidth = 7 * STROKE;
   ctx.lineCap = 'round';
   ctx.setLineDash([38, 34]);
-  ctx.beginPath(); ctx.moveTo(DW / 2, L.top); ctx.lineTo(DW / 2, L.bot); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(sx(g.street.roadX), L.top); ctx.lineTo(sx(g.street.roadX), L.bot); ctx.stroke();
   ctx.setLineDash([]);
 
   /* a drain and a puddle, so the tarmac isn't an empty ribbon */
@@ -467,7 +472,7 @@ function drawLamp(x, y, dir) {
 function drawFence(h) {
   /* low fence along the front of each garden, with a gap for the path */
   const r = houseRect(h);
-  const x = fenceX(h.col);
+  const x = fenceX(h.side);
   const gapTop = rowY(h) - 44, gapBot = rowY(h) + 44;
   ctx.strokeStyle = h.angry ? '#4c4165' : '#6a5a96';
   ctx.lineWidth = 7 * STROKE;
@@ -481,19 +486,19 @@ function drawFence(h) {
 
 function drawHouse(h) {
   const v = vis[h.id];
-  const t = TINT[h.id];
+  const t = TINT[h.id % TINT.length];
   const dull = h.angry;
   const b = bodyRect(h);
-  const dir = h.col === 0 ? 1 : -1;                      /* towards the road */
+  const dir = onLeft(h) ? 1 : -1;                        /* towards the road */
   const faceW = 70;                                      /* visible facade depth */
-  const faceX = h.col === 0 ? b.x + b.w - faceW : b.x;
-  const roadEdge = h.col === 0 ? b.x + b.w : b.x;
-  const roofX = h.col === 0 ? b.x : b.x + faceW;
+  const faceX = onLeft(h) ? b.x + b.w - faceW : b.x;
+  const roadEdge = onLeft(h) ? b.x + b.w : b.x;
+  const roofX = onLeft(h) ? b.x : b.x + faceW;
   const roofW = b.w - faceW;
 
   /* garden between the house and the pavement */
-  const gx = h.col === 0 ? b.x + b.w : fenceX(1);
-  const gw = h.col === 0 ? fenceX(0) - (b.x + b.w) : b.x - fenceX(1);
+  const gx = onLeft(h) ? b.x + b.w : fenceX(h.side);
+  const gw = onLeft(h) ? fenceX(h.side) - (b.x + b.w) : b.x - fenceX(h.side);
   ctx.fillStyle = dull ? '#36405a' : GRASS;
   ctx.fillRect(gx, b.y - 8, gw, b.h + 16);
 
@@ -510,7 +515,7 @@ function drawHouse(h) {
 
   /* the slope nearer the road catches the light; a ridge splits the two */
   ctx.fillStyle = 'rgba(255,255,255,.10)';
-  ctx.fillRect(h.col === 0 ? roofX + roofW / 2 : roofX, b.y, roofW / 2, b.h);
+  ctx.fillRect(onLeft(h) ? roofX + roofW / 2 : roofX, b.y, roofW / 2, b.h);
   ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 3 * STROKE;
   ctx.beginPath();
   ctx.moveTo(roofX + roofW / 2, b.y); ctx.lineTo(roofX + roofW / 2, b.y + b.h);
@@ -527,18 +532,18 @@ function drawHouse(h) {
   ctx.fillRect(faceX, b.y, faceW, b.h);
   /* eaves shadow where the roof overhangs the wall */
   const eaveG = ctx.createLinearGradient(
-    h.col === 0 ? faceX : faceX + faceW, 0, h.col === 0 ? faceX + 16 : faceX + faceW - 16, 0);
+    onLeft(h) ? faceX : faceX + faceW, 0, onLeft(h) ? faceX + 16 : faceX + faceW - 16, 0);
   eaveG.addColorStop(0, 'rgba(0,0,0,.3)');
   eaveG.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = eaveG;
-  ctx.fillRect(h.col === 0 ? faceX : faceX + faceW - 16, b.y, 16, b.h);
+  ctx.fillRect(onLeft(h) ? faceX : faceX + faceW - 16, b.y, 16, b.h);
   ctx.restore();
 
   rr(b.x, b.y, b.w, b.h, 12); fillStroke(null, INK, 4.5);
 
   /* chimney, on some houses only, so the row isn't uniform */
   if (hash(h.id, 3) > 0.4) {
-    const cx2 = roofX + roofW * (h.col === 0 ? 0.26 : 0.74);
+    const cx2 = roofX + roofW * (onLeft(h) ? 0.26 : 0.74);
     const cyy = b.y + 28 + hash(h.id, 4) * (b.h - 96);
     rr(cx2 - 12, cyy, 24, 32, 5);
     fillStroke(dull ? '#473d60' : t.door, INK, 3.5);
@@ -608,7 +613,7 @@ function drawHouse(h) {
   const doorX = fcx - dw / 2;
   rr(doorX, doorY, dw, dh, 6);
   fillStroke(dull ? '#473d60' : t.door, INK, 4);
-  circle(doorX + (h.col === 0 ? dw - 9 : 9), doorY + dh / 2, 3.5);
+  circle(doorX + (onLeft(h) ? dw - 9 : 9), doorY + dh / 2, 3.5);
   fillStroke(WARM, null);
 
   ctx.restore();
@@ -791,9 +796,9 @@ function pickupPlan() {
   const t = g.pickup.t;
   const cx = sx(g.cat.x), cy = sy(g.cat.y);
   /* they come from whichever end of the street is nearer */
-  const fromBottom = g.cat.y > C.ROWS / 2;
-  const startX = DW / 2, startY = fromBottom ? L.bot + 140 : L.top - 40;
-  const side = cx < DW / 2 ? 1 : -1;               /* stand on the road side of the cat */
+  const fromBottom = g.cat.y > g.street.rows / 2;
+  const startX = sx(g.street.roadX), startY = fromBottom ? L.bot + 140 : L.top - 40;
+  const side = cx < sx(g.street.roadX) ? 1 : -1;               /* stand on the road side of the cat */
   const standX = cx + side * 60, standY = cy;
   const walkT  = clamp(Math.hypot(standX - startX, standY - startY) / 320, 0.9, 1.8);
   const reachT = walkT + 0.4;                      /* crouched, arms down */
@@ -960,7 +965,7 @@ function drawHud() {
 
   const kept = g.houses.filter(h => !h.angry).length;
   text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
-  outlined(kept + '/8', DW - 24, 64, 42, kept <= 2 ? ALARM : MINT, 'right');
+  outlined(kept + '/' + g.houses.length, DW - 24, 64, 42, kept <= g.houses.length / 4 ? ALARM : MINT, 'right');
 
   /* while eating, the second row goes: less to look at above the windows */
   if (g.eat) return;
@@ -1016,7 +1021,10 @@ function closeLayout() {
   const barY    = statusY + 64;
   const rowY2   = barY + bh + 30;                    /* where the cat's space begins */
   const catY    = Math.round((rowY2 + 50 + DH - 96) / 2 + 40);
-  return { frontH, frontW: 206, winTop, statusY, bh, barY, rowY2, catY, bowlX: DW / 2 + 92 };
+  /* the window slots and the timing bar are laid out here and nowhere else:
+     taps (frontAt, the paw, the pokes) must agree with what is drawn */
+  const slotX = slot => DW / 2 + (slot - 1) * 230;
+  return { frontH, frontW: 206, slotX, barX: 48, barW: DW - 96, winTop, statusY, bh, barY, rowY2, catY, bowlX: DW / 2 + 92 };
 }
 /* a neighbour of this bowl is at the curtain but not yet at the glass */
 function warned() {
@@ -1026,8 +1034,24 @@ function warned() {
 /* which slot a neighbour occupies in the close-up: left is up the road,
    middle is across it, right is down it, matching the street's geography */
 function slotOf(owner, n) {
-  if (n.col !== owner.col) return 1;
-  return n.row < owner.row ? 0 : 2;
+  const slots = windowSlots(owner);
+  return slots[owner.neighbours.indexOf(n.id)];
+}
+/* Slots for all of an owner's neighbours at once, in owner.neighbours order.
+   Each takes the slot of its direction when the directions are all different
+   (the usual case: one up the road, one across, one down it). When two share
+   a direction, as on a one-sided lane, they are ordered up the road to down it
+   and spread over the windows instead. */
+function windowSlots(owner) {
+  const dirOf = n => n.side !== owner.side ? 1 : n.row < owner.row ? 0 : 2;
+  const ns = owner.neighbours.map(id => g.houses[id]);
+  const dirs = ns.map(dirOf);
+  if (new Set(dirs).size === dirs.length) return dirs;
+  const order = ns.map((n, i) => i).sort((a, b) => dirs[a] - dirs[b] || ns[a].row - ns[b].row);
+  const spread = ns.length === 1 ? [1] : ns.length === 2 ? [0, 2] : [0, 1, 2];
+  const out = [];
+  order.forEach((i, k) => { out[i] = spread[k]; });
+  return out;
 }
 
 /* a resident at the glass: s scales from the street-sized figure */
@@ -1055,9 +1079,9 @@ function drawResident(mx, baseY, s, tint, rise, stare) {
 
 function drawFront(owner, n, slot, c) {
   const wob = poke && poke.id === n.id ? Math.sin(poke.t * 40) * clamp((poke.t - 1.5) / 0.4, 0, 1) * 7 : 0;
-  const cx = DW / 2 + (slot - 1) * 230 + wob;
+  const cx = c.slotX(slot) + wob;
   const w = c.frontW, H = c.frontH, y = c.winTop;
-  const t = TINT[n.id], v = vis[n.id];
+  const t = TINT[n.id % TINT.length], v = vis[n.id];
   const watching = n.state === 'watch', stirring = n.state === 'stir';
   const dull = n.angry;
   const pulse = 0.5 + 0.5 * Math.sin(elapsed * 10);
@@ -1154,7 +1178,7 @@ function drawFront(owner, n, slot, c) {
 }
 
 function drawEmptySlot(slot, c) {
-  const cx = DW / 2 + (slot - 1) * 230;
+  const cx = c.slotX(slot);
   text('END OF THE ROAD', cx, c.winTop + c.frontH * 0.5, 18, 'rgba(255,233,201,.22)', 'center', 600);
   /* a hedge, so the gap reads as the street ending rather than a missing house */
   for (let i = 0; i < 5; i++) {
@@ -1332,7 +1356,7 @@ function drawCloseUp() {
   filled.forEach((f, slot) => { if (!f) drawEmptySlot(slot, c); });
 
   /* ---- the timing bar, straight under the windows ---- */
-  const bx = 48, bw = DW - 96, bh = c.bh, barY = c.barY;
+  const bx = c.barX, bw = c.barW, bh = c.bh, barY = c.barY;
   rr(bx, barY, bw, bh, bh / 2);
   fillStroke('#241a40', 'rgba(255,233,201,.22)', 3);
 
@@ -1569,11 +1593,11 @@ function tutGo(step) { tut.step = step; tut.t = 0; }
 
 /* the house the paw points at: near the cat, never the top row (the coach
    bubble sits there), and not the bowl just eaten */
-const catSide = () => g.cat.x > C.ROAD_X ? 1 : 0;   /* which column the cat is nearer */
+const catSide = () => g.cat.x > g.street.roadX ? 1 : -1;   /* which side of the road the cat is nearer */
 function tutTarget() {
   const ok = g.houses.filter(h => h.bowl && !h.angry && h.row > 0 && h !== tut.first);
   ok.sort((a, b) => Math.abs(C.bowlSpot(a).y - g.cat.y) - Math.abs(C.bowlSpot(b).y - g.cat.y)
-                    || (a.col === catSide() ? 0 : 1) - (b.col === catSide() ? 0 : 1));
+                    || (a.side === catSide() ? 0 : 1) - (b.side === catSide() ? 0 : 1));
   return ok[0];
 }
 
@@ -1602,7 +1626,7 @@ function tutStep(dt) {
       if (e) {
         C.practiceBowl(g, e.h.id, 4);
         /* the neighbour across the road, so it's the obvious window */
-        tut.watcher = g.houses[e.h.neighbours.find(id => g.houses[id].col !== e.h.col)];
+        tut.watcher = g.houses[e.h.neighbours.find(id => g.houses[id].side !== e.h.side) ?? e.h.neighbours[0]];
         tutGo('eat2');
       }
       break;
@@ -1639,7 +1663,7 @@ function tutCoach() {
   const c = closeLayout();
   const front = id => {                             /* centre of a neighbour's window */
     const n = g.houses[id], slot = slotOf(g.eat.h, n);
-    return { x: DW / 2 + (slot - 1) * 230, y: c.winTop + c.frontH * 0.45 };
+    return { x: c.slotX(slot), y: c.winTop + c.frontH * 0.45 };
   };
   const houseAt = h => { const r = houseRect(h); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; };
   switch (s) {
@@ -1704,7 +1728,7 @@ function drawTutorial() {
   if (co.point) drawPointer(co.point.x, co.point.y);
   if (co.ring && g.eat) {
     /* circle the green */
-    const e = g.eat, bx = 48, bw = DW - 96;
+    const e = g.eat, bx = c.barX, bw = c.barW;
     const zx = bx + e.zone * bw, zw = e.zoneW * bw;
     ctx.globalAlpha = 0.5 + 0.5 * Math.sin(elapsed * 6);
     rr(zx - 8, c.barY - 8, zw + 16, c.bh + 16, (c.bh + 16) / 2);
@@ -1745,7 +1769,7 @@ function frontAt(p) {
   const c = closeLayout();
   for (const id of g.eat.h.neighbours) {
     const slot = slotOf(g.eat.h, g.houses[id]);
-    const cx = DW / 2 + (slot - 1) * 230;
+    const cx = c.slotX(slot);
     if (p.x > cx - c.frontW / 2 && p.x < cx + c.frontW / 2 && p.y > c.winTop - 46 && p.y < c.statusY + 28) return id;
   }
   return null;
@@ -1767,7 +1791,7 @@ function drawPoke() {
   if (!g.eat.h.neighbours.includes(n.id)) { poke = null; return; }
   const c = closeLayout();
   const slot = slotOf(g.eat.h, n);
-  const cx = clamp(DW / 2 + (slot - 1) * 230, 170, DW - 170);
+  const cx = clamp(c.slotX(slot), 170, DW - 170);
   const [a, b] = pokeSays(n);
   const al = clamp(poke.t / 0.3, 0, 1);
   ctx.globalAlpha = al;
@@ -1882,15 +1906,17 @@ function drawTitle() {
 const OVER_LOCK = 1.8;
 let overAt = -99, rankRung = false;
 
+const NUMBER_WORDS = ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 function drawStreetMap(cx, top, rowH) {
   const hw = 92, hh = rowH - 12, road = 64;
   ctx.fillStyle = ROAD;
-  rr(cx - road / 2, top - 8, road, rowH * 4 + 16, 10); ctx.fill();
+  const rows = g.street.rows;
+  rr(cx - road / 2, top - 8, road, rowH * rows + 16, 10); ctx.fill();
   ctx.strokeStyle = 'rgba(255,233,201,.28)'; ctx.lineWidth = 4; ctx.setLineDash([12, 12]);
-  ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, top + rowH * 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, top + rowH * rows); ctx.stroke();
   ctx.setLineDash([]);
   for (const h of g.houses) {
-    const x = h.col === 0 ? cx - road / 2 - 10 - hw : cx + road / 2 + 10;
+    const x = onLeft(h) ? cx - road / 2 - 10 - hw : cx + road / 2 + 10;
     const y = top + h.row * rowH + 6;
     /* each house pops in, one after another */
     const t = clamp((elapsed - overAt - 1.0 - h.id * 0.06) / 0.25, 0, 1);
@@ -1899,7 +1925,7 @@ function drawStreetMap(cx, top, rowH) {
     ctx.translate(x + hw / 2, y + hh / 2);
     ctx.scale(t, t);
     rr(-hw / 2, -hh / 2, hw, hh, 9);
-    fillStroke(h.angry ? '#4a4065' : TINT[h.id].wall, INK, 3.5);
+    fillStroke(h.angry ? '#4a4065' : TINT[h.id % TINT.length].wall, INK, 3.5);
     if (h.angry) {
       ctx.strokeStyle = '#7a6442'; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.moveTo(-hw / 2 + 10, -6); ctx.lineTo(hw / 2 - 10, 2); ctx.stroke();
@@ -1952,8 +1978,9 @@ function drawOver() {
   y += tight ? 42 : 56;
   const rowH = tight ? 44 : 54;
   drawStreetMap(DW / 2, y, rowH);
-  y += rowH * 4 + (tight ? 30 : 40);
-  text(kept === 8 ? 'ALL EIGHT STILL FEED YOU' : kept + ' OF 8 STILL FEED YOU', DW / 2, y, 22,
+  y += rowH * g.street.rows + (tight ? 30 : 40);
+  const total = g.houses.length;
+  text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
        kept ? MINT : ALARM, 'center', 800);
 
   /* the working */
@@ -2000,8 +2027,8 @@ function draw() {
   pickupCamera();
   drawStreet();
   /* lamps stand on the row boundaries, so they never sit on a bowl */
-  drawLamp(L.roadL + 14, L.top + L.rowH, 1);
-  drawLamp(L.roadR - 14, L.top + L.rowH * 3, -1);
+  drawLamp(L.roadL + 14, sy(g.street.rows * 0.25), 1);
+  drawLamp(L.roadR - 14, sy(g.street.rows * 0.75), -1);
 
   for (const h of g.houses) drawHouse(h);
   for (const h of g.houses) drawBowl(h);
@@ -2058,8 +2085,8 @@ const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= 
 /* Getting off the bowl. A swipe or a shake both end here. */
 function bolt() {
   if (g.scene !== 'play' || !g.eat) return;
-  const dir = g.cat.x < C.ROAD_X ? 1 : -1;
-  C.tapRoad(g, C.ROAD_X + dir * 0.12, g.cat.y);
+  const dir = g.cat.x < g.street.roadX ? 1 : -1;
+  C.tapRoad(g, g.street.roadX + dir * 0.12, g.cat.y);
   Sfx.tone(700, 0.12, 'triangle', 0.1, 1200);
 }
 
@@ -2125,10 +2152,9 @@ function onDown(ev) {
   }
 
   if (p.y < L.hud || p.y > L.bot) return;
-  const row = clamp(Math.floor((p.y - L.top) / L.rowH), 0, C.ROWS - 1);
-  if (p.x < L.roadL)      C.tapHouse(g, row);
-  else if (p.x > L.roadR) C.tapHouse(g, C.ROWS + row);
-  else                    C.tapRoad(g, p.x / DW, (p.y - L.top) / L.rowH);
+  const hit = g.houses.find(h => inside(p, houseRect(h)));
+  if (hit) C.tapHouse(g, hit.id);
+  else     C.tapRoad(g, p.x / DW, (p.y - L.top) / L.rowH);
   Sfx.tap();
 }
 
@@ -2202,7 +2228,7 @@ function advance(secs) {
 }
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
-if (/[?&]debug\b/.test(location.search)) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance };
+if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */

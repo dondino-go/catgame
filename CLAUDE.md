@@ -23,7 +23,9 @@ into the refactor branch, not the other way round.
   (`create({ practice })`). Owns all game state; the renderer drives it with `update(g, dt)` and `tapHouse` /
   `tapRoad` / `tapEat`, reads state to draw, and drains `g.events` for sound
   and animation. UMD: `require()` in Node, `window.BowlCore` in the browser.
-- `src/game.js`: the renderer and input. Everything is drawn in code. Holds
+- `src/game.js`: the renderer and input. Everything is drawn in code, from
+  `g.street` (houses by side of the road and row, bowls, road position), not
+  from Marrow Street's shape. Holds
   presentation-only state (eased glows, floaters, the practice night, hints).
 - `src/version.js`: **generated** build stamp. Never edit by hand.
 - `mobile.html`, `manifest.webmanifest`, `sw.js`, `icons/`: the installable
@@ -59,10 +61,14 @@ steps frames itself with `__bb.advance(seconds)`.
   Any change that alters play fails it. If the change is intended, re-record
   with `--update` and say so in the commit message. During the refactor the
   logs must not change at all.
-- `tests/screens.js`: six key screens rendered in `?manual` mode and compared
-  with `tests/screens/*.png` (pixel differences over 48/255 fail). Re-record
-  with `--update` only for intended visual changes. Output goes to
-  `tests/screens/out/` (git-ignored).
+- `tests/screens.js`: key screens rendered in `?manual` mode and compared
+  with `tests/screens/*.png` (pixel differences over 48/255 fail). Six are
+  Marrow Street; two (`lane-*`) run on the odd-shaped test street in
+  `tests/streets.js`, handed to the page as `window.__bbStreet` under `?debug`,
+  and also check that taps land on the houses as drawn. Re-record with
+  `--update` only for intended visual changes, and never re-record a Marrow
+  screen during the refactor. Output goes to `tests/screens/out/`
+  (git-ignored).
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 

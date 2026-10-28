@@ -7,8 +7,9 @@
  * instead of the browser's animation timer; Math.random is seeded, the game
  * font is preloaded and the build stamp is pinned. What is left is faint
  * anti-aliasing flicker, so a screen passes if no pixel differs by more than
- * NOISE out of 255. While the street drawing is made data-driven, Marrow
- * Street must keep looking the same. Mismatches go to tests/screens/out/.
+ * NOISE out of 255. Marrow Street must keep looking the same through the
+ * refactor; the lane-* scenes run the same renderer on a differently shaped
+ * street (tests/streets.js). Mismatches go to tests/screens/out/.
  *
  *   node tests/screens.js            compare
  *   node tests/screens.js --update   re-record (only when a visual change is intended)
@@ -29,9 +30,11 @@ const URL = 'file://' + path.join(ROOT, 'mobile.html') + '?debug&manual';
 const NOISE = 48;
 const VW = 390, VH = 844;
 
-async function scene(browser, name, { onboarded = true, setup }) {
+async function scene(browser, name, { onboarded = true, street, setup }) {
   const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1,
                                          locale: 'en-GB', timezoneId: 'Europe/London' });
+  /* a scene can run on another street, handed to the page as data */
+  if (street) await ctx.addInitScript(st => { window.__bbStreet = st; }, street);
   await ctx.addInitScript(on => {
     let a = 12345;
     Math.random = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
@@ -54,6 +57,9 @@ async function scene(browser, name, { onboarded = true, setup }) {
     run: ms => p.evaluate(s => window.__bb.advance(s), ms / 1000),
     row: r => 132 + (r + 0.5) * ((DH - 24 - 132) / 4),
     game: fn => p.evaluate(fn),
+    /* where a row's centre is on screen, for the street the page is running */
+    rowAt: async r => p.evaluate(([r, DH]) => { const rows = window.__bb.g.street.rows; return 132 + (r + 0.5) * ((DH - 24 - 132) / rows); }, [r, DH]),
+    check: (what, cond) => CHECKS.push([name + ': ' + what, !!cond]),
   };
   if (setup) await setup(api);
   const png = await p.screenshot();
@@ -61,6 +67,8 @@ async function scene(browser, name, { onboarded = true, setup }) {
   return png;
 }
 
+const CHECKS = [];
+const TEST_LANE = require('./streets');
 const QUIET = () => { const g = window.__bb.g; g.houses.forEach(h => { h.state = 'idle'; h.t = 9999; }); };
 const SCENES = {
   'title': {},
@@ -78,6 +86,28 @@ const SCENES = {
     await a.tap(80, a.row(2)); await a.run(1600);
     await a.game(() => { const g = window.__bb.g; g.eat.speed = 0; const n = g.houses[g.eat.h.neighbours[1]]; n.state = 'watch'; n.t = 9999; });
     await a.run(400);
+  } },
+  /* Test Lane: another shape of street, drawn from its description. Also
+     checks that taps land on the houses as drawn. */
+  'lane-street': { street: TEST_LANE, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET); await a.run(300);
+    const target = () => a.game(() => { const t = window.__bb.g.cat.target; return t ? t.house : 'none'; });
+    const poke = async (x, row) => { await a.game(() => { window.__bb.g.cat.target = null; }); await a.tap(x, await a.rowAt(row)); return target(); };
+    a.check('a tap on the left row-4 house goes to house 3 (Corner Shop)', await poke(80, 4) === 3);
+    a.check('a tap on the right row-1 house goes to house 4 (The Hobbs)', await poke(640, 1) === 4);
+    a.check('a tap on the right row-3 house goes to house 5 (Miss Vane)', await poke(640, 3) === 5);
+    a.check('a tap beside where no house stands is a road tap', await poke(640, 0) === null);
+    a.check('a tap in the left gap row is a road tap', await poke(80, 3) === null);
+    await a.game(() => { window.__bb.g.cat.target = null; });
+    await a.run(200);
+  } },
+  'lane-eating': { street: TEST_LANE, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET);
+    await a.game(() => { window.__bb.C.tapHouse(window.__bb.g, 5); });
+    await a.run(2600);
+    /* house 5's neighbours: 4 up the road, 2 and 3 both across it */
+    await a.game(() => { const g = window.__bb.g; g.eat.speed = 0; g.houses[4].state = 'stir'; g.houses[4].t = 9999; g.houses[3].state = 'watch'; g.houses[3].t = 9999; });
+    await a.run(500);
   } },
   'results': { setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
@@ -121,6 +151,7 @@ async function countDiff(browser, a, b) {
            console.log('  FAIL ' + name + ': ' + off + ' pixels changed (new render in tests/screens/out/)'); }
   }
   await browser.close();
+  for (const [what, good] of CHECKS) { console.log('  ' + (good ? 'PASS ' : 'FAIL ') + what); if (!good) fail++; }
   console.log(fail ? '\n' + fail + ' screen(s) changed' : '\nAll screens identical.');
   process.exit(fail ? 1 : 0);
 })();

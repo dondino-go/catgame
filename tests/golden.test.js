@@ -41,7 +41,7 @@ function playthrough(skill, style, seed) {
       if (e) {
         const ns = e.h.neighbours.map(i => g.houses[i]);
         const danger = style === 'cautious' ? ns.some(n => n.state !== 'idle') : g.spot.heat > 0;
-        if (danger) { react += DT; if (react > skill.react) { C.tapRoad(g, C.ROAD_X, g.cat.y); react = 0; aim = null; } }
+        if (danger) { react += DT; if (react > skill.react) { C.tapRoad(g, g.street.roadX, g.cat.y); react = 0; aim = null; } }
         else react = 0;
         if (g.eat && cool <= 0) {
           if (aim == null) aim = Math.min(1, Math.max(0, e.zone + e.zoneW / 2 + randn() * skill.sigma));

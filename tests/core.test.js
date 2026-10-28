@@ -13,6 +13,8 @@ function seeded(seed) {
   };
 }
 
+const ST = C.MARROW_STREET;            // Marrow Street's numbers, for the checks that name them
+const ROWS = ST.rows, ROAD_X = ST.roadX, BOWL_X = [ST.houses[0].bowl.x, ST.houses[4].bowl.x];
 const DT = 1 / 60;
 const run = (g, secs) => { for (let i = 0; i < Math.round(secs / DT); i++) C.update(g, DT); };
 const fresh = seed => { const g = C.create({ rng: seeded(seed || 1) }); C.start(g); C.drainEvents(g); return g; };
@@ -46,7 +48,7 @@ console.log('\n=== STREET LAYOUT ===');
     if (h.neighbours.includes(o.id) !== want) exact = false;
   }
   ok(exact, 'neighbour = above/below on the same side, or directly across -- never a diagonal, never two along');
-  ok(g.houses.every(h => { const s = C.bowlSpot(h); return s.x === C.BOWL_X[h.col] && s.y === h.row + 0.5; }), 'every bowl sits on its own house, facing the road');
+  ok(g.houses.every(h => { const s = C.bowlSpot(h); return s.x === BOWL_X[h.col] && s.y === h.row + 0.5; }), 'every bowl sits on its own house, facing the road');
 }
 
 console.log('\n=== TIMING & WAVES ===');
@@ -80,7 +82,7 @@ console.log('\n=== TAP TO MOVE ===');
   ok(!g.eat && g.cat.target && g.cat.target.house === 7, 'tapping a house sets the cat walking, does not teleport');
   const t0 = g.cat.y;
   run(g, 0.2);
-  ok(g.cat.y !== t0 || g.cat.x !== C.ROAD_X, 'cat moves while walking');
+  ok(g.cat.y !== t0 || g.cat.x !== ROAD_X, 'cat moves while walking');
   run(g, 4);
   ok(!!g.eat && g.eat.h === far, 'on arrival the minigame starts at that bowl');
   const s = C.bowlSpot(far);
@@ -100,7 +102,7 @@ console.log('\n=== TAP TO MOVE ===');
   ok(g.eat && g.eat.h.id === 4, 'tapping the bowl you are already at changes nothing');
 
   C.tapRoad(g, 9, 99);
-  ok(g.cat.target.x <= C.BOWL_X[1] && g.cat.target.y <= C.ROWS, 'road taps are clamped onto the street');
+  ok(g.cat.target.x <= BOWL_X[1] && g.cat.target.y <= ROWS, 'road taps are clamped onto the street');
 
   const g3 = fresh(); quiet(g3);
   g3.houses[3].bowl = null; g3.houses[3].respawn = 9999;
@@ -227,7 +229,7 @@ console.log('\n=== CORE RULE ===');
 
   // every individual neighbour can
   let allSee = true;
-  for (let id = 0; id < 8; id++) for (const n of C.neighbourIds(id)) {
+  for (let id = 0; id < 8; id++) for (const n of g.houses[id].neighbours) {
     const gg = fresh(); quiet(gg); sitAt(gg, id);
     gg.houses[n].state = 'watch'; gg.houses[n].t = 9999;
     run(gg, 1.5);
@@ -323,7 +325,7 @@ console.log('\n=== THE FOX ===');
   const g4 = fresh(); quiet(g4);
   g4.waveIdx = 2; g4.timeLeft = 120 - 61;
   sitAt(g4, 3); g4.houses[3].bowl.food = 1;
-  g4.fox = { x: C.BOWL_X[0], y: 3.5, patrol: 1, target: g4.houses[3], eatT: 0.99, rest: 0 };
+  g4.fox = { x: BOWL_X[0], y: 3.5, patrol: 1, target: g4.houses[3], eatT: 0.99, rest: 0 };
   quiet(g4); run(g4, 0.1);
   ok(!g4.eat && !g4.houses[3].bowl, 'if the fox takes the bowl you are eating, you are kicked out of the minigame');
 }
@@ -442,7 +444,7 @@ console.log('\n=== DETERMINISM & ROBUSTNESS ===');
       C.update(g, DT);
       for (const e of C.drainEvents(g)) log.push(e.type);
       if (!(Number.isFinite(g.cat.x) && Number.isFinite(g.cat.y))) throw new Error('cat went NaN');
-      if (g.cat.x < 0 || g.cat.x > 1 || g.cat.y < 0 || g.cat.y > C.ROWS) throw new Error('cat left the street: ' + g.cat.x + ',' + g.cat.y);
+      if (g.cat.x < 0 || g.cat.x > 1 || g.cat.y < 0 || g.cat.y > ROWS) throw new Error('cat left the street: ' + g.cat.x + ',' + g.cat.y);
       if (g.houses.some(h => h.angry && h.bowl)) throw new Error('an angry house has a bowl');
       if (g.houses.some(h => h.bowl && (h.bowl.food < 1 || h.bowl.food > h.bowl.max))) throw new Error('bowl food out of range');
     }
@@ -467,6 +469,9 @@ console.log('\n=== STREET DESCRIPTION ===');
   ok(fresh().street === C.MARROW_STREET, 'create() defaults to Marrow Street');
   ok(has(problems(st => st.houses[0].neighbours = [1]), 'does not list it back'), 'validator: neighbours must be mutual');
   ok(has(problems(st => st.houses[3].neighbours.push(99)), 'not a house id'), 'validator: neighbour ids must be in range');
+  ok(has(problems(st => st.houses[0].side = 0), 'side'), 'validator: a house is on the left (-1) or right (1) of the road');
+  ok(has(problems(st => st.roadX = 0.9), 'roadX'), 'validator: the road stays near the middle');
+  ok(has(problems(st => { st.houses[3].neighbours = [2, 7, 4, 5]; st.houses[4].neighbours.push(3); st.houses[5].neighbours.push(3); }), 'at most 3'), 'validator: at most three neighbours, one per close-up window');
   ok(has(problems(st => st.houses[2].neighbours.push(2)), 'own neighbour'), 'validator: no house is its own neighbour');
   ok(has(problems(st => st.houses[1].neighbours.push(0)), 'repeat'), 'validator: no repeated neighbours');
   ok(has(problems(st => st.houses[5].bowl.x = 0.9), 'house 5'), 'validator: a bowl outside the walkable area is named');
@@ -487,25 +492,40 @@ console.log('\n=== STREET DESCRIPTION ===');
   let msg = '';
   try { C.create({ street: Object.assign(clone(), { houses: [] }) }); } catch (e) { msg = e.message; }
   ok(/invalid street "Marrow Street"/.test(msg), 'create() refuses an invalid street and says why');
-  ok(C.neighbourIds(1).join() === '0,2,5' && C.neighbourIds(5).join() === '4,6,1', 'neighbourIds reads the description');
+  ok(fresh().houses[1].neighbours.join() === '0,2,5' && fresh().houses[5].neighbours.join() === '4,6,1', 'houses take their neighbours from the description');
 
   /* a street that is nothing like Marrow Street: three houses in a row along
      a road at x = 0.3, everyone hearing everyone */
   const lane = {
-    name: 'Short Lane', rows: 3, roadX: 0.3,
-    walk: { x: [0.2, 0.4], y: [0.1, 2.9] }, catStart: { x: 0.3, y: 0.5 },
+    name: 'Short Lane', rows: 3, roadX: 0.5,
+    walk: { x: [0.3, 0.7], y: [0.1, 2.9] }, catStart: { x: 0.5, y: 0.5 },
     houses: [0, 1, 2].map(i => ({
-      name: 'No. ' + (i + 1), col: 0, row: i, bowl: { x: 0.2, y: i + 0.5 },
+      name: 'No. ' + (i + 1), col: 0, row: i, side: -1, bowl: { x: 0.3, y: i + 0.5 },
       neighbours: [0, 1, 2].filter(j => j !== i),
     })),
-    dog: { x: 0.3, ends: [-0.5, 3.5], overrun: 0.2 },
-    fox: { x: 0.3, ends: [-0.5, 3.5], patrol: { y: [0.2, 2.8], speed: 0.3 } },
+    dog: { x: 0.5, ends: [-0.5, 3.5], overrun: 0.2 },
+    fox: { x: 0.5, ends: [-0.5, 3.5], patrol: { y: [0.2, 2.8], speed: 0.3 } },
   };
   ok(C.validateStreet(lane).length === 0, 'a three-house lane is a valid street');
+  const TL = require('./streets');
+  ok(C.validateStreet(TL).length === 0, 'the test lane (tests/streets.js) is a valid street');
+  {
+    /* sight lines on a street with an odd shape: every listed neighbour can
+       catch you at that bowl, and a house that is not listed cannot */
+    let all = true, none = true;
+    for (let id = 0; id < TL.houses.length; id++) for (let w = 0; w < TL.houses.length; w++) {
+      if (w === id) continue;
+      const gg = C.create({ street: TL, rng: seeded(2) }); C.start(gg); C.drainEvents(gg); quiet(gg); sitAt(gg, id);
+      gg.houses[w].state = 'watch'; gg.houses[w].t = 9999; run(gg, 1.5);
+      const caught = gg.scene === 'caught' && gg.caught.witness === w;
+      if (TL.houses[id].neighbours.includes(w) ? !caught : caught) { if (caught) none = false; else all = false; }
+    }
+    ok(all && none, 'test lane: each window sees exactly the bowls it should');
+  }
   const g = C.create({ street: lane, rng: seeded(3) }); C.start(g); C.drainEvents(g);
-  ok(g.houses.length === 3 && g.houses[2].name === 'No. 3' && g.cat.x === 0.3 && g.cat.y === 0.5, 'the rules build the houses and cat start from the street');
+  ok(g.houses.length === 3 && g.houses[2].name === 'No. 3' && g.cat.x === 0.5 && g.cat.y === 0.5, 'the rules build the houses and cat start from the street');
   C.tapRoad(g, 0.9, 9);
-  ok(g.cat.target.x === 0.4 && g.cat.target.y === 2.9, 'road taps clamp to the street\'s own walkable area');
+  ok(g.cat.target.x === 0.7 && g.cat.target.y === 2.9, 'road taps clamp to the street\'s own walkable area');
   quiet(g); sitAt(g, 1);
   ok(!!g.eat && g.eat.h.id === 1, 'the cat walks to a bowl on the custom street');
   g.houses[2].state = 'watch'; g.houses[2].t = 9999;
@@ -518,10 +538,10 @@ console.log('\n=== STREET DESCRIPTION ===');
     C.update(g2, DT);
     if (g2.dog && g2.dog.phase === 'run' && !seen) seen = { x: g2.dog.x, y0: g2.dog.y };
   }
-  ok(seen && seen.x === 0.3 && !g2.dog, 'the dog runs the street\'s route and leaves');
+  ok(seen && seen.x === 0.5 && !g2.dog, 'the dog runs the street\'s route and leaves');
   const g3 = C.create({ street: lane, rng: seeded(9) }); C.start(g3); C.drainEvents(g3);
   setWave(g3, 2); C.update(g3, DT);
-  ok(g3.fox && Math.abs(g3.fox.x - 0.3) < 0.02 && (Math.abs(g3.fox.y + 0.5) < 0.05 || Math.abs(g3.fox.y - 3.5) < 0.05), 'the fox enters at one of the street\'s ends');
+  ok(g3.fox && Math.abs(g3.fox.x - 0.5) < 0.02 && (Math.abs(g3.fox.y + 0.5) < 0.05 || Math.abs(g3.fox.y - 3.5) < 0.05), 'the fox enters at one of the street\'s ends');
 }
 
 console.log('\n=== PRACTICE NIGHT ===');

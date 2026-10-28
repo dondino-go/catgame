@@ -31,7 +31,9 @@
 
 /* ---------- streets ---------- *
  * house.col / house.row: grid position in house-spacings. Noise carries by
- *   this distance, and the renderer uses it to place the house.
+ *   this distance, and the renderer uses row to place the house along the road.
+ * house.side: -1 if the house is left of the road, +1 if right. Which way it
+ *   faces, and where the renderer draws it.
  * house.bowl: where its bowl sits, in world units.
  * house.neighbours: ids of the houses that can see its bowl (and whose bowls
  *   it can see). Must be mutual.
@@ -40,6 +42,9 @@
  *   first is "from the top"); it runs to the other and is gone `overrun`
  *   past it. fox.patrol: the stretch it mooches along when nothing is worth
  *   robbing. Both travel along the vertical line x = `x`.
+ * A house has at most three neighbours: the eating close-up has three windows.
+ * roadX stays within 2% of the middle: the renderer draws the road there with a
+ * house strip either side, and further off the houses would not fit.
  * Every house is listed once, in id order. */
 const MARROW_STREET = {
   name: 'Marrow Street',
@@ -48,14 +53,14 @@ const MARROW_STREET = {
   walk: { x: [0.29, 0.71], y: [0.2, 3.8] },
   catStart: { x: 0.5, y: 2 },
   houses: [
-    { name: 'The Pemburys', col: 0, row: 0, bowl: { x: 0.29, y: 0.5 }, neighbours: [1, 4] },
-    { name: 'Old Nan',      col: 0, row: 1, bowl: { x: 0.29, y: 1.5 }, neighbours: [0, 2, 5] },
-    { name: 'The Dobsons',  col: 0, row: 2, bowl: { x: 0.29, y: 2.5 }, neighbours: [1, 3, 6] },
-    { name: 'Mr Quill',     col: 0, row: 3, bowl: { x: 0.29, y: 3.5 }, neighbours: [2, 7] },
-    { name: 'The Ashfords', col: 1, row: 0, bowl: { x: 0.71, y: 0.5 }, neighbours: [5, 0] },
-    { name: 'Bea & Rook',   col: 1, row: 1, bowl: { x: 0.71, y: 1.5 }, neighbours: [4, 6, 1] },
-    { name: 'The Mullens',  col: 1, row: 2, bowl: { x: 0.71, y: 2.5 }, neighbours: [5, 7, 2] },
-    { name: 'Doctor Pye',   col: 1, row: 3, bowl: { x: 0.71, y: 3.5 }, neighbours: [6, 3] },
+    { name: 'The Pemburys', col: 0, row: 0, side: -1, bowl: { x: 0.29, y: 0.5 }, neighbours: [1, 4] },
+    { name: 'Old Nan',      col: 0, row: 1, side: -1, bowl: { x: 0.29, y: 1.5 }, neighbours: [0, 2, 5] },
+    { name: 'The Dobsons',  col: 0, row: 2, side: -1, bowl: { x: 0.29, y: 2.5 }, neighbours: [1, 3, 6] },
+    { name: 'Mr Quill',     col: 0, row: 3, side: -1, bowl: { x: 0.29, y: 3.5 }, neighbours: [2, 7] },
+    { name: 'The Ashfords', col: 1, row: 0, side:  1, bowl: { x: 0.71, y: 0.5 }, neighbours: [5, 0] },
+    { name: 'Bea & Rook',   col: 1, row: 1, side:  1, bowl: { x: 0.71, y: 1.5 }, neighbours: [4, 6, 1] },
+    { name: 'The Mullens',  col: 1, row: 2, side:  1, bowl: { x: 0.71, y: 2.5 }, neighbours: [5, 7, 2] },
+    { name: 'Doctor Pye',   col: 1, row: 3, side:  1, bowl: { x: 0.71, y: 3.5 }, neighbours: [6, 3] },
   ],
   dog: { x: 0.5, ends: [-0.6, 4.6], overrun: 0.2 },
   fox: { x: 0.5, ends: [-0.6, 4.6], patrol: { y: [0.3, 3.7], speed: 0.3 } },
@@ -75,7 +80,7 @@ function validateStreet(st) {
   const pair = v => Array.isArray(v) && v.length === 2 && num(v[0]) && num(v[1]) && v[0] < v[1];
   if (!st || typeof st !== 'object') return ['street is not an object'];
   if (!(Number.isInteger(st.rows) && st.rows > 0)) bad.push('rows must be a positive integer');
-  if (!num(st.roadX)) bad.push('roadX must be a number');
+  if (!(num(st.roadX) && st.roadX >= 0.48 && st.roadX <= 0.52)) bad.push('roadX must be a number between 0.48 and 0.52');
   const walkOk = st.walk && pair(st.walk.x) && pair(st.walk.y);
   if (!walkOk) bad.push('walk needs x and y ranges, [min, max]');
   const inWalk = p => walkOk && p && num(p.x) && num(p.y) &&
@@ -87,9 +92,11 @@ function validateStreet(st) {
     const at = 'house ' + id + (h && h.name ? ' (' + h.name + ')' : '');
     if (!h || typeof h.name !== 'string' || !h.name) bad.push(at + ': needs a name');
     if (!h || !num(h.col) || !num(h.row)) { bad.push(at + ': col and row must be numbers'); return; }
+    if (h.side !== -1 && h.side !== 1) bad.push(at + ': side must be -1 (left of the road) or 1 (right)');
     if (!inWalk(h.bowl)) bad.push(at + ': bowl must be inside the walkable area');
     if (!Array.isArray(h.neighbours)) { bad.push(at + ': neighbours must be a list'); return; }
     if (new Set(h.neighbours).size !== h.neighbours.length) bad.push(at + ': neighbours repeat');
+    if (h.neighbours.length > 3) bad.push(at + ': at most 3 neighbours (the close-up has three windows)');
     for (const n of h.neighbours) {
       if (!Number.isInteger(n) || n < 0 || n >= hs.length) bad.push(at + ': neighbour ' + n + ' is not a house id');
       else if (n === id) bad.push(at + ': is its own neighbour');
@@ -187,7 +194,6 @@ const rand  = (g, a, b) => a + g.rng() * (b - a);
 /* ---------- layout ---------- */
 function bowlSpot(h) { return { x: h.bowlAt.x, y: h.bowlAt.y }; }
 
-function neighbourIds(id, street) { return (street || MARROW_STREET).houses[id].neighbours.slice(); }
 
 function waveAt(sec) {
   let acc = 0;
@@ -200,7 +206,7 @@ function buildHouses(g) {
   g.houses = [];
   g.street.houses.forEach((d, id) => {
     g.houses.push({
-      id, col: d.col, row: d.row, name: d.name,
+      id, col: d.col, row: d.row, side: d.side, name: d.name,
       neighbours: d.neighbours.slice(), bowlAt: { x: d.bowl.x, y: d.bowl.y },
       angry: false, state: 'idle', t: GRACE + rand(g, 0, 6),   // idle | stir | watch
       bowl: null, respawn: rand(g, 0, 2),
@@ -668,14 +674,11 @@ function update(g, dt) {
 
 return {
   MARROW_STREET, validateStreet,
-  /* Marrow Street's numbers, kept for the renderer until Phase 2 reads g.street */
-  ROWS: MARROW_STREET.rows, HOUSES: MARROW_STREET.houses.length, ROAD_X: MARROW_STREET.roadX,
-  BOWL_X: [MARROW_STREET.houses[0].bowl.x, MARROW_STREET.houses[4].bowl.x],
   PRACTICE, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor,
   create, start, update, drainEvents, setPractice, practiceResident, practiceBowl, practiceHoldBowl,
   tapHouse, tapRoad, tapEat,
-  bowlSpot, neighbourIds, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,
+  bowlSpot, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,
 };
 });
