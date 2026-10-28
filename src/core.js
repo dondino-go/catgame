@@ -47,7 +47,7 @@
  *   robbing. Both travel along the vertical line x = `x`.
  * A house has one to three neighbours: the close-up has three windows, and the
  * practice night needs someone to watch.
- * look (renderer only, optional): colours and mood, see LOOK in game.js.
+ * look, house.size (renderer only, optional): colours, mood and house sizes, see LOOK in game.js.
  * roadHalf (optional): half the road's width as a fraction of the street's.
  * roadX stays within 2% of the middle: the renderer draws the road there with a
  * house strip either side, and further off the houses would not fit.

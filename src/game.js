@@ -27,11 +27,16 @@ let GRASS    = '#3f6b4e';
 
 /* A street may repaint itself (street.look): its own colours for the ground,
    a wash of light over the whole street (an evening is warm, a night is not),
-   a vignette, and how brightly the lamps glow. Unset fields keep Marrow
+   a vignette, and how brightly the lamps glow, the houses' footprint (bodyW in
+   design units, bodyH as a fraction of the usual height) and their colours
+   (tints, same shape as TINT). A house may also be bigger or smaller than its
+   street's norm (house.size { w, h }, multipliers). Unset fields keep Marrow
    Street's night. */
 const LOOK_DEFAULT = { night: '#191030', road: '#3d2f5e', road2: '#4a3a70', pave: '#6b5c93', paveLip: '#8576b4',
-                       grass: '#3f6b4e', wash: null, vignette: 0.42, lamp: 1 };
+                       grass: '#3f6b4e', wash: null, vignette: 0.42, lamp: 1,
+                       bodyW: 150, bodyH: 1, tints: null };
 let LOOK = LOOK_DEFAULT;
+const tintOf = id => { const T = LOOK.tints || TINT; return T[id % T.length]; };
 function applyLook(st) {
   LOOK = Object.assign({}, LOOK_DEFAULT, st.look || {});
   NIGHT = LOOK.night; ROAD = LOOK.road; ROAD_2 = LOOK.road2; PAVE = LOOK.pave; PAVE_LIP = LOOK.paveLip; GRASS = LOOK.grass;
@@ -153,11 +158,11 @@ function layout() {
   const roadHalf = Math.round(C.roadHalfOf(g.street) * DW);   /* half the road's width, in design units */
   L.roadL  = sx(g.street.roadX) - roadHalf;
   L.roadR  = sx(g.street.roadX) + roadHalf;
-  L.bodyW  = 150;
+  L.bodyW  = LOOK.bodyW;
   L.top    = L.hud;
   L.bot    = DH - L.footer;
   L.rowH   = (L.bot - L.top) / g.street.rows;
-  L.bodyH  = Math.min(L.rowH - 44, 290);
+  L.bodyH  = Math.min(L.rowH - 44, 290) * LOOK.bodyH;
 }
 
 function fit() {
@@ -198,13 +203,16 @@ function houseRect(h) {
 }
 /* the building itself */
 function bodyRect(h) {
+  const sz = g.street.houses[h.id].size || {};
+  /* never so wide that it runs into its own garden fence */
+  const w = Math.min(L.bodyW * (sz.w || 1), (onLeft(h) ? fenceX(h.side) : DW - fenceX(h.side)) - 12 - 8);
+  const x = onLeft(h) ? 12 : DW - 12 - w;
   if (h.venue) {                                  /* a venue is one tall building over its rows */
-    const r = houseRect(h), x = onLeft(h) ? 12 : DW - 12 - L.bodyW;
-    return { x, y: r.y + 10, w: L.bodyW, h: r.h - 20 };
+    const r = houseRect(h);
+    return { x, y: r.y + 10, w, h: r.h - 20 };
   }
-  const cy = rowY(h);
-  const x = onLeft(h) ? 12 : DW - 12 - L.bodyW;
-  return { x, y: cy - L.bodyH / 2, w: L.bodyW, h: L.bodyH };
+  const cy = rowY(h), hh = Math.min(L.bodyH * (sz.h || 1), L.rowH - 12);
+  return { x, y: cy - hh / 2, w, h: hh };
 }
 /* where the garden meets the pavement -- the fence line */
 function fenceX(side) {
@@ -615,7 +623,7 @@ function drawVenue(h) {
 function drawHouse(h) {
   if (h.venue) { drawVenue(h); return; }
   const v = vis[h.id];
-  const t = TINT[h.id % TINT.length];
+  const t = tintOf(h.id);
   const dull = h.angry;
   const b = bodyRect(h);
   const dir = onLeft(h) ? 1 : -1;                        /* towards the road */
@@ -1210,7 +1218,7 @@ function drawFront(owner, n, slot, c) {
   const wob = poke && poke.id === n.id ? Math.sin(poke.t * 40) * clamp((poke.t - 1.5) / 0.4, 0, 1) * 7 : 0;
   const cx = c.slotX(slot) + wob;
   const w = c.frontW, H = c.frontH, y = c.winTop;
-  const t = TINT[n.id % TINT.length], v = vis[n.id];
+  const t = tintOf(n.id), v = vis[n.id];
   const watching = n.state === 'watch', stirring = n.state === 'stir';
   const dull = n.angry;
   const pulse = 0.5 + 0.5 * Math.sin(elapsed * 10);
@@ -2097,7 +2105,7 @@ function drawStreetMap(cx, top, rowH) {
     ctx.translate(x + hw / 2, y + hh / 2);
     ctx.scale(t, t);
     rr(-hw / 2, -hh / 2, hw, hh, 9);
-    fillStroke(h.angry ? '#4a4065' : TINT[h.id % TINT.length].wall, INK, 3.5);
+    fillStroke(h.angry ? '#4a4065' : tintOf(h.id).wall, INK, 3.5);
     if (h.angry) {
       ctx.strokeStyle = '#7a6442'; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.moveTo(-hw / 2 + 10, -6); ctx.lineTo(hw / 2 - 10, 2); ctx.stroke();
