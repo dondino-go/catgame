@@ -1551,6 +1551,7 @@ function hintOnce(key) {
 }
 
 function startTutorial() {
+  C.setPractice(g, true);
   C.start(g);
   C.drainEvents(g);
   banner = null;
@@ -1560,6 +1561,7 @@ function finishTutorial() {
   tut = null;
   onboarded = true;
   saveJSON('bowlbandit.onboarded', true);
+  C.setPractice(g, false);
   C.start(g);
   handleEvents();
 }
@@ -1575,29 +1577,20 @@ function tutTarget() {
   return ok[0];
 }
 
-/* runs after every fixed simulation step during the practice night */
+/* Runs after every fixed simulation step during the practice night. The core
+   owns the practice rules (no clock, slow wide bar, residents only move when
+   told); this only scripts which resident twitches, and when. */
 function tutStep(dt) {
   if (!tut) return;
   tut.t += dt;
-  g.timeLeft = C.GAME_SECONDS;      /* the clock doesn't run in practice */
-  for (const h of g.houses) {       /* only the resident we script ever wakes */
-    if (h !== tut.watcher && h.state !== 'idle') { h.state = 'idle'; h.t = 9999; }
-    if (h !== tut.watcher) h.t = Math.max(h.t, 9999);
-  }
-  /* seen in practice, you get about three seconds to work out the swipe */
-  if (g.spot.heat > 0) g.spot.heat = Math.max(1e-4, g.spot.heat - dt * 0.7);
-
   const e = g.eat;
-  if (e && (tut.step === 'bite' || tut.step === 'eat2' || tut.step === 'stir' || tut.step === 'seen')) {
-    /* a slow marker and a wide green while learning */
-    e.speed = 0.42;
-    e.zoneW = 0.44;
-    if (e.zone + e.zoneW > 0.96) e.zone = 0.96 - e.zoneW;
-  }
+  /* a bowl is held (the lesson can't end by finishing it) while a neighbour
+     is on the move */
+  C.practiceHoldBowl(g, tut.step === 'stir' || tut.step === 'seen');
 
   switch (tut.step) {
     case 'tap':
-      if (e) { tut.first = e.h; e.h.bowl.food = 3; e.h.bowl.max = 3; tutGo('bite'); }
+      if (e) { tut.first = e.h; C.practiceBowl(g, e.h.id, 3); tutGo('bite'); }
       break;
     case 'bite':
       if (!e) tutGo('tap');         /* wandered off: start again */
@@ -1607,7 +1600,7 @@ function tutStep(dt) {
       break;
     case 'tap2':
       if (e) {
-        e.h.bowl.food = 4; e.h.bowl.max = 4;
+        C.practiceBowl(g, e.h.id, 4);
         /* the neighbour across the road, so it's the obvious window */
         tut.watcher = g.houses[e.h.neighbours.find(id => g.houses[id].col !== e.h.col)];
         tutGo('eat2');
@@ -1616,23 +1609,21 @@ function tutStep(dt) {
     case 'eat2':
       if (!e) { tutGo('tap2'); break; }
       if (tut.t > 1.4 || e.bites > 0) {
-        tut.watcher.state = 'stir'; tut.watcher.t = 9999;
+        C.practiceResident(g, tut.watcher.id, 'stir');
         tutGo('stir');
       }
       break;
     case 'stir':
     case 'seen':
-      /* don't let the lesson end by finishing the bowl */
-      if (e && e.h.bowl.food < 2) e.h.bowl.food = 2;
       if (tut.step === 'stir' && tut.t > 1.8 && e) {
-        tut.watcher.state = 'watch'; tut.watcher.t = 9999;
+        C.practiceResident(g, tut.watcher.id, 'watch');
         tutGo('seen');
       }
       if (g.scene === 'caught') { tutGo('caughtLesson'); break; }
       if (!e && g.scene === 'play') tutGo(tut.step === 'stir' ? 'early' : 'safe');
       break;
     case 'safe': case 'early': case 'caughtLesson':
-      if (tut.watcher) { tut.watcher.state = 'idle'; tut.watcher.t = 9999; }
+      if (tut.watcher) C.practiceResident(g, tut.watcher.id, 'idle');
       if (tut.t > 3.2) tutGo('ready');
       break;
   }

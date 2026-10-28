@@ -17,8 +17,10 @@ into the refactor branch, not the other way round.
 
 ## Layout
 
-- `src/core.js`: the rules. No canvas, DOM, audio or timers. Owns all game
-  state; the renderer drives it with `update(g, dt)` and `tapHouse` /
+- `src/core.js`: the rules. No canvas, DOM, audio or timers. The street is a
+  data description (`MARROW_STREET`, checked by `validateStreet`; `create()`
+  takes a `street`) and the practice night is a core option
+  (`create({ practice })`). Owns all game state; the renderer drives it with `update(g, dt)` and `tapHouse` /
   `tapRoad` / `tapEat`, reads state to draw, and drains `g.events` for sound
   and animation. UMD: `require()` in Node, `window.BowlCore` in the browser.
 - `src/game.js`: the renderer and input. Everything is drawn in code. Holds

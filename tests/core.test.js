@@ -457,4 +457,112 @@ console.log('\n=== DETERMINISM & ROBUSTNESS ===');
   ok(ends.every(s => s === 'over' || s === 'play'), 'rounds end in a valid scene');
 }
 
+console.log('\n=== STREET DESCRIPTION ===');
+{
+  const clone = () => JSON.parse(JSON.stringify(C.MARROW_STREET));
+  const problems = mutate => { const st = clone(); mutate(st); return C.validateStreet(st); };
+  const has = (list, word) => list.some(m => m.includes(word));
+
+  ok(C.validateStreet(C.MARROW_STREET).length === 0, 'Marrow Street is a valid street');
+  ok(fresh().street === C.MARROW_STREET, 'create() defaults to Marrow Street');
+  ok(has(problems(st => st.houses[0].neighbours = [1]), 'does not list it back'), 'validator: neighbours must be mutual');
+  ok(has(problems(st => st.houses[3].neighbours.push(99)), 'not a house id'), 'validator: neighbour ids must be in range');
+  ok(has(problems(st => st.houses[2].neighbours.push(2)), 'own neighbour'), 'validator: no house is its own neighbour');
+  ok(has(problems(st => st.houses[1].neighbours.push(0)), 'repeat'), 'validator: no repeated neighbours');
+  ok(has(problems(st => st.houses[5].bowl.x = 0.9), 'house 5'), 'validator: a bowl outside the walkable area is named');
+  ok(has(problems(st => st.walk.y = [3, 1]), 'walk'), 'validator: a walkable area needs min < max');
+  ok(has(problems(st => st.catStart.x = 0.1), 'catStart'), 'validator: the cat must start on walkable ground');
+  ok(has(problems(st => st.houses = []), 'houses'), 'validator: a street needs houses');
+  ok(has(problems(st => delete st.dog), 'dog'), 'validator: the dog needs a route');
+  ok(has(problems(st => st.fox.patrol.speed = 0), 'patrol'), 'validator: the fox needs a patrol');
+  ok(C.validateStreet(null).length > 0, 'validator: not an object');
+  let msg = '';
+  try { C.create({ street: Object.assign(clone(), { houses: [] }) }); } catch (e) { msg = e.message; }
+  ok(/invalid street "Marrow Street"/.test(msg), 'create() refuses an invalid street and says why');
+  ok(C.neighbourIds(1).join() === '0,2,5' && C.neighbourIds(5).join() === '4,6,1', 'neighbourIds reads the description');
+
+  /* a street that is nothing like Marrow Street: three houses in a row along
+     a road at x = 0.3, everyone hearing everyone */
+  const lane = {
+    name: 'Short Lane', rows: 3, roadX: 0.3,
+    walk: { x: [0.2, 0.4], y: [0.1, 2.9] }, catStart: { x: 0.3, y: 0.5 },
+    houses: [0, 1, 2].map(i => ({
+      name: 'No. ' + (i + 1), col: 0, row: i, bowl: { x: 0.2, y: i + 0.5 },
+      neighbours: [0, 1, 2].filter(j => j !== i),
+    })),
+    dog: { x: 0.3, ends: [-0.5, 3.5], overrun: 0.2 },
+    fox: { x: 0.3, ends: [-0.5, 3.5], patrol: { y: [0.2, 2.8], speed: 0.3 } },
+  };
+  ok(C.validateStreet(lane).length === 0, 'a three-house lane is a valid street');
+  const g = C.create({ street: lane, rng: seeded(3) }); C.start(g); C.drainEvents(g);
+  ok(g.houses.length === 3 && g.houses[2].name === 'No. 3' && g.cat.x === 0.3 && g.cat.y === 0.5, 'the rules build the houses and cat start from the street');
+  C.tapRoad(g, 0.9, 9);
+  ok(g.cat.target.x === 0.4 && g.cat.target.y === 2.9, 'road taps clamp to the street\'s own walkable area');
+  quiet(g); sitAt(g, 1);
+  ok(!!g.eat && g.eat.h.id === 1, 'the cat walks to a bowl on the custom street');
+  g.houses[2].state = 'watch'; g.houses[2].t = 9999;
+  run(g, 1.5);
+  ok(g.scene === 'caught' && g.caught.witness === 2, 'sight follows the street\'s neighbour lists');
+  const g2 = C.create({ street: lane, rng: seeded(5) }); C.start(g2); C.drainEvents(g2);
+  setWave(g2, 1); g2.dogTimer = 0; quiet(g2);
+  let seen = null;
+  for (let i = 0; i < 60 * 8 && !(seen && !g2.dog); i++) {
+    C.update(g2, DT);
+    if (g2.dog && g2.dog.phase === 'run' && !seen) seen = { x: g2.dog.x, y0: g2.dog.y };
+  }
+  ok(seen && seen.x === 0.3 && !g2.dog, 'the dog runs the street\'s route and leaves');
+  const g3 = C.create({ street: lane, rng: seeded(9) }); C.start(g3); C.drainEvents(g3);
+  setWave(g3, 2); C.update(g3, DT);
+  ok(g3.fox && Math.abs(g3.fox.x - 0.3) < 0.02 && (Math.abs(g3.fox.y + 0.5) < 0.05 || Math.abs(g3.fox.y - 3.5) < 0.05), 'the fox enters at one of the street\'s ends');
+}
+
+console.log('\n=== PRACTICE NIGHT ===');
+{
+  const mk = seed => { const g = C.create({ rng: seeded(seed || 1), practice: true }); C.start(g); C.drainEvents(g); return g; };
+  let g = mk();
+  run(g, 60);
+  ok(g.timeLeft === C.GAME_SECONDS && g.scene === 'play' && g.waveIdx === 0, 'no clock in practice: a minute passes and the round is untouched');
+  ok(g.houses.every(h => h.state === 'idle'), 'nobody stirs on their own in practice');
+
+  g = mk(); sitAt(g, 0);
+  ok(g.eat.speed === C.PRACTICE.speed && g.eat.zoneW === C.PRACTICE.zoneW, 'practice starts with a slow marker and a wide green');
+  C.practiceBowl(g, 0, 4);
+  hit(g); hit(g);
+  ok(g.eat.speed === C.PRACTICE.speed && g.eat.zoneW === C.PRACTICE.zoneW, 'bites do not speed the marker up or narrow the green');
+
+  g = mk(); sitAt(g, 0); C.practiceBowl(g, 0, 4);
+  miss(g); run(g, 1);
+  ok(g.houses.every(h => h.state === 'idle'), 'a clatter wakes nobody in practice');
+
+  g = mk(); sitAt(g, 0); C.practiceBowl(g, 0, 3);
+  C.practiceHoldBowl(g, true);
+  for (let i = 0; i < 6; i++) hit(g);
+  ok(g.eat && g.houses[0].bowl && g.houses[0].bowl.food === C.PRACTICE.bowlFloor, 'while held, the bowl cannot be finished');
+  C.practiceHoldBowl(g, false); hit(g); hit(g);
+  ok(!g.houses[0].bowl && g.bowlsCleared === 1, 'released, the bowl can be finished');
+
+  g = mk(); sitAt(g, 0);
+  const w = g.houses[0].neighbours[0];
+  C.practiceResident(g, w, 'watch');
+  run(g, 1);
+  ok(g.houses[w].state === 'watch' && g.scene === 'play', 'a scripted watcher stays put and does not catch you at once');
+  run(g, 1.5);
+  ok(g.scene === 'play', 'seen in practice, the meter fills at a third of the pace (still not caught at 2.5s)');
+  run(g, 1);
+  ok(g.scene === 'caught' && g.caught.witness === w, 'but a cat that stays is caught after about 3 seconds');
+
+  g = mk(); sitAt(g, 0); C.practiceResident(g, g.houses[0].neighbours[0], 'watch'); run(g, 1);
+  const h0 = g.spot.heat; C.tapRoad(g, 0.5, 2); run(g, 0.5);
+  ok(g.spot.heat < h0 && g.spot.heat >= 0, 'running away cools the meter in practice too');
+
+  g = fresh(); sitAt(g, 0);
+  C.practiceResident(g, 1, 'watch'); C.practiceBowl(g, 0, 9); C.practiceHoldBowl(g, true);
+  ok(g.houses[1].state !== 'watch' && g.houses[0].bowl.food !== 9 && !g.practice, 'the practice helpers do nothing in a normal round');
+
+  g = fresh(); C.setPractice(g, true); C.start(g);
+  ok(!!g.practice && !g.practice.holdBowl, 'setPractice turns practice on for the next start()');
+  C.setPractice(g, false); C.start(g);
+  ok(!g.practice, '...and off again');
+}
+
 report();

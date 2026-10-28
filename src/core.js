@@ -1,18 +1,27 @@
 /*
  * Bowl Bandit -- game rules, no rendering.
  *
- * The street is a 2 x 4 grid seen from above: the left column is houses 0-3,
- * the right column is 4-7, the road runs between them. A house's neighbours are
- * the houses above and below it in its own column, and the one directly across
- * the road. That is the whole rule, so it is derived from the grid here rather
- * than from sight radii.
+ * The rules know nothing about any particular street. A street is a plain
+ * description (see MARROW_STREET and validateStreet below): the houses with
+ * their grid position, bowl spot and explicit list of neighbours, the area the
+ * cat may walk in, the road the dog runs down and the fox patrols, and where
+ * the cat starts. create() takes one, defaulting to Marrow Street, and refuses
+ * a street that fails the validator.
+ *
+ * Marrow Street is a 2 x 4 grid seen from above: the left column is houses
+ * 0-3, the right column is 4-7, the road runs between them. A house's
+ * neighbours are the houses above and below it in its own column and the one
+ * directly across the road. They are listed out in the description rather than
+ * derived from sight radii, so another street can wire its houses any way it
+ * likes.
  *
  * Nothing in this file touches a canvas, the DOM, audio or timers. A renderer
  * drives it with update(g, dt) and the tap functions, reads g for what to draw,
  * and drains g.events for things to play or animate.
  *
- * World units: one row of houses is 1.0 tall. x runs 0..1 across the street
- * (left bowls 0.22, road 0.5, right bowls 0.78), y runs 0..ROWS down it.
+ * World units: one row of houses is 1.0 tall. x runs 0..1 across the street,
+ * y runs 0..street.rows down it. On Marrow Street the road is at x = 0.5 and
+ * the bowls at x = 0.29 (left) and 0.71 (right).
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -20,14 +29,74 @@
 })(typeof self !== 'undefined' ? self : this, function () {
 'use strict';
 
-const ROWS = 4, HOUSES = 8;
-const ROAD_X = 0.5;
-const BOWL_X = [0.29, 0.71];
+/* ---------- streets ---------- *
+ * house.col / house.row: grid position in house-spacings. Noise carries by
+ *   this distance, and the renderer uses it to place the house.
+ * house.bowl: where its bowl sits, in world units.
+ * house.neighbours: ids of the houses that can see its bowl (and whose bowls
+ *   it can see). Must be mutual.
+ * walk: the rectangle the cat may be sent to; every bowl is inside it.
+ * dog.ends / fox.ends: y the animal enters at, one per end of the road (the
+ *   first is "from the top"); it runs to the other and is gone `overrun`
+ *   past it. fox.patrol: the stretch it mooches along when nothing is worth
+ *   robbing. Both travel along the vertical line x = `x`.
+ * Every house is listed once, in id order. */
+const MARROW_STREET = {
+  name: 'Marrow Street',
+  rows: 4,
+  roadX: 0.5,
+  walk: { x: [0.29, 0.71], y: [0.2, 3.8] },
+  catStart: { x: 0.5, y: 2 },
+  houses: [
+    { name: 'The Pemburys', col: 0, row: 0, bowl: { x: 0.29, y: 0.5 }, neighbours: [1, 4] },
+    { name: 'Old Nan',      col: 0, row: 1, bowl: { x: 0.29, y: 1.5 }, neighbours: [0, 2, 5] },
+    { name: 'The Dobsons',  col: 0, row: 2, bowl: { x: 0.29, y: 2.5 }, neighbours: [1, 3, 6] },
+    { name: 'Mr Quill',     col: 0, row: 3, bowl: { x: 0.29, y: 3.5 }, neighbours: [2, 7] },
+    { name: 'The Ashfords', col: 1, row: 0, bowl: { x: 0.71, y: 0.5 }, neighbours: [5, 0] },
+    { name: 'Bea & Rook',   col: 1, row: 1, bowl: { x: 0.71, y: 1.5 }, neighbours: [4, 6, 1] },
+    { name: 'The Mullens',  col: 1, row: 2, bowl: { x: 0.71, y: 2.5 }, neighbours: [5, 7, 2] },
+    { name: 'Doctor Pye',   col: 1, row: 3, bowl: { x: 0.71, y: 3.5 }, neighbours: [6, 3] },
+  ],
+  dog: { x: 0.5, ends: [-0.6, 4.6], overrun: 0.2 },
+  fox: { x: 0.5, ends: [-0.6, 4.6], patrol: { y: [0.3, 3.7], speed: 0.3 } },
+};
 
-const HOUSE_NAMES = [
-  'The Pemburys', 'Old Nan', 'The Dobsons', 'Mr Quill',
-  'The Ashfords', 'Bea & Rook', 'The Mullens', 'Doctor Pye',
-];
+/* Everything wrong with a street, as a list of messages (empty if it is fine).
+   create() throws on a non-empty list; tests and tools can read it. */
+function validateStreet(st) {
+  const bad = [];
+  const num = v => typeof v === 'number' && isFinite(v);
+  const pair = v => Array.isArray(v) && v.length === 2 && num(v[0]) && num(v[1]) && v[0] < v[1];
+  if (!st || typeof st !== 'object') return ['street is not an object'];
+  if (!(Number.isInteger(st.rows) && st.rows > 0)) bad.push('rows must be a positive integer');
+  if (!num(st.roadX)) bad.push('roadX must be a number');
+  const walkOk = st.walk && pair(st.walk.x) && pair(st.walk.y);
+  if (!walkOk) bad.push('walk needs x and y ranges, [min, max]');
+  const inWalk = p => walkOk && p && num(p.x) && num(p.y) &&
+    p.x >= st.walk.x[0] && p.x <= st.walk.x[1] && p.y >= st.walk.y[0] && p.y <= st.walk.y[1];
+  if (!(st.catStart && inWalk(st.catStart))) bad.push('catStart must be inside the walkable area');
+  const hs = st.houses;
+  if (!Array.isArray(hs) || !hs.length) { bad.push('houses must be a non-empty list'); return bad; }
+  hs.forEach((h, id) => {
+    const at = 'house ' + id + (h && h.name ? ' (' + h.name + ')' : '');
+    if (!h || typeof h.name !== 'string' || !h.name) bad.push(at + ': needs a name');
+    if (!h || !num(h.col) || !num(h.row)) { bad.push(at + ': col and row must be numbers'); return; }
+    if (!inWalk(h.bowl)) bad.push(at + ': bowl must be inside the walkable area');
+    if (!Array.isArray(h.neighbours)) { bad.push(at + ': neighbours must be a list'); return; }
+    if (new Set(h.neighbours).size !== h.neighbours.length) bad.push(at + ': neighbours repeat');
+    for (const n of h.neighbours) {
+      if (!Number.isInteger(n) || n < 0 || n >= hs.length) bad.push(at + ': neighbour ' + n + ' is not a house id');
+      else if (n === id) bad.push(at + ': is its own neighbour');
+      else if (!(hs[n].neighbours || []).includes(id)) bad.push(at + ': neighbour ' + n + ' does not list it back');
+    }
+  });
+  const ends = o => o && Array.isArray(o.ends) && o.ends.length === 2 && o.ends.every(num) && o.ends[0] !== o.ends[1];
+  if (!(st.dog && num(st.dog.x) && ends(st.dog) && num(st.dog.overrun) && st.dog.overrun >= 0)) bad.push('dog needs x, two ends and an overrun');
+  const pt = st.fox && st.fox.patrol;
+  if (!(st.fox && num(st.fox.x) && ends(st.fox))) bad.push('fox needs x and two ends');
+  if (!(pt && pair(pt.y) && num(pt.speed) && pt.speed > 0)) bad.push('fox.patrol needs a y range and a speed');
+  return bad;
+}
 
 /* Difficulty steps at wave boundaries rather than creeping continuously,
    so the player can feel the street turning against them. */
@@ -57,7 +126,7 @@ const CAUGHT_SECS  = 1.6;
    key press, and the player is watching windows as well as the bar. */
 const BITE_SPEEDUP = 0.05;    // the marker quickens a little with every bite
 const MAX_SPEED    = 1.4;
-const PERFECT_FRAC = 0.18;
+const PERFECT_FRAC = 0.18;    // perfect = within this fraction of the green's width of its centre
 
 /* The streak. Clean bites build it (+1, or +2 for a perfect) and every
    STREAK_STEP points lift the multiplier by half, up to x3. Being SEEN wipes
@@ -68,8 +137,8 @@ const STREAK_STEP = 3;
 const STREAK_CAP  = 12;
 function multFor(streak) {
   return 1 + Math.floor(Math.min(streak, STREAK_CAP) / STREAK_STEP) * 0.5;
-}    // perfect = within this fraction of the green's width of its centre
-const PICKUP_SECS  = 4.8;    // walk up, scoop the cat, carry it home
+}
+const PICKUP_SECS  = 4.8;     // walk up, scoop the cat, carry it home
 
 /* What a final score makes you. Calibrated by simulating bots with timing
    error and reaction delay, with the streak in play: a greedy novice lands
@@ -93,22 +162,24 @@ const CAT_SPEED = 1.4;        // world units per second
 const FOX_SPEED = 0.7;        // slower than the cat: you can beat it to a bowl
 const DOG_SPEED = 2.6;
 
+/* The practice night (create({ practice: true })): the core owns its rules so
+   the renderer only has to script who twitches and when. No clock and no
+   wave, so nothing ever changes by itself; residents move only when told to
+   (practiceResident); noise wakes nobody; the marker is slow and the green
+   wide and they stay that way; being seen fills the meter at SEEN_RATE of
+   normal speed, which turns the 0.9s run window into about 3s for working
+   out the swipe. */
+const PRACTICE = { speed: 0.42, zoneW: 0.44, seenRate: 0.3, bowlFloor: 2 };
+
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp  = (a, b, t) => a + (b - a) * t;
 const dist  = (x1, y1, x2, y2) => Math.hypot(x1 - x2, y1 - y2);
 const rand  = (g, a, b) => a + g.rng() * (b - a);
 
 /* ---------- layout ---------- */
-function bowlSpot(h) { return { x: BOWL_X[h.col], y: h.row + 0.5 }; }
+function bowlSpot(h) { return { x: h.bowlAt.x, y: h.bowlAt.y }; }
 
-function neighbourIds(id) {
-  const col = id < ROWS ? 0 : 1, row = id % ROWS;
-  const out = [];
-  if (row > 0)        out.push(col * ROWS + row - 1);
-  if (row < ROWS - 1) out.push(col * ROWS + row + 1);
-  out.push((1 - col) * ROWS + row);
-  return out;
-}
+function neighbourIds(id, street) { return (street || MARROW_STREET).houses[id].neighbours.slice(); }
 
 function waveAt(sec) {
   let acc = 0;
@@ -119,14 +190,14 @@ function waveAt(sec) {
 /* ---------- setup ---------- */
 function buildHouses(g) {
   g.houses = [];
-  for (let id = 0; id < HOUSES; id++) {
+  g.street.houses.forEach((d, id) => {
     g.houses.push({
-      id, col: id < ROWS ? 0 : 1, row: id % ROWS, name: HOUSE_NAMES[id],
-      neighbours: neighbourIds(id),
+      id, col: d.col, row: d.row, name: d.name,
+      neighbours: d.neighbours.slice(), bowlAt: { x: d.bowl.x, y: d.bowl.y },
       angry: false, state: 'idle', t: GRACE + rand(g, 0, 6),   // idle | stir | watch
       bowl: null, respawn: rand(g, 0, 2),
     });
-  }
+  });
 }
 
 function spawnBowl(g, h) {
@@ -138,7 +209,7 @@ function reset(g) {
   buildHouses(g);
   g.waveIdx = 0;
   g.houses.forEach(h => spawnBowl(g, h));
-  g.cat = { x: ROAD_X, y: ROWS / 2, face: 1, target: null };
+  g.cat = { x: g.street.catStart.x, y: g.street.catStart.y, face: 1, target: null };
   g.score = 0; g.bowlsCleared = 0; g.foxLosses = 0; g.keptBonus = 0;
   g.bites = 0; g.perfects = 0; g.misses = 0; g.timesCaught = 0;   /* for the results */
   g.streak = 0; g.bestMult = 1;
@@ -147,10 +218,15 @@ function reset(g) {
   g.spot = { heat: 0, by: null };
   g.dog = null; g.dogTimer = 0; g.fox = null;
   g.events = [];
+  g.practice = g.practice ? { holdBowl: false } : null;
 }
 
+/* opts: rng (seeded in tests), street (default Marrow Street), practice. */
 function create(opts) {
-  const g = { rng: (opts && opts.rng) || Math.random };
+  const street = (opts && opts.street) || MARROW_STREET;
+  const bad = validateStreet(street);
+  if (bad.length) throw new Error('invalid street' + (street && street.name ? ' "' + street.name + '"' : '') + ': ' + bad.join('; '));
+  const g = { rng: (opts && opts.rng) || Math.random, street, practice: opts && opts.practice ? {} : null };
   reset(g);
   g.scene = 'title';           // title | play | caught | pickup | over
   return g;
@@ -161,6 +237,10 @@ function start(g) {
   g.scene = 'play';
   emit(g, 'wave', { idx: 0 });
 }
+
+/* The renderer owns one long-lived game and flips practice on and off around
+   the first-launch lesson; the next start() applies it. */
+function setPractice(g, on) { g.practice = on ? {} : null; }
 
 function emit(g, type, data) { g.events.push(Object.assign({ type }, data)); }
 function drainEvents(g) { return g.events.splice(0); }
@@ -185,7 +265,8 @@ function tapHouse(g, id) {
 function tapRoad(g, x, y) {
   if (g.scene !== 'play') return;
   if (g.eat) stopEating(g);
-  g.cat.target = { x: clamp(x, BOWL_X[0], BOWL_X[1]), y: clamp(y, 0.2, ROWS - 0.2), house: null };
+  const w = g.street.walk;
+  g.cat.target = { x: clamp(x, w.x[0], w.x[1]), y: clamp(y, w.y[0], w.y[1]), house: null };
 }
 
 /* Tap to take a bite while eating. `atT` is where the marker was when the
@@ -200,7 +281,8 @@ function startEating(g, h) {
   const w = wave(g);
   g.eat = {
     h, t: rand(g, 0.2, 0.8), dir: g.rng() < 0.5 ? 1 : -1,
-    speed: w.speed, zoneW: w.zone, zoneMin: w.zoneMin, zone: 0.35,
+    speed: g.practice ? PRACTICE.speed : w.speed, zoneW: g.practice ? PRACTICE.zoneW : w.zone,
+    zoneMin: w.zoneMin, zone: 0.35,
     bites: 0, cool: 0, flashBad: 0, flashGood: 0,
   };
   placeZone(g);
@@ -228,7 +310,7 @@ function takeBite(g, atT) {
     const before = g.streak;
     g.streak = Math.floor(g.streak / 2);
     emit(g, 'miss', { house: h.id, streakBefore: before, streak: g.streak });
-    makeNoise(g, h);
+    if (!g.practice) makeNoise(g, h);
     return;
   }
   /* the middle of the green is worth more: something to aim for beyond
@@ -245,9 +327,12 @@ function takeBite(g, atT) {
   g.bestMult = Math.max(g.bestMult, newMult);
   emit(g, 'bite', { house: h.id, points, perfect, mult, streak: g.streak, multUp: newMult > mult ? newMult : null });
 
-  h.bowl.food--;
-  e.speed = Math.min(MAX_SPEED, e.speed + BITE_SPEEDUP);
-  e.zoneW = Math.max(e.zoneMin, e.zoneW - 0.022);
+  /* while the lesson holds the bowl, the last bites don't finish it */
+  h.bowl.food = g.practice && g.practice.holdBowl ? Math.max(PRACTICE.bowlFloor, h.bowl.food - 1) : h.bowl.food - 1;
+  if (!g.practice) {
+    e.speed = Math.min(MAX_SPEED, e.speed + BITE_SPEEDUP);
+    e.zoneW = Math.max(e.zoneMin, e.zoneW - 0.022);
+  }
 
   if (h.bowl.food <= 0) {
     h.bowl = null; h.respawn = rand(g, 5.5, 9);
@@ -284,6 +369,7 @@ function updateHouses(g, dt) {
       if (h.respawn <= 0 && !(g.eat && g.eat.h === h) && !(g.fox && g.fox.target === h)) spawnBowl(g, h);
     }
 
+    if (g.practice) continue;     // scripted: nobody stirs unless told to
     h.t -= dt;
     if (h.t <= 0) {
       if (h.state === 'idle') {
@@ -300,6 +386,24 @@ function updateHouses(g, dt) {
       }
     }
   }
+}
+
+/* Practice night only: put a resident in a state (idle | stir | watch) and
+   leave them there until told otherwise. */
+function practiceResident(g, id, state) {
+  if (!g.practice) return;
+  const h = g.houses[id];
+  h.state = state; h.t = Infinity;
+}
+/* Practice night only: give a house a bowl of n bites. */
+function practiceBowl(g, id, n) {
+  if (!g.practice) return;
+  const h = g.houses[id];
+  if (h.bowl) { h.bowl.food = n; h.bowl.max = n; }
+}
+/* Practice night only: while held, bites never empty the bowl. */
+function practiceHoldBowl(g, on) {
+  if (g.practice) g.practice.holdBowl = !!on;
 }
 
 /* w is a threat to a bowl if w is one of its owner's neighbours */
@@ -323,7 +427,7 @@ function checkSpotted(g, dt) {
       g.streak = 0;
     }
     g.spot.by = seer.id;
-    g.spot.heat += dt;
+    g.spot.heat += g.practice ? dt * PRACTICE.seenRate : dt;
     if (g.spot.heat >= wave(g).react) {
       g.spot.heat = 0; g.spot.by = null;
       getCaught(g, seer, g.eat.h);
@@ -352,7 +456,8 @@ function getCaught(g, witness, owner) {
  * so the only safe move is to be off the bowls when it passes.            */
 function spawnDog(g) {
   const dir = g.rng() < 0.5 ? 1 : -1;
-  g.dog = { dir, x: ROAD_X, y: dir === 1 ? -0.6 : ROWS + 0.6, phase: 'bark', t: 1.15 };
+  const d = g.street.dog;
+  g.dog = { dir, x: d.x, y: d.ends[dir === 1 ? 0 : 1], phase: 'bark', t: 1.15 };
   emit(g, 'bark', {});
 }
 
@@ -378,14 +483,16 @@ function updateDog(g, dt) {
   }
   d.y += d.dir * DOG_SPEED * dt;
   for (const h of g.houses) { h.state = 'watch'; h.t = 0.7; }
-  if (d.y < -0.8 || d.y > ROWS + 0.8) g.dog = null;
+  const run = g.street.dog;
+  if (d.y < Math.min(...run.ends) - run.overrun || d.y > Math.max(...run.ends) + run.overrun) g.dog = null;
 }
 
 /* ---------- the fox ---------- *
  * Competition, not a threat. It robs bowls; residents don't care.        */
 function spawnFox(g) {
   const fromTop = g.rng() < 0.5;
-  g.fox = { x: ROAD_X, y: fromTop ? -0.6 : ROWS + 0.6, patrol: fromTop ? 1 : -1,
+  const f = g.street.fox;
+  g.fox = { x: f.x, y: f.ends[fromTop ? 0 : 1], patrol: fromTop ? 1 : -1,
             target: null, eatT: 0, rest: 0 };
 }
 
@@ -412,9 +519,10 @@ function updateFox(g, dt) {
   }
   if (!f.target || !f.target.bowl) { foxPickTarget(g); f.eatT = 0; }
   if (!f.target) {             // nothing to rob -- mooch up and down the road
-    f.y += f.patrol * 0.3 * dt;
-    if (f.y < 0.3 || f.y > ROWS - 0.3) f.patrol *= -1;
-    f.x = lerp(f.x, ROAD_X, dt * 2);
+    const run = g.street.fox;
+    f.y += f.patrol * run.patrol.speed * dt;
+    if (f.y < run.patrol.y[0] || f.y > run.patrol.y[1]) f.patrol *= -1;
+    f.x = lerp(f.x, run.x, dt * 2);
     return;
   }
 
@@ -447,7 +555,7 @@ function updateFox(g, dt) {
 function beginPickup(g) {
   stopEating(g);
   g.cat.target = null;
-  g.pickup = { t: 0, side: g.cat.x > ROAD_X ? 1 : 0 };
+  g.pickup = { t: 0, side: g.cat.x > g.street.roadX ? 1 : 0 };
   g.scene = 'pickup';
   emit(g, 'call', {});
 }
@@ -514,7 +622,8 @@ function update(g, dt) {
   if (g.scene !== 'play') return;
 
   g.elapsed  += dt;
-  g.timeLeft -= dt;
+  if (g.practice) g.timeLeft = GAME_SECONDS;    // no clock in practice
+  else g.timeLeft -= dt;
   if (g.timeLeft <= 0) { g.timeLeft = 0; beginPickup(g); return; }
 
   // wave changeover
@@ -539,10 +648,14 @@ function update(g, dt) {
 }
 
 return {
-  ROWS, HOUSES, ROAD_X, BOWL_X, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
+  MARROW_STREET, validateStreet,
+  /* Marrow Street's numbers, kept for the renderer until Phase 2 reads g.street */
+  ROWS: MARROW_STREET.rows, HOUSES: MARROW_STREET.houses.length, ROAD_X: MARROW_STREET.roadX,
+  BOWL_X: [MARROW_STREET.houses[0].bowl.x, MARROW_STREET.houses[4].bowl.x],
+  PRACTICE, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor,
-  create, start, update, drainEvents,
+  create, start, update, drainEvents, setPractice, practiceResident, practiceBowl, practiceHoldBowl,
   tapHouse, tapRoad, tapEat,
   bowlSpot, neighbourIds, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,
 };
