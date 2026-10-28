@@ -21,9 +21,14 @@ into the feature branch (`claude/new-streets`), not the other way round.
 - Phases 1 (#5: the rules read a street description) and 2 (#6: the renderer
   reads it) of the data-driven refactor are done, reviewed and live on
   `claude/mobile-redesign`. Marrow Street plays and looks exactly as before.
-- Next, on `claude/new-streets`: Phase 3 walking routes (#7), the first new
-  street, a terrace with a pub opposite (#8; a straight road, so it doesn't
-  need #7), then more streets (#12) and minigames (#9).
+- On `claude/new-streets`: Terrace Row, the first new street (#8), is built:
+  five terrace houses and a pub opposite that watches every bowl from wave 3
+  (a `venue` house: no bowl, watch only), per-street ranks and wave wording,
+  a street picker on the title screen, a best score per street, and Terrace
+  Row unlocking at Street Sweetheart (1400) on Marrow Street. It still needs a
+  preview, a playtest and a `/code-review` before it goes to
+  `claude/mobile-redesign`. Next: Phase 3 walking routes (#7), then more
+  streets (#12) and minigames (#9).
 - Open follow-ups: review findings #16 to #20, the flaky screenshot tests
   (#21), art style feedback being collected (#22), and the playtest checklist
   (#13).
@@ -73,13 +78,19 @@ steps frames itself with `__bb.advance(seconds)`.
 ## Tests and what they guard
 
 - `tests/core.test.js`: the rules, directly against `src/core.js`.
-- `tests/golden.test.js`: eight seeded bot rounds must replay **identically**.
+- `tests/terrace.test.js`: Terrace Row's sight lines (every window sees exactly
+  the bowls it should, pub included), the pub's rules, its ranks and wording,
+  and street unlocks and switching. A new street gets its own file like this.
+- `tests/golden.test.js`: eight seeded Marrow rounds and four Terrace Row ones
+  must replay **identically**.
   Any change that alters play fails it. If the change is intended, re-record
   with `--update` and say so in the commit message. During the refactor the
   logs must not change at all.
 - `tests/screens.js`: key screens rendered in `?manual` mode and compared
-  with `tests/screens/*.png` (pixel differences over 48/255 fail). Six are
-  Marrow Street; two (`lane-*`) run on the odd-shaped test street in
+  with `tests/screens/*.png` (pixel differences over 48/255 fail). Eight are
+  Marrow Street (two of them the title with the street picker); four are
+  Terrace Row (`terrace-*`: the pub shut and open, the close-up, the results
+  map) and check that a tap on the pub walks to the road; two (`lane-*`) run on the odd-shaped test street in
   `tests/streets.js`, handed to the page as `window.__bbStreet` under `?debug`,
   and also check that taps land on the houses as drawn. Re-record with
   `--update` only for intended visual changes, and never re-record a Marrow
@@ -99,6 +110,12 @@ steps frames itself with `__bb.advance(seconds)`.
   phone's aspect (`DH`). Lay things out in those units, never CSS pixels.
 - **World units** in the core: one row of houses is 1.0 tall; x runs 0..1
   across the street.
+- **Streets and ranks.** A street may carry its own `ranks` ladder and
+  `waveBlurbs`; `rankFor(score, street)` and `blurbFor(street, wave)` read
+  them. A street with fewer bowls scores lower, so scale its ladder from
+  `node tools/simulate.js --street <name>`. Street unlocks name a street and a
+  rung of its ladder (`unlock`); bests are stored per street id
+  (`bowlbandit.bests`).
 - **Difficulty and scoring are tuned by simulation.** After any change to
   scoring, the streak, the waves or the reaction windows, run
   `node tools/simulate.js` and re-check the `RANKS` thresholds in

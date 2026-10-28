@@ -30,11 +30,13 @@ const URL = 'file://' + path.join(ROOT, 'mobile.html') + '?debug&manual';
 const NOISE = 48;
 const VW = 390, VH = 844;
 
-async function scene(browser, name, { onboarded = true, street, setup }) {
+async function scene(browser, name, { onboarded = true, street, bests, setup }) {
   const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1,
                                          locale: 'en-GB', timezoneId: 'Europe/London' });
   /* a scene can run on another street, handed to the page as data */
   if (street) await ctx.addInitScript(st => { window.__bbStreet = st; }, street);
+  /* best scores already on the board, to open streets */
+  if (bests) await ctx.addInitScript(b => { try { localStorage.setItem('bowlbandit.bests', JSON.stringify(b)); } catch (e) {} }, bests);
   await ctx.addInitScript(on => {
     let a = 12345;
     Math.random = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
@@ -148,6 +150,19 @@ const SCENES = {
     await a.game(() => { const g = window.__bb.g; g.score = 1700; g.bowlsCleared = 7; g.bites = 30; g.perfects = 9;
       g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[3].angry = true; g.houses[3].bowl = null; g.timeLeft = 0.01; });
     await a.run(9000);
+  } },
+  /* the title once Terrace Row is open: pick it, and the game is on it */
+  'title-streets': { bests: { marrow: 1500, terrace: 640 }, setup: async a => {
+    const row = i => a.DH * 0.45 + i * 98 + 42;
+    await a.tap(360, row(1)); await a.run(100);
+    a.check('tapping Terrace Row selects it', await a.game(() => window.__bb.g.street.id === 'terrace' && window.__bb.g.houses.length === 6));
+    await a.tap(360, row(0)); await a.run(100);
+    a.check('and tapping Marrow Street goes back', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.houses.length === 8));
+    await a.tap(360, row(1)); await a.run(300);
+  } },
+  'title-locked': { bests: { marrow: 1399 }, setup: async a => {
+    await a.tap(360, a.DH * 0.45 + 98 + 42); await a.run(100);
+    a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
   } },
   'results': { setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);

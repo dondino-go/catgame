@@ -208,9 +208,18 @@ for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake:
 let floaters = [];
 let shake = 0, flash = 0, elapsed = 0;
 let banner = null;                  /* wave announcement */
-let best = 0;
+/* Best score per street, by street id. `best` is the one for the street on
+   screen. Before streets there was one score, 'bowlbandit.best': it was
+   earned on Marrow Street, so that is where it goes. */
+const streetKey = () => g.street.id || g.street.name;
+let bests = loadJSON('bowlbandit.bests', null);
+if (!bests) {
+  bests = {};
+  try { const old = parseInt(localStorage.getItem('bowlbandit.best') || '0', 10) || 0; if (old) bests.marrow = old; } catch (e) {}
+}
+let best = bests[streetKey()] || 0;
 let newBest = false;                /* this round beat the previous best (not merely equalled it) */
-try { best = parseInt(localStorage.getItem('bowlbandit.best') || '0', 10) || 0; } catch (e) {}
+let newStreets = [];                /* streets this round's score opened */
 
 function floater(x, y, str, colour, layer) {
   floaters.push({ x, y, str, colour, t: 0, layer: layer || 'street' });
@@ -339,9 +348,12 @@ function handleEvents() {
         Sfx.over();
         overAt = elapsed; rankRung = false;
         newBest = g.score > best;
+        newStreets = [];
         if (newBest) {
-          best = g.score;
-          try { localStorage.setItem('bowlbandit.best', String(best)); } catch (err) {}
+          const open = C.STREETS.filter(st => C.isUnlocked(st, bests));
+          best = bests[streetKey()] = g.score;
+          saveJSON('bowlbandit.bests', bests);
+          newStreets = C.STREETS.filter(st => C.isUnlocked(st, bests) && !open.includes(st));
         }
         break;
     }
@@ -1973,6 +1985,38 @@ setTimeout(checkForUpdate, 1500);
 function playRect() { return { x: DW / 2 - 180, y: DH * 0.6, w: 360, h: 108 }; }
 function howRect()  { const p = playRect(); return { x: DW / 2 - 150, y: p.y + p.h + 30, w: 300, h: 60 }; }
 
+/* The street picker: one row per street, under the tagline. Only after the
+   first-launch lesson, which is always on Marrow Street. */
+const STREET_ROW = { w: 600, h: 84, gap: 14 };
+const pickerOn = () => onboarded && C.STREETS.length > 1;
+function streetRect(i) {
+  const r = STREET_ROW;
+  return { x: DW / 2 - r.w / 2, y: DH * 0.45 + i * (r.h + r.gap), w: r.w, h: r.h };
+}
+function drawStreetPicker() {
+  C.STREETS.forEach((st, i) => {
+    const r = streetRect(i), open = C.isUnlocked(st, bests), on = st === g.street || st.id === g.street.id;
+    rr(r.x, r.y, r.w, r.h, 22);
+    fillStroke(on ? 'rgba(255,233,201,.16)' : 'rgba(18,12,36,.55)', on ? WARM : 'rgba(255,233,201,.22)', on ? 4 : 2.5);
+    const b = bests[st.id] || 0;
+    text(st.name, r.x + 28, r.y + (open ? 31 : 36), 30, open ? CREAM : 'rgba(255,233,201,.45)', 'left', 700);
+    if (open) text(b ? 'BEST ' + b + ' · ' + C.rankFor(b, st) : 'not played yet', r.x + 28, r.y + 62, 21, 'rgba(255,233,201,.6)', 'left', 600);
+    else      text(C.unlockHint(st), r.x + 28, r.y + 64, 20, 'rgba(255,233,201,.5)', 'left', 600);
+    if (!open) text('LOCKED', r.x + r.w - 28, r.y + r.h / 2, 21, 'rgba(255,233,201,.4)', 'right', 800);
+    else if (on) text('✓', r.x + r.w - 30, r.y + r.h / 2, 34, MINT, 'right', 800);
+  });
+}
+/* Swap the game to another street, between rounds. */
+function selectStreet(st) {
+  C.setStreet(g, st);
+  vis.length = 0;
+  for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake: 0, pop: 0 });
+  layout();
+  best = bests[streetKey()] || 0;
+  banner = null;
+  if (st.id) saveJSON('bowlbandit.street', st.id);
+}
+
 function drawTitle() {
   ctx.fillStyle = 'rgba(10,6,20,.78)';
   ctx.fillRect(0, 0, DW, DH);
@@ -1998,8 +2042,9 @@ function drawTitle() {
   ctx.fillStyle = 'rgba(255,233,201,.4)';
   ctx.fillRect(DW / 2 - 70, hr.y + hr.h / 2 + 18, 140, 2);
 
-  if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, hr.y + hr.h + 34, 22,
-                     'rgba(255,233,201,.5)', 'center', 600);
+  if (pickerOn()) drawStreetPicker();
+  else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, hr.y + hr.h + 34, 22,
+                          'rgba(255,233,201,.5)', 'center', 600);
   drawInstall();
   drawBuild();
 }
@@ -2050,6 +2095,11 @@ function drawStreetMap(cx, top, rowH) {
     ctx.restore();
   }
 }
+
+/* "Choose a street" on the results, once there is a choice to make */
+let chooseY = 0;
+const canChoose = () => onboarded && C.STREETS.filter(st => C.isUnlocked(st, bests)).length > 1;
+const chooseRect = () => ({ x: DW / 2 - 160, y: chooseY - 28, w: 320, h: 56 });
 
 function drawOver() {
   const t = elapsed - overAt;
@@ -2124,9 +2174,25 @@ function drawOver() {
   if (newBest) outlined('NEW BEST!', DW / 2, y, 30, MINT);
   else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 600);
 
+  if (newStreets.length) {
+    y += 38;
+    outlined('NEW STREET: ' + newStreets.map(st => st.name.toUpperCase()).join(' + '), DW / 2, y, 26, WARM);
+  }
+
   if (t > OVER_LOCK) {
-    ctx.globalAlpha = clamp((t - OVER_LOCK) / 0.4, 0, 1) * (0.72 + 0.28 * Math.sin(elapsed * 3));
-    outlined('TAP TO PROWL AGAIN', DW / 2, Math.min(DH - 74, y + (tight ? 56 : 76)), 36, CREAM);
+    const multi = canChoose();
+    const py = Math.min(DH - (multi ? 150 : 74), y + (tight ? 56 : 76));
+    ctx.globalAlpha = clamp((t - OVER_LOCK) / 0.4, 0, 1);
+    ctx.globalAlpha *= 0.72 + 0.28 * Math.sin(elapsed * 3);
+    outlined('TAP TO PROWL AGAIN', DW / 2, py, 36, CREAM);
+    ctx.globalAlpha = clamp((t - OVER_LOCK) / 0.4, 0, 1);
+    if (multi) {
+      chooseY = py + 66;
+      const r = chooseRect();
+      rr(r.x, r.y, r.w, r.h, r.h / 2);
+      fillStroke('rgba(255,233,201,.1)', 'rgba(255,233,201,.45)', 2.5);
+      text('Choose a street', DW / 2, r.y + r.h / 2, 24, 'rgba(255,233,201,.85)', 'center', 700);
+    }
     ctx.globalAlpha = 1;
   }
   drawBuild();
@@ -2244,11 +2310,18 @@ function onDown(ev) {
   if ((g.scene === 'title' || g.scene === 'over') && updateReady) { loadUpdate(true); return; }
   if (g.scene === 'title') {
     askForMotion();
+    if (pickerOn()) {
+      const i = C.STREETS.findIndex((st, i) => inside(p, streetRect(i)));
+      if (i >= 0) { if (C.isUnlocked(C.STREETS[i], bests) && C.STREETS[i].id !== g.street.id) selectStreet(C.STREETS[i]); Sfx.tap(); return; }
+    }
     if (inside(p, howRect()) || !onboarded) startTutorial();
     else { C.start(g); handleEvents(); }
     return;
   }
-  if (g.scene === 'over') { C.start(g); handleEvents(); return; }
+  if (g.scene === 'over') {
+    if (canChoose() && inside(p, chooseRect())) { C.toTitle(g); newStreets = []; Sfx.tap(); return; }
+    C.start(g); handleEvents(); return;
+  }
 
   if (tut) {
     if (inside(p, skipRect()) || tut.step === 'ready') { finishTutorial(); return; }
@@ -2336,6 +2409,12 @@ function frame(ts) {
   if (!MANUAL) requestAnimationFrame(frame);
 }
 
+/* Start on the street the player last chose, if it is still open to them. */
+{
+  const saved = C.streetById(loadJSON('bowlbandit.street', null));
+  if (saved && onboarded && !(DEBUG && window.__bbStreet) && saved !== g.street && C.isUnlocked(saved, bests)) selectStreet(saved);
+}
+
 fit();
 if (!MANUAL) requestAnimationFrame(frame);
 let manualT = 0;
@@ -2349,7 +2428,7 @@ if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: ()
 /* Keep a published page's best score across a republish, where the host
    supports it. */
 if (window.claude && window.claude.hot) {
-  window.claude.hot.snapshot(() => ({ best }));
+  window.claude.hot.snapshot(() => ({ best, bests }));
 }
 
 })();

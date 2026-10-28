@@ -80,4 +80,26 @@ console.log('\n=== TERRACE ROW: RANKS AND WORDING ===');
   ok(C.blurbFor(C.MARROW_STREET, 3) === C.WAVES[3].blurb, 'Marrow Street keeps the stock wave blurbs');
   ok(/STAG/.test(C.blurbFor(ST, ST.houses[PUB].venue.from)), 'the wave the pub opens in says so');
 }
+console.log('\n=== STREETS AND UNLOCKS ===');
+{
+  const M = C.MARROW_STREET, need = C.RANKS[ST.unlock.rank][0];
+  ok(C.STREETS[0] === M && C.STREETS.includes(ST) && new Set(C.STREETS.map(s => s.id)).size === C.STREETS.length, 'the street list starts with Marrow Street and every street has its own id');
+  ok(C.STREETS.every(s => C.validateStreet(s).length === 0), 'every listed street is valid');
+  ok(C.isUnlocked(M, {}), 'Marrow Street is always open');
+  ok(!C.isUnlocked(ST, {}) && !C.isUnlocked(ST, { marrow: need - 1 }), 'Terrace Row is shut until Marrow Street reaches ' + need);
+  ok(C.isUnlocked(ST, { marrow: need }) && C.isUnlocked(ST, { marrow: 99999 }), 'Terrace Row opens at exactly that score');
+  ok(!C.isUnlocked(ST, { terrace: 99999 }), 'a best on Terrace Row itself does not open it');
+  ok(C.unlockHint(ST) === 'Reach ' + C.RANKS[ST.unlock.rank][1] + ' on Marrow Street' && C.unlockHint(M) === '', 'the hint names the rank and the street');
+  ok(C.validateStreet(Object.assign({}, ST, { unlock: { street: 'x' } })).length > 0, 'the validator rejects a malformed unlock');
+  const g = C.create();
+  C.setStreet(g, ST);
+  ok(g.street.name === 'Terrace Row' && g.houses.length === 6 && g.scene === 'title', 'setStreet swaps the street on the title screen');
+  C.start(g);
+  let msg = ''; try { C.setStreet(g, M); } catch (e) { msg = e.message; }
+  ok(/in progress/.test(msg) && g.street.name === 'Terrace Row', 'setStreet refuses mid-round');
+  g.scene = 'over'; C.toTitle(g);
+  ok(g.scene === 'title', 'toTitle goes back from the results');
+  C.setStreet(g, M); C.start(g);
+  ok(g.houses.length === 8 && g.street === M, 'and back to Marrow Street');
+}
 report();

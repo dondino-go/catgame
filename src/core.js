@@ -51,6 +51,7 @@
  * house strip either side, and further off the houses would not fit.
  * Every house is listed once, in id order. */
 const MARROW_STREET = {
+  id: 'marrow',
   name: 'Marrow Street',
   rows: 4,
   roadX: 0.5,
@@ -78,7 +79,9 @@ const MARROW_STREET = {
  * has at most two terrace neighbours plus the pub, which is the three windows
  * the close-up has. The right-hand strip beside the pub is empty street. */
 const TERRACE_STREET = {
+  id: 'terrace',
   name: 'Terrace Row',
+  unlock: { street: 'marrow', rank: 2 },   // reach the third rung of Marrow Street's ladder
   rows: 5,
   roadX: 0.5,
   walk: { x: [0.29, 0.71], y: [0.2, 4.8] },
@@ -109,6 +112,11 @@ const TERRACE_STREET = {
   fox: { x: 0.5, ends: [-0.6, 5.6], patrol: { y: [0.3, 4.7], speed: 0.3 } },
 };
 
+/* The streets in the order the title screen lists them. Marrow Street is
+   always open; a street with `unlock` opens when the best score on the street
+   it names reaches that rung of that street's own ladder. */
+const STREETS = [MARROW_STREET, TERRACE_STREET];
+
 function deepFreeze(o) {
   if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze); }
   return o;
@@ -122,6 +130,9 @@ function validateStreet(st) {
   const num = v => typeof v === 'number' && isFinite(v);
   const pair = v => Array.isArray(v) && v.length === 2 && num(v[0]) && num(v[1]) && v[0] < v[1];
   if (!st || typeof st !== 'object') return ['street is not an object'];
+  if (st.id !== undefined && !(typeof st.id === 'string' && st.id)) bad.push('id must be a non-empty string');
+  if (st.unlock !== undefined && !(st.unlock && typeof st.unlock.street === 'string' && Number.isInteger(st.unlock.rank) && st.unlock.rank >= 1))
+    bad.push('unlock needs the id of a street and a rung (1 or more) of its ladder');
   if (!(Number.isInteger(st.rows) && st.rows > 0)) bad.push('rows must be a positive integer');
   if (!(num(st.roadX) && st.roadX >= 0.48 && st.roadX <= 0.52)) bad.push('roadX must be a number between 0.48 and 0.52');
   const walkOk = st.walk && pair(st.walk.x) && pair(st.walk.y);
@@ -282,6 +293,22 @@ const lerp  = (a, b, t) => a + (b - a) * t;
 const dist  = (x1, y1, x2, y2) => Math.hypot(x1 - x2, y1 - y2);
 const rand  = (g, a, b) => a + g.rng() * (b - a);
 
+/* bests: best score by street id. Whether a street is open, and what to tell
+   the player when it isn't. */
+function streetById(id) { return STREETS.find(s => s.id === id) || null; }
+function isUnlocked(street, bests) {
+  const u = street && street.unlock;
+  if (!u) return true;
+  const from = streetById(u.street);
+  if (!from) return false;
+  return ((bests && bests[from.id]) || 0) >= ranksOf(from)[Math.min(u.rank, ranksOf(from).length - 1)][0];
+}
+function unlockHint(street) {
+  const u = street && street.unlock, from = u && streetById(u.street);
+  if (!from) return '';
+  return 'Reach ' + ranksOf(from)[Math.min(u.rank, ranksOf(from).length - 1)][1] + ' on ' + from.name;
+}
+
 /* ---------- layout ---------- */
 function bowlSpot(h) { return { x: h.bowlAt.x, y: h.bowlAt.y }; }
 
@@ -331,15 +358,34 @@ function reset(g) {
 const makePractice = () => ({ holdBowl: false });
 
 /* opts: rng (seeded in tests), street (default Marrow Street), practice. */
-function create(opts) {
-  const street = (opts && opts.street) || MARROW_STREET;
+function adoptStreet(street) {
   const bad = validateStreet(street);
   if (bad.length) throw new Error('invalid street' + (street && street.name ? ' "' + street.name + '"' : '') + ': ' + bad.join('; '));
-  const g = { rng: (opts && opts.rng) || Math.random, street: deepFreeze(street === MARROW_STREET ? street : JSON.parse(JSON.stringify(street))),
+  return deepFreeze(STREETS.includes(street) ? street : JSON.parse(JSON.stringify(street)));
+}
+
+function create(opts) {
+  const g = { rng: (opts && opts.rng) || Math.random, street: adoptStreet((opts && opts.street) || MARROW_STREET),
              practice: opts && opts.practice ? makePractice() : null };
   reset(g);
   g.scene = 'title';           // title | play | caught | pickup | over
   return g;
+}
+
+/* The renderer owns one long-lived game, so choosing a street on the title
+   screen swaps it in place. Only between rounds: the street under a round in
+   progress never changes. */
+function setStreet(g, street) {
+  if (g.scene !== 'title' && g.scene !== 'over') throw new Error('setStreet: a round is in progress');
+  g.street = adoptStreet(street);
+  reset(g);
+}
+
+/* Back to the title screen from the results. */
+function toTitle(g) {
+  if (g.scene !== 'over') return;
+  reset(g);
+  g.scene = 'title';
 }
 
 function start(g) {
@@ -774,7 +820,7 @@ function update(g, dt) {
 }
 
 return {
-  MARROW_STREET, TERRACE_STREET, validateStreet, ROAD_HALF, PAVE_W,
+  MARROW_STREET, TERRACE_STREET, STREETS, streetById, isUnlocked, unlockHint, setStreet, toTitle, validateStreet, ROAD_HALF, PAVE_W,
   PRACTICE, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor, ranksOf, blurbFor, isOpen,
