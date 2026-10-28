@@ -109,6 +109,13 @@ const SCENES = {
     await a.game(() => { const g = window.__bb.g; g.eat.speed = 0; g.houses[4].state = 'stir'; g.houses[4].t = 9999; g.houses[3].state = 'watch'; g.houses[3].t = 9999; });
     await a.run(500);
   } },
+  /* a taller street's results: the map must still fit the card and the button */
+  'lane-results': { street: TEST_LANE, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
+    await a.game(() => { const g = window.__bb.g; g.score = 1520; g.bowlsCleared = 7; g.bites = 30; g.perfects = 9;
+      g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[2].angry = true; g.houses[2].bowl = null; g.timeLeft = 0.01; });
+    await a.run(9000);
+  } },
   'results': { setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
     await a.game(() => { const g = window.__bb.g; g.score = 2480; g.bowlsCleared = 12; g.bites = 51; g.perfects = 20;

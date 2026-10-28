@@ -132,12 +132,12 @@ const Sfx = {
  * the bowls, then a front garden and the house itself. Each house is drawn on
  * the side of the road the street description puts it (house.side), at its
  * row, facing the road; bowls are drawn where the description puts them. */
-const ROAD_HALF = 128;              /* half the road's width, in design units */
+const ROAD_HALF = Math.round(C.ROAD_HALF * DW);   /* half the road's width, in design units */
 const L = {};
 function layout() {
   L.hud    = 132;
   L.footer = 24;
-  L.paveW  = 44;
+  L.paveW  = Math.round(C.PAVE_W * DW);
   L.roadL  = sx(g.street.roadX) - ROAD_HALF;
   L.roadR  = sx(g.street.roadX) + ROAD_HALF;
   L.bodyW  = 150;
@@ -1595,7 +1595,9 @@ function tutGo(step) { tut.step = step; tut.t = 0; }
    bubble sits there), and not the bowl just eaten */
 const catSide = () => g.cat.x > g.street.roadX ? 1 : -1;   /* which side of the road the cat is nearer */
 function tutTarget() {
-  const ok = g.houses.filter(h => h.bowl && !h.angry && h.row > 0 && h !== tut.first);
+  const any = g.houses.filter(h => h.bowl && !h.angry && h !== tut.first);
+  const lower = any.filter(h => h.row > Math.min(...g.houses.map(x => x.row)));
+  const ok = lower.length ? lower : any;           /* a one-row street has no lower rows */
   ok.sort((a, b) => Math.abs(C.bowlSpot(a).y - g.cat.y) - Math.abs(C.bowlSpot(b).y - g.cat.y)
                     || (a.side === catSide() ? 0 : 1) - (b.side === catSide() ? 0 : 1));
   return ok[0];
@@ -1976,7 +1978,8 @@ function drawOver() {
 
   /* who still feeds you, laid out like the street */
   y += tight ? 42 : 56;
-  const rowH = tight ? 44 : 54;
+  /* tuned for four rows: a taller street's rows shrink to take the same height */
+  const rowH = (tight ? 44 : 54) * Math.min(1, 4 / g.street.rows);
   drawStreetMap(DW / 2, y, rowH);
   y += rowH * g.street.rows + (tight ? 30 : 40);
   const total = g.houses.length;
@@ -2026,9 +2029,11 @@ function draw() {
   ctx.save();
   pickupCamera();
   drawStreet();
-  /* lamps stand on the row boundaries, so they never sit on a bowl */
-  drawLamp(L.roadL + 14, sy(g.street.rows * 0.25), 1);
-  drawLamp(L.roadR - 14, sy(g.street.rows * 0.75), -1);
+  /* lamps stand on row boundaries (bowls are mid-row), a quarter and three
+     quarters of the way down, so they never sit on a bowl */
+  const rows = g.street.rows, boundary = f => clamp(Math.round(rows * f), 1, rows - 1);
+  drawLamp(L.roadL + 14, sy(boundary(0.25)), 1);
+  drawLamp(L.roadR - 14, sy(boundary(0.75)), -1);
 
   for (const h of g.houses) drawHouse(h);
   for (const h of g.houses) drawBowl(h);

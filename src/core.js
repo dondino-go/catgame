@@ -31,18 +31,22 @@
 
 /* ---------- streets ---------- *
  * house.col / house.row: grid position in house-spacings. Noise carries by
- *   this distance, and the renderer uses row to place the house along the road.
+ *   this distance. row also places the house along the road (and must agree
+ *   with its bowl: bowl.y = row + 0.5).
  * house.side: -1 if the house is left of the road, +1 if right. Which way it
  *   faces, and where the renderer draws it.
- * house.bowl: where its bowl sits, in world units.
+ * house.bowl: where its bowl sits, in world units: on the pavement of the
+ *   house's own side of the road.
  * house.neighbours: ids of the houses that can see its bowl (and whose bowls
  *   it can see). Must be mutual.
- * walk: the rectangle the cat may be sent to; every bowl is inside it.
+ * walk: the rectangle the cat may be sent to; every bowl is inside it, and it
+ *   stays on the road and pavements.
  * dog.ends / fox.ends: y the animal enters at, one per end of the road (the
  *   first is "from the top"); it runs to the other and is gone `overrun`
  *   past it. fox.patrol: the stretch it mooches along when nothing is worth
  *   robbing. Both travel along the vertical line x = `x`.
- * A house has at most three neighbours: the eating close-up has three windows.
+ * A house has one to three neighbours: the close-up has three windows, and the
+ * practice night needs someone to watch.
  * roadX stays within 2% of the middle: the renderer draws the road there with a
  * house strip either side, and further off the houses would not fit.
  * Every house is listed once, in id order. */
@@ -83,6 +87,10 @@ function validateStreet(st) {
   if (!(num(st.roadX) && st.roadX >= 0.48 && st.roadX <= 0.52)) bad.push('roadX must be a number between 0.48 and 0.52');
   const walkOk = st.walk && pair(st.walk.x) && pair(st.walk.y);
   if (!walkOk) bad.push('walk needs x and y ranges, [min, max]');
+  /* the road and both pavements, as the renderer draws them around roadX */
+  const kerb = num(st.roadX) ? ROAD_HALF + PAVE_W : 0, eps = 1e-9;
+  if (walkOk && num(st.roadX) && (st.walk.x[0] < st.roadX - kerb - eps || st.walk.x[1] > st.roadX + kerb + eps))
+    bad.push('walk.x must stay on the road and pavements');
   const inWalk = p => walkOk && p && num(p.x) && num(p.y) &&
     p.x >= st.walk.x[0] && p.x <= st.walk.x[1] && p.y >= st.walk.y[0] && p.y <= st.walk.y[1];
   if (!(st.catStart && inWalk(st.catStart))) bad.push('catStart must be inside the walkable area');
@@ -94,15 +102,26 @@ function validateStreet(st) {
     if (!h || !num(h.col) || !num(h.row)) { bad.push(at + ': col and row must be numbers'); return; }
     if (h.side !== -1 && h.side !== 1) bad.push(at + ': side must be -1 (left of the road) or 1 (right)');
     if (!inWalk(h.bowl)) bad.push(at + ': bowl must be inside the walkable area');
+    else if (num(st.roadX)) {
+      /* on its own side's pavement: between the kerb and the road's edge */
+      const d = (h.bowl.x - st.roadX) * h.side;
+      if (!(d >= ROAD_HALF - eps && d <= kerb + eps)) bad.push(at + ': bowl must stand on the pavement on its own side of the road');
+    }
+    if (!(h.row >= 0 && h.row < st.rows) || Math.abs(h.bowl.y - (h.row + 0.5)) > eps) bad.push(at + ': bowl.y must be row + 0.5, inside the street');
     if (!Array.isArray(h.neighbours)) { bad.push(at + ': neighbours must be a list'); return; }
     if (new Set(h.neighbours).size !== h.neighbours.length) bad.push(at + ': neighbours repeat');
-    if (h.neighbours.length > 3) bad.push(at + ': at most 3 neighbours (the close-up has three windows)');
+    if (h.neighbours.length < 1 || h.neighbours.length > 3) bad.push(at + ': needs one to three neighbours (the close-up has three windows, the practice night someone to watch)');
     for (const n of h.neighbours) {
       if (!Number.isInteger(n) || n < 0 || n >= hs.length) bad.push(at + ': neighbour ' + n + ' is not a house id');
       else if (n === id) bad.push(at + ': is its own neighbour');
       else if (!(hs[n] && hs[n].neighbours || []).includes(id)) bad.push(at + ': neighbour ' + n + ' does not list it back');
     }
   });
+  /* a house's whole strip is its tap target, so two on one side must not overlap */
+  hs.forEach((a, i) => hs.forEach((b, j) => {
+    if (j > i && a && b && a.side === b.side && a.bowl && b.bowl && Math.abs(a.bowl.y - b.bowl.y) < 1 - eps)
+      bad.push('houses ' + i + ' and ' + j + ' overlap: same-side houses need bowls at least one row apart');
+  }));
   const ends = o => o && Array.isArray(o.ends) && o.ends.length === 2 && o.ends.every(num) && o.ends[0] !== o.ends[1];
   if (!(st.dog && num(st.dog.x) && ends(st.dog) && num(st.dog.overrun) && st.dog.overrun >= 0)) bad.push('dog needs x, two ends and an overrun');
   const pt = st.fox && st.fox.patrol;
@@ -172,6 +191,13 @@ function rankFor(score) {
   for (const [min, name] of RANKS) if (score >= min) r = name;
   return r;
 }
+
+/* How wide the renderer draws the road and its pavements, as fractions of the
+   street's width (128 and 44 of the 720 design units). The validator needs them
+   to know where a bowl can stand, and the renderer reads them from here so the
+   two cannot disagree. */
+const ROAD_HALF = 128 / 720;
+const PAVE_W    = 44 / 720;
 
 const CAT_SPEED = 1.4;        // world units per second
 const FOX_SPEED = 0.7;        // slower than the cat: you can beat it to a bowl
@@ -673,7 +699,7 @@ function update(g, dt) {
 }
 
 return {
-  MARROW_STREET, validateStreet,
+  MARROW_STREET, validateStreet, ROAD_HALF, PAVE_W,
   PRACTICE, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor,
