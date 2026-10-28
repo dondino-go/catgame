@@ -18,12 +18,24 @@ const C = window.BowlCore;
 /* ---------- palette ---------- */
 const STROKE = 0.8;                 /* every stroke scales by this one number */
 const INK      = '#2a1b3d';
-const NIGHT    = '#191030';
-const ROAD     = '#3d2f5e';
-const ROAD_2   = '#4a3a70';
-const PAVE     = '#6b5c93';
-const PAVE_LIP = '#8576b4';
-const GRASS    = '#3f6b4e';
+let NIGHT    = '#191030';
+let ROAD     = '#3d2f5e';
+let ROAD_2   = '#4a3a70';
+let PAVE     = '#6b5c93';
+let PAVE_LIP = '#8576b4';
+let GRASS    = '#3f6b4e';
+
+/* A street may repaint itself (street.look): its own colours for the ground,
+   a wash of light over the whole street (an evening is warm, a night is not),
+   a vignette, and how brightly the lamps glow. Unset fields keep Marrow
+   Street's night. */
+const LOOK_DEFAULT = { night: '#191030', road: '#3d2f5e', road2: '#4a3a70', pave: '#6b5c93', paveLip: '#8576b4',
+                       grass: '#3f6b4e', wash: null, vignette: 0.42, lamp: 1 };
+let LOOK = LOOK_DEFAULT;
+function applyLook(st) {
+  LOOK = Object.assign({}, LOOK_DEFAULT, st.look || {});
+  NIGHT = LOOK.night; ROAD = LOOK.road; ROAD_2 = LOOK.road2; PAVE = LOOK.pave; PAVE_LIP = LOOK.paveLip; GRASS = LOOK.grass;
+}
 const WARM     = '#ffd978';
 const MINT     = '#9df5c8';
 const ALARM    = '#ff7d7d';
@@ -132,14 +144,15 @@ const Sfx = {
  * the bowls, then a front garden and the house itself. Each house is drawn on
  * the side of the road the street description puts it (house.side), at its
  * row, facing the road; bowls are drawn where the description puts them. */
-const ROAD_HALF = Math.round(C.ROAD_HALF * DW);   /* half the road's width, in design units */
 const L = {};
 function layout() {
+  applyLook(g.street);
   L.hud    = 132;
   L.footer = 24;
   L.paveW  = Math.round(C.PAVE_W * DW);
-  L.roadL  = sx(g.street.roadX) - ROAD_HALF;
-  L.roadR  = sx(g.street.roadX) + ROAD_HALF;
+  const roadHalf = Math.round(C.roadHalfOf(g.street) * DW);   /* half the road's width, in design units */
+  L.roadL  = sx(g.street.roadX) - roadHalf;
+  L.roadR  = sx(g.street.roadX) + roadHalf;
   L.bodyW  = 150;
   L.top    = L.hud;
   L.bot    = DH - L.footer;
@@ -462,6 +475,7 @@ function drawLamp(x, y, dir) {
   const hx = x + dir * 36, hy = y - 11, gy = y + 40;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = LOOK.lamp;
   const halo = ctx.createRadialGradient(hx, hy, 4, hx, hy, 46);
   halo.addColorStop(0, 'rgba(255,220,140,.35)');
   halo.addColorStop(1, 'rgba(255,220,140,0)');
@@ -2227,10 +2241,18 @@ function draw() {
   drawFloaters('street');
   ctx.restore();
 
+  /* the street's light: a wash over everything, top to bottom */
+  if (LOOK.wash) {
+    const wg = ctx.createLinearGradient(0, 0, 0, DH);
+    wg.addColorStop(0, LOOK.wash[0]); wg.addColorStop(1, LOOK.wash[1]);
+    ctx.fillStyle = wg;
+    ctx.fillRect(0, 0, DW, DH);
+  }
+
   /* vignette, to push the eye down the middle of the street */
   const vg = ctx.createRadialGradient(DW / 2, DH / 2, DH * 0.3, DW / 2, DH / 2, DH * 0.74);
   vg.addColorStop(0, 'rgba(0,0,0,0)');
-  vg.addColorStop(1, 'rgba(0,0,0,.42)');
+  vg.addColorStop(1, 'rgba(0,0,0,' + LOOK.vignette + ')');
   ctx.fillStyle = vg;
   ctx.fillRect(0, 0, DW, DH);
 

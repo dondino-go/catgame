@@ -47,6 +47,8 @@
  *   robbing. Both travel along the vertical line x = `x`.
  * A house has one to three neighbours: the close-up has three windows, and the
  * practice night needs someone to watch.
+ * look (renderer only, optional): colours and mood, see LOOK in game.js.
+ * roadHalf (optional): half the road's width as a fraction of the street's.
  * roadX stays within 2% of the middle: the renderer draws the road there with a
  * house strip either side, and further off the houses would not fit.
  * Every house is listed once, in id order. */
@@ -138,7 +140,11 @@ function validateStreet(st) {
   const walkOk = st.walk && pair(st.walk.x) && pair(st.walk.y);
   if (!walkOk) bad.push('walk needs x and y ranges, [min, max]');
   /* the road and both pavements, as the renderer draws them around roadX */
-  const kerb = num(st.roadX) ? ROAD_HALF + PAVE_W : 0, eps = 1e-9;
+  if (st.roadHalf !== undefined && !(num(st.roadHalf) && st.roadHalf >= 0.1 && st.roadHalf <= ROAD_HALF))
+    bad.push('roadHalf must be a number from 0.1 up to ' + ROAD_HALF.toFixed(3) + ' (the houses need room beside a wider road)');
+  if (st.look !== undefined && !(st.look && typeof st.look === 'object' && !Array.isArray(st.look))) bad.push('look must be an object');
+  const half = roadHalfOf(st);
+  const kerb = num(st.roadX) ? half + PAVE_W : 0, eps = 1e-9;
   if (walkOk && num(st.roadX) && (st.walk.x[0] < st.roadX - kerb - eps || st.walk.x[1] > st.roadX + kerb + eps))
     bad.push('walk.x must stay on the road and pavements');
   const inWalk = p => walkOk && p && num(p.x) && num(p.y) &&
@@ -171,7 +177,7 @@ function validateStreet(st) {
     else if (num(st.roadX)) {
       /* on its own side's pavement: between the kerb and the road's edge */
       const d = (h.bowl.x - st.roadX) * h.side;
-      if (!(d >= ROAD_HALF - eps && d <= kerb + eps)) bad.push(at + ': bowl must stand on the pavement on its own side of the road');
+      if (!(d >= half - eps && d <= kerb + eps)) bad.push(at + ': bowl must stand on the pavement on its own side of the road');
     }
     if (!(h.row >= 0 && h.row < st.rows) || Math.abs(h.bowl.y - (h.row + 0.5)) > eps) bad.push(at + ': bowl.y must be row + 0.5, inside the street');
     if (!Array.isArray(h.neighbours)) { bad.push(at + ': neighbours must be a list'); return; }
@@ -273,6 +279,9 @@ function blurbFor(street, idx) {
    to know where a bowl can stand, and the renderer reads them from here so the
    two cannot disagree. */
 const ROAD_HALF = 128 / 720;
+/* A street may have a narrower road (street.roadHalf), which leaves its houses
+   deeper gardens. Not wider: the houses would not fit beside it. */
+function roadHalfOf(st) { return st && typeof st.roadHalf === 'number' ? st.roadHalf : ROAD_HALF; }
 const PAVE_W    = 44 / 720;
 
 const CAT_SPEED = 1.4;        // world units per second
@@ -820,7 +829,7 @@ function update(g, dt) {
 }
 
 return {
-  MARROW_STREET, TERRACE_STREET, STREETS, streetById, isUnlocked, unlockHint, setStreet, toTitle, validateStreet, ROAD_HALF, PAVE_W,
+  MARROW_STREET, TERRACE_STREET, STREETS, streetById, isUnlocked, unlockHint, setStreet, toTitle, validateStreet, ROAD_HALF, roadHalfOf, PAVE_W,
   PRACTICE, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor, ranksOf, blurbFor, isOpen,
