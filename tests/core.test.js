@@ -476,6 +476,14 @@ console.log('\n=== STREET DESCRIPTION ===');
   ok(has(problems(st => delete st.dog), 'dog'), 'validator: the dog needs a route');
   ok(has(problems(st => st.fox.patrol.speed = 0), 'patrol'), 'validator: the fox needs a patrol');
   ok(C.validateStreet(null).length > 0, 'validator: not an object');
+  ok(has(problems(st => { st.houses[0].neighbours = [1, 8]; st.houses.push(null); }), 'house'), 'validator: a null house is reported, not thrown on');
+  ok(has(problems(st => st.fox.patrol.y = [0.3, 5]), 'between'), 'validator: the fox patrol lies between its ends');
+  ok(C.validateStreet(C.MARROW_STREET).length === 0 && Object.isFrozen(C.MARROW_STREET) && Object.isFrozen(C.MARROW_STREET.houses[0].bowl), 'Marrow Street is deep-frozen');
+  {
+    const src = clone(), own = C.create({ street: src });
+    src.houses[0].neighbours.push(99);
+    ok(own.street !== src && own.street.houses[0].neighbours.length === 2 && Object.isFrozen(own.street), 'create() keeps its own frozen copy of a custom street');
+  }
   let msg = '';
   try { C.create({ street: Object.assign(clone(), { houses: [] }) }); } catch (e) { msg = e.message; }
   ok(/invalid street "Marrow Street"/.test(msg), 'create() refuses an invalid street and says why');
@@ -558,6 +566,18 @@ console.log('\n=== PRACTICE NIGHT ===');
   g = fresh(); sitAt(g, 0);
   C.practiceResident(g, 1, 'watch'); C.practiceBowl(g, 0, 9); C.practiceHoldBowl(g, true);
   ok(g.houses[1].state !== 'watch' && g.houses[0].bowl.food !== 9 && !g.practice, 'the practice helpers do nothing in a normal round');
+
+  g = mk();
+  const shape = JSON.stringify(g.practice);
+  ok(shape === JSON.stringify(C.create({ practice: true }).practice) && (C.setPractice(g, true), JSON.stringify(g.practice) === shape), 'practice state has one shape however it is made');
+  let errs = [];
+  for (const f of [() => C.practiceResident(g, 99, 'watch'), () => C.practiceResident(g, 0, 'wacth'), () => C.practiceBowl(g, 99, 3)]) {
+    try { f(); errs.push(''); } catch (e) { errs.push(e.message); }
+  }
+  ok(errs.every(Boolean), 'practice helpers reject an unknown house or state: ' + errs.join(' | '));
+  g.houses[0].bowl = null;
+  let nb = ''; try { C.practiceBowl(g, 0, 3); } catch (e) { nb = e.message; }
+  ok(/no bowl/.test(nb), 'practiceBowl says so when the house has no bowl');
 
   g = fresh(); C.setPractice(g, true); C.start(g);
   ok(!!g.practice && !g.practice.holdBowl, 'setPractice turns practice on for the next start()');

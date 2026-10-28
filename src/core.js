@@ -61,6 +61,12 @@ const MARROW_STREET = {
   fox: { x: 0.5, ends: [-0.6, 4.6], patrol: { y: [0.3, 3.7], speed: 0.3 } },
 };
 
+function deepFreeze(o) {
+  if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze); }
+  return o;
+}
+deepFreeze(MARROW_STREET);   // shared by every default game: nothing may edit it mid-round
+
 /* Everything wrong with a street, as a list of messages (empty if it is fine).
    create() throws on a non-empty list; tests and tools can read it. */
 function validateStreet(st) {
@@ -87,7 +93,7 @@ function validateStreet(st) {
     for (const n of h.neighbours) {
       if (!Number.isInteger(n) || n < 0 || n >= hs.length) bad.push(at + ': neighbour ' + n + ' is not a house id');
       else if (n === id) bad.push(at + ': is its own neighbour');
-      else if (!(hs[n].neighbours || []).includes(id)) bad.push(at + ': neighbour ' + n + ' does not list it back');
+      else if (!(hs[n] && hs[n].neighbours || []).includes(id)) bad.push(at + ': neighbour ' + n + ' does not list it back');
     }
   });
   const ends = o => o && Array.isArray(o.ends) && o.ends.length === 2 && o.ends.every(num) && o.ends[0] !== o.ends[1];
@@ -95,6 +101,8 @@ function validateStreet(st) {
   const pt = st.fox && st.fox.patrol;
   if (!(st.fox && num(st.fox.x) && ends(st.fox))) bad.push('fox needs x and two ends');
   if (!(pt && pair(pt.y) && num(pt.speed) && pt.speed > 0)) bad.push('fox.patrol needs a y range and a speed');
+  else if (ends(st.fox) && (pt.y[0] < Math.min(...st.fox.ends) || pt.y[1] > Math.max(...st.fox.ends)))
+    bad.push('fox.patrol.y must lie between the fox\'s ends');
   return bad;
 }
 
@@ -218,15 +226,19 @@ function reset(g) {
   g.spot = { heat: 0, by: null };
   g.dog = null; g.dogTimer = 0; g.fox = null;
   g.events = [];
-  g.practice = g.practice ? { holdBowl: false } : null;
+  g.practice = g.practice ? makePractice() : null;
 }
+
+/* The practice script's state: one shape, built here and nowhere else. */
+const makePractice = () => ({ holdBowl: false });
 
 /* opts: rng (seeded in tests), street (default Marrow Street), practice. */
 function create(opts) {
   const street = (opts && opts.street) || MARROW_STREET;
   const bad = validateStreet(street);
   if (bad.length) throw new Error('invalid street' + (street && street.name ? ' "' + street.name + '"' : '') + ': ' + bad.join('; '));
-  const g = { rng: (opts && opts.rng) || Math.random, street, practice: opts && opts.practice ? {} : null };
+  const g = { rng: (opts && opts.rng) || Math.random, street: deepFreeze(street === MARROW_STREET ? street : JSON.parse(JSON.stringify(street))),
+             practice: opts && opts.practice ? makePractice() : null };
   reset(g);
   g.scene = 'title';           // title | play | caught | pickup | over
   return g;
@@ -240,7 +252,7 @@ function start(g) {
 
 /* The renderer owns one long-lived game and flips practice on and off around
    the first-launch lesson; the next start() applies it. */
-function setPractice(g, on) { g.practice = on ? {} : null; }
+function setPractice(g, on) { g.practice = on ? makePractice() : null; }
 
 function emit(g, type, data) { g.events.push(Object.assign({ type }, data)); }
 function drainEvents(g) { return g.events.splice(0); }
@@ -392,14 +404,21 @@ function updateHouses(g, dt) {
    leave them there until told otherwise. */
 function practiceResident(g, id, state) {
   if (!g.practice) return;
-  const h = g.houses[id];
+  if (!['idle', 'stir', 'watch'].includes(state)) throw new Error('practiceResident: unknown state ' + state);
+  const h = practiceHouse(g, 'practiceResident', id);
   h.state = state; h.t = Infinity;
 }
-/* Practice night only: give a house a bowl of n bites. */
+/* Practice night only: give a house with a bowl n bites. */
 function practiceBowl(g, id, n) {
   if (!g.practice) return;
+  const h = practiceHouse(g, 'practiceBowl', id);
+  if (!h.bowl) throw new Error('practiceBowl: house ' + id + ' has no bowl');
+  h.bowl.food = n; h.bowl.max = n;
+}
+function practiceHouse(g, who, id) {
   const h = g.houses[id];
-  if (h.bowl) { h.bowl.food = n; h.bowl.max = n; }
+  if (!h) throw new Error(who + ': no house ' + id);
+  return h;
 }
 /* Practice night only: while held, bites never empty the bowl. */
 function practiceHoldBowl(g, on) {
