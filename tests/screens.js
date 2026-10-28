@@ -148,17 +148,36 @@ async function countDiff(browser, a, b) {
   if (!fs.existsSync(OUT)) fs.mkdirSync(OUT, { recursive: true });
   let fail = 0;
   console.log('\n=== REFERENCE SCREENSHOTS ===');
+  const retried = [];
   for (const [name, opts] of Object.entries(SCENES)) {
-    const png = await scene(browser, name, opts);
+    const mark = CHECKS.length;
+    let png = await scene(browser, name, opts);
     const ref = path.join(REF, name + '.png');
     if (UPDATE || !fs.existsSync(ref)) { fs.writeFileSync(ref, png); console.log('  REC  ' + name); continue; }
-    const off = await countDiff(browser, fs.readFileSync(ref), png);
+    let off = await countDiff(browser, fs.readFileSync(ref), png);
+    if (off !== 0) {
+      /* Unchanged screens have failed by a few dozen pixels about one run in
+         three (#21), and the cause isn't found. Render once more: a real
+         change fails both times, a flake rarely does. The first render is
+         kept so the flake can still be studied. */
+      fs.writeFileSync(path.join(OUT, name + '.first.png'), png);
+      const first = off;
+      CHECKS.length = mark;                 // the retry runs the scene's own checks again
+      png = await scene(browser, name, opts);
+      off = await countDiff(browser, fs.readFileSync(ref), png);
+      if (off === 0) {
+        retried.push(name);
+        console.log('  PASS ' + name + ' (needed a retry: the first render differed by ' + first + ' pixels, kept in tests/screens/out/' + name + '.first.png)');
+        continue;
+      }
+    }
     if (off === 0) console.log('  PASS ' + name);
     else { fail++; fs.writeFileSync(path.join(OUT, name + '.png'), png);
-           console.log('  FAIL ' + name + ': ' + off + ' pixels changed (new render in tests/screens/out/)'); }
+           console.log('  FAIL ' + name + ': ' + off + ' pixels changed, on both renders (new render in tests/screens/out/)'); }
   }
   await browser.close();
   for (const [what, good] of CHECKS) { console.log('  ' + (good ? 'PASS ' : 'FAIL ') + what); if (!good) fail++; }
+  if (retried.length) console.log('\n' + retried.length + ' screen(s) needed a retry: ' + retried.join(', ') + ' (see #21)');
   console.log(fail ? '\n' + fail + ' screen(s) changed' : '\nAll screens identical.');
   process.exit(fail ? 1 : 0);
 })();

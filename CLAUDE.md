@@ -24,8 +24,8 @@ into the feature branch (`claude/new-streets`), not the other way round.
 - Next, on `claude/new-streets`: Phase 3 walking routes (#7), the first new
   street, a terrace with a pub opposite (#8; a straight road, so it doesn't
   need #7), then more streets (#12) and minigames (#9).
-- Open follow-ups: review findings #16 to #20, the flaky screenshot tests
-  (#21), art style feedback being collected (#22), and the playtest checklist
+- Open follow-ups: review findings #16 to #20, the screenshot flake (#21,
+  mitigated by a retry, cause unknown), art style feedback being collected (#22), and the playtest checklist
   (#13).
 - A new street is a description checked by `validateStreet` (see
   `tests/streets.js` for an odd-shaped one), with its own sight-line test,
@@ -165,9 +165,14 @@ last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 finding
 - `node tests/screens.js --update` re-records **every** screen, Marrow ones
   included. To change one reference, delete just that PNG and rerun (or
   `git checkout` the others afterwards).
-- The screenshot tests flake about one run in three (#21), on screens that
-  haven't changed (`results` 53 pixels, `eating-seen` 8, `title` 28). Rerun
-  before believing a failure, and compare the saved `tests/screens/out/` image.
+- The screenshot tests used to flake about one run in three (#21), on screens
+  that hadn't changed (`results` 53 pixels, `eating-seen` 8, `title` 28); the
+  cause was never found and it stopped reproducing (about 80 clean runs). A
+  failing screen is now rendered once more, and a pass on the retry is
+  reported as "needed a retry", with the first render kept in
+  `tests/screens/out/<name>.first.png`. A real change fails both renders. If
+  the retry notice appears often, the flake is back: compare that image with
+  the reference and add what you find to #21.
 - A new session can't overwrite the preview until it has read the files
   already published there (Artifact `read` with `paths`), and may start on a
   detached HEAD or a random `claude/...` branch: check `git status -sb` and
