@@ -7,10 +7,10 @@ build step, no dependencies (Playwright is used by one optional test only).
 > **On `main`?** This branch still holds only the original desktop game
 > (`index.html`) and its tests. The mobile game, the tools and the tests
 > described below live on the `claude/` branches: check out
-> `claude/data-driven-streets` for refactor work, or `claude/mobile-redesign`
-> for playtest fixes, before changing anything. This copy of CLAUDE.md is
-> kept here so every session sees these rules; the branch copies are the
-> source of truth.
+> `claude/new-streets` for new features, or `claude/mobile-redesign` for
+> playtest fixes, before changing anything. This copy of CLAUDE.md is kept
+> here so every session sees these rules; the branch copies are the source
+> of truth.
 
 ## Branches: read this before committing
 
@@ -18,18 +18,38 @@ build step, no dependencies (Playwright is used by one optional test only).
 |---|---|
 | `main` | The original desktop game (`index.html`). Untouched since the redesign began, apart from this file. |
 | `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
-| `claude/data-driven-streets` | Refactor making the street a data description, so new streets and minigames can be added. |
+| `claude/new-streets` | Where new features are built (new streets, minigames), branched from `claude/mobile-redesign`. Merged back after a preview and a `/code-review`. |
+| `claude/data-driven-streets` | The refactor that made the street a data description (Phases 1 and 2). **Merged into `claude/mobile-redesign`; don't commit here any more.** |
 
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
-into the refactor branch, not the other way round.
+into the feature branch (`claude/new-streets`), not the other way round.
+
+## Where things stand
+
+- Phases 1 (#5: the rules read a street description) and 2 (#6: the renderer
+  reads it) of the data-driven refactor are done, reviewed and live on
+  `claude/mobile-redesign`. Marrow Street plays and looks exactly as before.
+- Next, on `claude/new-streets`: Phase 3 walking routes (#7), the first new
+  street, a terrace with a pub opposite (#8; a straight road, so it doesn't
+  need #7), then more streets (#12) and minigames (#9).
+- Open follow-ups: review findings #16 to #20, the flaky screenshot tests
+  (#21), art style feedback being collected (#22), and the playtest checklist
+  (#13).
+- A new street is a description checked by `validateStreet` (see
+  `tests/streets.js` for an odd-shaped one), with its own sight-line test,
+  golden playthroughs and screenshots, a preview, and a `/code-review`.
 
 ## Layout
 
-- `src/core.js`: the rules. No canvas, DOM, audio or timers. Owns all game
-  state; the renderer drives it with `update(g, dt)` and `tapHouse` /
+- `src/core.js`: the rules. No canvas, DOM, audio or timers. The street is a
+  data description (`MARROW_STREET`, checked by `validateStreet`; `create()`
+  takes a `street`) and the practice night is a core option
+  (`create({ practice })`). Owns all game state; the renderer drives it with `update(g, dt)` and `tapHouse` /
   `tapRoad` / `tapEat`, reads state to draw, and drains `g.events` for sound
   and animation. UMD: `require()` in Node, `window.BowlCore` in the browser.
-- `src/game.js`: the renderer and input. Everything is drawn in code. Holds
+- `src/game.js`: the renderer and input. Everything is drawn in code, from
+  `g.street` (houses by side of the road and row, bowls, road position), not
+  from Marrow Street's shape. Holds
   presentation-only state (eased glows, floaters, the practice night, hints).
 - `src/version.js`: **generated** build stamp. Never edit by hand.
 - `mobile.html`, `manifest.webmanifest`, `sw.js`, `icons/`: the installable
@@ -65,10 +85,14 @@ steps frames itself with `__bb.advance(seconds)`.
   Any change that alters play fails it. If the change is intended, re-record
   with `--update` and say so in the commit message. During the refactor the
   logs must not change at all.
-- `tests/screens.js`: six key screens rendered in `?manual` mode and compared
-  with `tests/screens/*.png` (pixel differences over 48/255 fail). Re-record
-  with `--update` only for intended visual changes. Output goes to
-  `tests/screens/out/` (git-ignored).
+- `tests/screens.js`: key screens rendered in `?manual` mode and compared
+  with `tests/screens/*.png` (pixel differences over 48/255 fail). Six are
+  Marrow Street; two (`lane-*`) run on the odd-shaped test street in
+  `tests/streets.js`, handed to the page as `window.__bbStreet` under `?debug`,
+  and also check that taps land on the houses as drawn. Re-record with
+  `--update` only for intended visual changes, and never re-record a Marrow
+  screen during the refactor. Output goes to `tests/screens/out/`
+  (git-ignored).
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
@@ -131,7 +155,7 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `bcc0f84` (`claude/mobile-redesign` against `main`, high, 10 findings; 1-7 fixed in `69b99dd`)
+last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 findings; 1-6 fixed in `77f61cc`, 3 filed as issues)
 
 ## Things learnt the hard way
 
@@ -146,3 +170,19 @@ last reviewed: `bcc0f84` (`claude/mobile-redesign` against `main`, high, 10 find
   the server's build stamp on resume and reloads on the title screen.
 - For visual changes, render options side by side and let the user pick,
   rather than guessing in successive pushes.
+- `node tests/screens.js --update` re-records **every** screen, Marrow ones
+  included. To change one reference, delete just that PNG and rerun (or
+  `git checkout` the others afterwards).
+- The screenshot tests flake about one run in three (#21), on screens that
+  haven't changed (`results` 53 pixels, `eating-seen` 8, `title` 28). Rerun
+  before believing a failure, and compare the saved `tests/screens/out/` image.
+- A new session can't overwrite the preview until it has read the files
+  already published there (Artifact `read` with `paths`), and may start on a
+  detached HEAD or a random `claude/...` branch: check `git status -sb` and
+  switch to the branch you were asked to use before committing.
+- A docs-only commit to `claude/mobile-redesign` skips the restamp
+  (`git -c core.hooksPath=/dev/null commit ...`), so the build stamp testers
+  see still matches the last change to the game and nobody is prompted to
+  reload for nothing.
+- `pkill -f tests/screens.js` also kills the shell command that contains that
+  text. Wait for a background run or stop it by its task id.
