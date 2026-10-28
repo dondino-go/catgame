@@ -21,14 +21,17 @@ into the feature branch (`claude/new-streets`), not the other way round.
 - Phases 1 (#5: the rules read a street description) and 2 (#6: the renderer
   reads it) of the data-driven refactor are done, reviewed and live on
   `claude/mobile-redesign`. Marrow Street plays and looks exactly as before.
-- On `claude/new-streets`: Terrace Row, the first new street (#8), is built:
-  five terrace houses and a pub opposite that watches every bowl from wave 3
-  (a `venue` house: no bowl, watch only), per-street ranks and wave wording,
-  a street picker on the title screen, a best score per street, and Terrace
-  Row unlocking at Bin Lid Regular (700, eased for playtesting; Street Sweetheart, 1400, was the first bar) on Marrow Street. It still needs a
-  preview, a playtest and a `/code-review` before it goes to
-  `claude/mobile-redesign`. Next: Phase 3 walking routes (#7), then more
-  streets (#12) and minigames (#9).
+- Terrace Row, the first new street (#8), is live on `claude/mobile-redesign`
+  and tagged "work in progress" in the picker for testers (`wip: true` on the
+  street; remove it when the street is done). Five brick terrace houses on a
+  narrow road at a warm evening, and a pub opposite that watches every bowl
+  from wave 3 (a `venue` house: no bowl, watch only) with a bus stop and a beer
+  garden beside it (`scenery`). It has its own ranks, wave wording, picker row,
+  best score and unlock (Bin Lid Regular, 700, on Marrow Street: eased for
+  playtesting, the first bar was Street Sweetheart, 1400). Shipped before its
+  `/code-review`, which is still owed. #8 stays open until it is playtested.
+  Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
+  Undecided: whether the eating screen should follow each street's look (#23).
 - Open follow-ups: review findings #16 to #20, the screenshot flake (#21,
   mitigated by a retry, cause unknown), art style feedback being collected
   (#22), and the playtest checklist
