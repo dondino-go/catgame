@@ -125,7 +125,7 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `bcc0f84` (`claude/mobile-redesign` against `main`, high, 10 findings; 1-7 fixed in `69b99dd`)
+last reviewed: `c128224` (`claude/data-driven-streets`, Phase 1, high, 7 findings; 4 fixed in `b1ca814`, 3 filed as issues)
 
 ## Things learnt the hard way
 
