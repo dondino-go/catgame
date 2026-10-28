@@ -68,4 +68,16 @@ console.log('\n=== TERRACE ROW: THE PUB ===');
   for (let i = 0; i < 60 * 5; i++) C.update(g, DT);
   ok(!g.houses[PUB].bowl, 'the pub never grows a bowl');
 }
+console.log('\n=== TERRACE ROW: RANKS AND WORDING ===');
+{
+  const R = ST.ranks;
+  ok(R.length === C.RANKS.length && R.every((r, i) => i === 0 || r[0] > R[i - 1][0]), 'the terrace ladder has as many rungs as Marrow\'s, rising');
+  ok(C.rankFor(0, ST) === R[0][1] && C.rankFor(R[2][0], ST) === R[2][1] && C.rankFor(99999, ST) === R[R.length - 1][1], 'rankFor reads the street\'s ladder');
+  ok(C.rankFor(1400) === C.RANKS[2][1] && C.rankFor(1400, C.MARROW_STREET) === C.RANKS[2][1], 'Marrow Street and no street at all use RANKS');
+  ok(C.rankFor(R[2][0], ST) !== C.rankFor(R[2][0]), 'the same score ranks higher here, where bowls are fewer');
+  ok(!/Marrow/.test(JSON.stringify(R)) && !/Marrow/.test(JSON.stringify(ST.waveBlurbs)), 'no Marrow Street wording on Terrace Row');
+  ok([0, 1, 2, 3].every(i => !/Marrow/.test(C.blurbFor(ST, i))), 'no wave blurb names Marrow Street');
+  ok(C.blurbFor(C.MARROW_STREET, 3) === C.WAVES[3].blurb, 'Marrow Street keeps the stock wave blurbs');
+  ok(/STAG/.test(C.blurbFor(ST, ST.houses[PUB].venue.from)), 'the wave the pub opens in says so');
+}
 report();

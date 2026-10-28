@@ -91,6 +91,20 @@ const TERRACE_STREET = {
     { name: 'No. 9',        col: 0, row: 4, side: -1, bowl: { x: 0.29, y: 4.5 }, neighbours: [3, 5] },
     { name: 'The Stag\'s Head', col: 1, row: 1, side: 1, venue: { from: 2, span: 3 }, neighbours: [0, 1, 2, 3, 4] },
   ],
+  /* Five bowls to Marrow Street's eight: bots on this street score about 0.73
+     of what they do there (tools/simulate.js --street terrace), so the ladder
+     is Marrow's scaled down and rounded. */
+  ranks: [
+    [0,    'Alley Amateur'],
+    [500,  'Bin Lid Regular'],
+    [1000, 'Terrace Sweetheart'],
+    [1600, 'Bowl Bandit'],
+    [2200, 'Ghost of Terrace Row'],
+  ],
+  waveBlurbs: {
+    2: 'closing time: the STAG\'S HEAD is watching every bowl, and a FOX is about',
+    3: 'the whole terrace is at its windows, and the pub is turning out',
+  },
   dog: { x: 0.5, ends: [-0.6, 5.6], overrun: 0.2 },
   fox: { x: 0.5, ends: [-0.6, 5.6], patrol: { y: [0.3, 4.7], speed: 0.3 } },
 };
@@ -228,10 +242,19 @@ const RANKS = [
   [2200, 'Bowl Bandit'],
   [3000, 'Ghost of Marrow Street'],
 ];
-function rankFor(score) {
-  let r = RANKS[0][1];
-  for (const [min, name] of RANKS) if (score >= min) r = name;
+/* A street may carry its own ladder (street.ranks, same shape as RANKS) and
+   word the waves its own way (street.waveBlurbs, by wave number): a street with
+   fewer bowls scores lower, and "every curtain on Marrow Street" is no good
+   anywhere else. Marrow Street uses RANKS and WAVES as they are. */
+function ranksOf(street) { return (street && street.ranks) || RANKS; }
+function rankFor(score, street) {
+  const ranks = ranksOf(street);
+  let r = ranks[0][1];
+  for (const [min, name] of ranks) if (score >= min) r = name;
   return r;
+}
+function blurbFor(street, idx) {
+  return (street && street.waveBlurbs && street.waveBlurbs[idx]) || WAVES[idx].blurb;
 }
 
 /* How wide the renderer draws the road and its pavements, as fractions of the
@@ -754,7 +777,7 @@ return {
   MARROW_STREET, TERRACE_STREET, validateStreet, ROAD_HALF, PAVE_W,
   PRACTICE, WAVES, GAME_SECONDS, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
-  RANKS, rankFor,
+  RANKS, rankFor, ranksOf, blurbFor, isOpen,
   create, start, update, drainEvents, setPractice, practiceResident, practiceBowl, practiceHoldBowl,
   tapHouse, tapRoad, tapEat,
   bowlSpot, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,

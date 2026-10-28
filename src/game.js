@@ -174,6 +174,10 @@ const onLeft = h => h.side < 0;
 
 /* the house's whole strip, garden included: all of it is one tap target */
 function houseRect(h) {
+  if (h.venue) {
+    const y = sy(h.row);
+    return onLeft(h) ? { x: 0, y, w: L.roadL, h: L.rowH * h.venue.span } : { x: L.roadR, y, w: DW - L.roadR, h: L.rowH * h.venue.span };
+  }
   const y = rowY(h) - L.rowH / 2;
   return onLeft(h)
     ? { x: 0, y, w: L.roadL, h: L.rowH }
@@ -181,6 +185,10 @@ function houseRect(h) {
 }
 /* the building itself */
 function bodyRect(h) {
+  if (h.venue) {                                  /* a venue is one tall building over its rows */
+    const r = houseRect(h), x = onLeft(h) ? 12 : DW - 12 - L.bodyW;
+    return { x, y: r.y + 10, w: L.bodyW, h: r.h - 20 };
+  }
   const cy = rowY(h);
   const x = onLeft(h) ? 12 : DW - 12 - L.bodyW;
   return { x, y: cy - L.bodyH / 2, w: L.bodyW, h: L.bodyH };
@@ -484,7 +492,102 @@ function drawFence(h) {
   }
 }
 
+/* A venue (the pub): one tall building across its rows, with a window for each
+   row and a hanging sign. It watches from several windows at once, so the
+   whole front lights up together. Shut before last orders (dark, shuttered),
+   then open (a dim amber glow, the way a pub is), then brighter and full of
+   faces when it stirs and watches. */
+function drawVenue(h) {
+  const v = vis[h.id], b = bodyRect(h), dir = onLeft(h) ? 1 : -1;
+  const open = C.isOpen(g, h);
+  const faceW = 70, faceX = onLeft(h) ? b.x + b.w - faceW : b.x;
+  const roadEdge = onLeft(h) ? b.x + b.w : b.x;
+  const roofX = onLeft(h) ? b.x : b.x + faceW, roofW = b.w - faceW;
+
+  const gx = onLeft(h) ? b.x + b.w : fenceX(h.side);
+  const gw = onLeft(h) ? fenceX(h.side) - (b.x + b.w) : b.x - fenceX(h.side);
+  ctx.fillStyle = GRASS;
+  ctx.fillRect(gx, b.y - 8, gw, b.h + 16);
+
+  rr(b.x, b.y, b.w, b.h, 12);
+  fillStroke('#5a3a3a', INK, 4.5);
+  ctx.save();
+  rr(b.x, b.y, b.w, b.h, 12); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,.08)';
+  ctx.fillRect(onLeft(h) ? roofX + roofW / 2 : roofX, b.y, roofW / 2, b.h);
+  ctx.strokeStyle = 'rgba(0,0,0,.13)'; ctx.lineWidth = 2.5 * STROKE;
+  for (let yy = b.y + 16; yy < b.y + b.h; yy += 17) {
+    ctx.beginPath(); ctx.moveTo(roofX, yy); ctx.lineTo(roofX + roofW, yy); ctx.stroke();
+  }
+  ctx.fillStyle = '#c9a77c';                     /* the facade, plaster the colour of old beer */
+  ctx.fillRect(faceX, b.y, faceW, b.h);
+  ctx.restore();
+  rr(b.x, b.y, b.w, b.h, 12); fillStroke(null, INK, 4.5);
+
+  /* one window per row, in the facade */
+  const gl = open ? clamp(Math.max(v.glow, 0.3), 0, 1) : 0;
+  const ww = 46, wh = 52, fcx = faceX + faceW / 2;
+  for (let i = 0; i < h.venue.span; i++) {
+    const wy = sy(h.row + i) + (L.rowH - wh) / 2 - 24, wx = fcx - ww / 2;
+    rr(wx - 5, wy - 5, ww + 10, wh + 10, 9);
+    fillStroke('#7a4a3a', INK, 4);
+    rr(wx, wy, ww, wh, 6);
+    ctx.fillStyle = open ? 'rgb(' + (lerp(150, 255, gl) | 0) + ',' + (lerp(96, 214, gl) | 0) + ',' + (lerp(50, 120, gl) | 0) + ')' : '#241c3d';
+    ctx.fill();
+    ctx.save(); rr(wx, wy, ww, wh, 6); ctx.clip();
+    if (open && v.curtain > 0.05) {              /* drinkers at the glass */
+      const hy = wy + wh - lerp(-4, 30, v.curtain);
+      ctx.fillStyle = '#3d2b4f'; rr(fcx - 18, hy + 9, 36, 32, 13); ctx.fill();
+      ctx.fillStyle = '#f2c49b'; circle(fcx, hy, 11); ctx.fill();
+      if (v.curtain > 0.5) { ctx.fillStyle = INK; circle(fcx - 4, hy + 1.5, 1.9); ctx.fill(); circle(fcx + 4, hy + 1.5, 1.9); ctx.fill(); }
+    }
+    if (!open) {                                 /* shutters */
+      ctx.strokeStyle = '#6b5a3f'; ctx.lineWidth = 6 * STROKE;
+      for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(wx, wy + k * wh / 4); ctx.lineTo(wx + ww, wy + k * wh / 4); ctx.stroke(); }
+    }
+    ctx.restore();
+    rr(wx, wy, ww, wh, 6); fillStroke(null, INK, 3.5);
+  }
+
+  /* door, and the sign hanging out over the pavement */
+  const dw = 44, dh = 58, doorY = b.y + b.h - dh - 20, doorX = fcx - dw / 2;
+  rr(doorX, doorY, dw, dh, 6); fillStroke('#4a2a2a', INK, 4);
+  const sgY = b.y + b.h / 2;
+  ctx.strokeStyle = INK; ctx.lineWidth = 5 * STROKE; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(roadEdge, sgY - 30); ctx.lineTo(roadEdge + dir * 26, sgY - 30); ctx.stroke();
+  rr(roadEdge + dir * 26 - 15, sgY - 30, 30, 44, 7);
+  fillStroke(open ? WARM : '#6b5a3f', INK, 3.5);
+  circle(roadEdge + dir * 26, sgY - 8, 8); fillStroke(open ? '#8a4a2a' : '#4c4165', null);
+
+  /* light spilling across the pavement, red while it is looking at you */
+  if (open && v.glow > 0.25) {
+    const threat = g.eat && h.state === 'watch' && g.eat.h.neighbours.includes(h.id);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = (v.glow - 0.25) * 0.55;
+    const spill = ctx.createLinearGradient(roadEdge, 0, roadEdge + dir * 110, 0);
+    spill.addColorStop(0, threat ? 'rgba(255,110,110,.95)' : 'rgba(255,214,120,.85)');
+    spill.addColorStop(1, 'rgba(255,214,120,0)');
+    ctx.fillStyle = spill;
+    ctx.fillRect(Math.min(roadEdge, roadEdge + dir * 112), b.y + 20, 112, b.h - 40);
+    ctx.restore();
+  }
+
+  /* a fence along the garden, no gap: nobody walks up to a bowl here */
+  const fx = fenceX(h.side);
+  ctx.strokeStyle = '#6a5a96'; ctx.lineWidth = 7 * STROKE; ctx.lineCap = 'round';
+  for (let yy = b.y + 6; yy < b.y + b.h - 8; yy += 21) { ctx.beginPath(); ctx.moveTo(fx, yy); ctx.lineTo(fx, Math.min(yy + 12, b.y + b.h)); ctx.stroke(); }
+
+  const px = b.x + b.w / 2, pyy = b.y + b.h - 15;
+  ctx.font = '600 20px ' + FONT;
+  const tw = ctx.measureText(h.name).width;
+  rr(px - tw / 2 - 11, pyy - 13, tw + 22, 26, 13);
+  fillStroke('rgba(16,10,32,.62)', null);
+  text(h.name, px, pyy, 20, 'rgba(255,233,201,.88)', 'center', 600);
+}
+
 function drawHouse(h) {
+  if (h.venue) { drawVenue(h); return; }
   const v = vis[h.id];
   const t = TINT[h.id % TINT.length];
   const dull = h.angry;
@@ -963,9 +1066,9 @@ function drawHud() {
   if (tut) outlined('PRACTICE', DW / 2, 50, 40, MINT);
   else outlined(clock, DW / 2, 50, 50, low && Math.sin(elapsed * 9) > 0 ? ALARM : CREAM);
 
-  const kept = g.houses.filter(h => !h.angry).length;
+  const homes = g.houses.filter(h => !h.venue), kept = homes.filter(h => !h.angry).length;
   text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
-  outlined(kept + '/' + g.houses.length, DW - 24, 64, 42, kept <= g.houses.length / 4 ? ALARM : MINT, 'right');
+  outlined(kept + '/' + homes.length, DW - 24, 64, 42, kept <= homes.length / 4 ? ALARM : MINT, 'right');
 
   /* while eating, the second row goes: less to look at above the windows */
   if (g.eat) return;
@@ -1475,7 +1578,7 @@ function drawWaveBanner() {
     rr(36, y, DW - 72, 104, 24);
     fillStroke('rgba(18,12,36,.94)', WARM, 3);
     outlined('WAVE ' + (banner.idx + 1) + ' \u00b7 ' + w.name, DW / 2, y + 34, 28, WARM);
-    text(w.blurb, DW / 2, y + 72, 20, CREAM, 'center', 500);
+    text(C.blurbFor(g.street, banner.idx), DW / 2, y + 72, 20, CREAM, 'center', 500);
     ctx.globalAlpha = 1;
     return;
   }
@@ -1486,7 +1589,7 @@ function drawWaveBanner() {
   rr(30, y - 76, DW - 60, 152, 26); ctx.stroke();
   text('WAVE ' + (banner.idx + 1), DW / 2, y - 42, 23, 'rgba(255,233,201,.6)', 'center', 600);
   outlined(w.name, DW / 2, y - 2, 38, WARM);
-  text(w.blurb, DW / 2, y + 44, 22, CREAM, 'center', 500);
+  text(C.blurbFor(g.street, banner.idx), DW / 2, y + 44, 22, CREAM, 'center', 500);
   ctx.globalAlpha = 1;
 }
 
@@ -1895,7 +1998,7 @@ function drawTitle() {
   ctx.fillStyle = 'rgba(255,233,201,.4)';
   ctx.fillRect(DW / 2 - 70, hr.y + hr.h / 2 + 18, 140, 2);
 
-  if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best), DW / 2, hr.y + hr.h + 34, 22,
+  if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, hr.y + hr.h + 34, 22,
                      'rgba(255,233,201,.5)', 'center', 600);
   drawInstall();
   drawBuild();
@@ -1923,6 +2026,14 @@ function drawStreetMap(cx, top, rowH) {
     /* each house pops in, one after another */
     const t = clamp((elapsed - overAt - 1.0 - h.id * 0.06) / 0.25, 0, 1);
     if (t <= 0) continue;
+    if (h.venue) {                               /* the pub: a plain block over its rows, nothing to keep */
+      const vh = rowH * h.venue.span - 12, vy = top + h.row * rowH + 6;
+      ctx.save(); ctx.translate(x + hw / 2, vy + vh / 2); ctx.scale(t, t);
+      rr(-hw / 2, -vh / 2, hw, vh, 9); fillStroke('#5a3a3a', INK, 3.5);
+      text('PUB', 0, 0, 20, 'rgba(255,233,201,.7)', 'center', 800);
+      ctx.restore();
+      continue;
+    }
     ctx.save();
     ctx.translate(x + hw / 2, y + hh / 2);
     ctx.scale(t, t);
@@ -1948,7 +2059,7 @@ function drawOver() {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, DW, DH);
 
-  const kept = g.houses.filter(h => !h.angry).length;
+  const homes = g.houses.filter(h => !h.venue), kept = homes.filter(h => !h.angry).length;
   const food = g.score - g.keptBonus;
   const tight = DH < 1300;                       /* shorter phones: tighten the map */
   let y = tight ? 84 : 112;
@@ -1972,7 +2083,7 @@ function drawOver() {
     const sc = 1 + (1 - pop) * 0.6;
     ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
     ctx.globalAlpha = pop;
-    outlined('— ' + C.rankFor(g.score).toUpperCase() + ' —', 0, 0, 38, WARM);
+    outlined('— ' + C.rankFor(g.score, g.street).toUpperCase() + ' —', 0, 0, 38, WARM);
     ctx.restore();
   }
 
@@ -1982,7 +2093,7 @@ function drawOver() {
   const rowH = (tight ? 44 : 54) * Math.min(1, 4 / g.street.rows);
   drawStreetMap(DW / 2, y, rowH);
   y += rowH * g.street.rows + (tight ? 30 : 40);
-  const total = g.houses.length;
+  const total = homes.length;
   text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
        kept ? MINT : ALARM, 'center', 800);
 
@@ -2011,7 +2122,7 @@ function drawOver() {
   y += cardH + (tight ? 36 : 48);
 
   if (newBest) outlined('NEW BEST!', DW / 2, y, 30, MINT);
-  else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best), DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 600);
+  else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 600);
 
   if (t > OVER_LOCK) {
     ctx.globalAlpha = clamp((t - OVER_LOCK) / 0.4, 0, 1) * (0.72 + 0.28 * Math.sin(elapsed * 3));
@@ -2157,7 +2268,7 @@ function onDown(ev) {
   }
 
   if (p.y < L.hud || p.y > L.bot) return;
-  const hit = g.houses.find(h => inside(p, houseRect(h)));
+  const hit = g.houses.find(h => !h.venue && inside(p, houseRect(h)));
   if (hit) C.tapHouse(g, hit.id);
   else     C.tapRoad(g, p.x / DW, (p.y - L.top) / L.rowH);
   Sfx.tap();

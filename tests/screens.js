@@ -69,6 +69,7 @@ async function scene(browser, name, { onboarded = true, street, setup }) {
 
 const CHECKS = [];
 const TEST_LANE = require('./streets');
+const TERRACE = require('../src/core.js').TERRACE_STREET;      // JSON-clean, so the page can be handed it as data
 const QUIET = () => { const g = window.__bb.g; g.houses.forEach(h => { h.state = 'idle'; h.t = 9999; }); };
 const SCENES = {
   'title': {},
@@ -114,6 +115,38 @@ const SCENES = {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
     await a.game(() => { const g = window.__bb.g; g.score = 1520; g.bowlsCleared = 7; g.bites = 30; g.perfects = 9;
       g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[2].angry = true; g.houses[2].bowl = null; g.timeLeft = 0.01; });
+    await a.run(9000);
+  } },
+  /* Terrace Row: the pub shut (wave 1), then open and watching (wave 3), the
+     close-up with the pub at one window, and the results with its map. */
+  'terrace-street': { street: TERRACE, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET); await a.run(300);
+  } },
+  'terrace-pub-open': { street: TERRACE, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(3400);
+    await a.game(() => { const g = window.__bb.g; g.waveIdx = 2; g.timeLeft = 120 - 2 * 30 - 1; g.dogTimer = 1e9; });
+    await a.game(QUIET);
+    const target = () => a.game(() => { const t = window.__bb.g.cat.target; return t ? t.house : 'none'; });
+    const poke = async (x, row) => { await a.game(() => { window.__bb.g.cat.target = null; }); await a.tap(x, await a.rowAt(row)); return target(); };
+    a.check('a tap on the pub is a road tap, not a house', await poke(640, 2) === null);
+    a.check('a tap on the left row-2 house goes to house 2 (No. 5)', await poke(80, 2) === 2);
+    await a.game(() => { const g = window.__bb.g; g.cat.target = null; g.houses[5].state = 'watch'; g.houses[5].t = 9999; });
+    await a.run(800);
+  } },
+  'terrace-eating': { street: TERRACE, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(3400);
+    await a.game(() => { const g = window.__bb.g; g.waveIdx = 2; g.timeLeft = 120 - 2 * 30 - 1; g.dogTimer = 1e9; });
+    await a.game(QUIET);
+    await a.game(() => { window.__bb.C.WAVES[2].react = 30; window.__bb.C.tapHouse(window.__bb.g, 2); });
+    await a.run(2600);
+    /* No. 5 is seen by No. 3 (up the terrace), No. 7 (down it) and the pub */
+    await a.game(() => { const g = window.__bb.g; g.eat.speed = 0; g.houses[1].state = 'stir'; g.houses[1].t = 9999; g.houses[5].state = 'watch'; g.houses[5].t = 9999; });
+    await a.run(500);
+  } },
+  'terrace-results': { street: TERRACE, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
+    await a.game(() => { const g = window.__bb.g; g.score = 1700; g.bowlsCleared = 7; g.bites = 30; g.perfects = 9;
+      g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[3].angry = true; g.houses[3].bowl = null; g.timeLeft = 0.01; });
     await a.run(9000);
   } },
   'results': { setup: async a => {
