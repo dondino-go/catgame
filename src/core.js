@@ -79,23 +79,44 @@ const MARROW_STREET = {
  * bowl, but only from `venue.from` (a wave number): last orders. It lists all
  * five houses as neighbours, and each house lists it back, so a terrace house
  * has at most two terrace neighbours plus the pub, which is the three windows
- * the close-up has. The right-hand strip beside the pub is empty street. */
+ * the close-up has. */
 const TERRACE_STREET = {
   id: 'terrace',
   name: 'Terrace Row',
   unlock: { street: 'marrow', rank: 1 },   // reach the second rung (Bin Lid Regular, 700) of Marrow Street's ladder: eased for playtesting
   rows: 5,
   roadX: 0.5,
-  walk: { x: [0.29, 0.71], y: [0.2, 4.8] },
+  roadHalf: 100 / 720,                     // a narrow street: Marrow's road is 128/720
+  walk: { x: [0.329, 0.671], y: [0.2, 4.8] },
   catStart: { x: 0.5, y: 2.5 },
   houses: [
-    { name: 'No. 1',        col: 0, row: 0, side: -1, bowl: { x: 0.29, y: 0.5 }, neighbours: [1, 5] },
-    { name: 'No. 3',        col: 0, row: 1, side: -1, bowl: { x: 0.29, y: 1.5 }, neighbours: [0, 2, 5] },
-    { name: 'No. 5',        col: 0, row: 2, side: -1, bowl: { x: 0.29, y: 2.5 }, neighbours: [1, 3, 5] },
-    { name: 'No. 7',        col: 0, row: 3, side: -1, bowl: { x: 0.29, y: 3.5 }, neighbours: [2, 4, 5] },
-    { name: 'No. 9',        col: 0, row: 4, side: -1, bowl: { x: 0.29, y: 4.5 }, neighbours: [3, 5] },
-    { name: 'The Stag\'s Head', col: 1, row: 1, side: 1, venue: { from: 2, span: 3 }, neighbours: [0, 1, 2, 3, 4] },
+    { name: 'No. 1',        col: 0, row: 0, side: -1, bowl: { x: 0.329, y: 0.5 }, neighbours: [1, 5], size: { w: 1.2 } },
+    { name: 'No. 3',        col: 0, row: 1, side: -1, bowl: { x: 0.329, y: 1.5 }, neighbours: [0, 2, 5], size: { w: 0.9 } },
+    { name: 'No. 5',        col: 0, row: 2, side: -1, bowl: { x: 0.329, y: 2.5 }, neighbours: [1, 3, 5], size: { w: 1.05 } },
+    { name: 'No. 7',        col: 0, row: 3, side: -1, bowl: { x: 0.329, y: 3.5 }, neighbours: [2, 4, 5], size: { w: 1.3 } },
+    { name: 'No. 9',        col: 0, row: 4, side: -1, bowl: { x: 0.329, y: 4.5 }, neighbours: [3, 5], size: { w: 0.95 } },
+    { name: 'The Stag\'s Head', col: 1, row: 1, side: 1, venue: { from: 2, span: 3 }, neighbours: [0, 1, 2, 3, 4], size: { w: 1.35 } },
   ],
+  /* Beside the pub, in the two rows it leaves free: a bus stop above it and
+     its beer garden below. Nothing to raid, just something to look at. */
+  scenery: [
+    { kind: 'busstop',    row: 0, side: 1 },
+    { kind: 'beergarden', row: 4, side: 1 },
+  ],
+  /* Look: a warm evening, not a night (renderer only). The houses are joined
+     brick fronts, each its own width. */
+  look: {
+    night: '#3a2233', road: '#5a4350', road2: '#6b5160', pave: '#a8876e', paveLip: '#c9a487', grass: '#6e8a4a',
+    wash: ['rgba(255,170,80,.20)', 'rgba(255,120,90,.10)'], vignette: 0.25, lamp: 0.35,
+    bodyW: 140, bodyH: 1.14,
+    tints: [
+      { wall: '#b5533c', roof: '#4a3a46', trim: '#f1e2c6', door: '#2f5d62' },
+      { wall: '#c46a45', roof: '#5a4048', trim: '#f1e2c6', door: '#7a2f3b' },
+      { wall: '#a8473a', roof: '#42384a', trim: '#f1e2c6', door: '#2e4a7a' },
+      { wall: '#c98a5a', roof: '#53413d', trim: '#f6ead2', door: '#b8892a' },
+      { wall: '#9c4a3c', roof: '#463844', trim: '#f1e2c6', door: '#3d6b4a' },
+    ],
+  },
   /* Five bowls to Marrow Street's eight: bots on this street score about 0.73
      of what they do there (tools/simulate.js --street terrace), so the ladder
      is Marrow's scaled down and rounded. */
@@ -152,6 +173,22 @@ function validateStreet(st) {
   if (!(st.catStart && inWalk(st.catStart))) bad.push('catStart must be inside the walkable area');
   const hs = st.houses;
   if (!Array.isArray(hs) || !hs.length) { bad.push('houses must be a non-empty list'); return bad; }
+  /* scenery: things to look at beside the road that nobody can raid; each takes
+     one row on one side, and must not sit on a house */
+  if (st.scenery !== undefined) {
+    if (!Array.isArray(st.scenery)) bad.push('scenery must be a list');
+    else st.scenery.forEach((sc, i) => {
+      const at = 'scenery ' + i;
+      if (!sc || typeof sc.kind !== 'string' || !sc.kind) { bad.push(at + ': needs a kind'); return; }
+      if (sc.side !== -1 && sc.side !== 1) bad.push(at + ': side must be -1 or 1');
+      if (!(Number.isInteger(sc.row) && sc.row >= 0 && sc.row < st.rows)) { bad.push(at + ': row must be a row of the street'); return; }
+      hs.forEach((h, id) => {
+        if (!h || h.side !== sc.side || !num(h.row)) return;
+        const span = h.venue && h.venue.span || 1;
+        if (sc.row < h.row + span && sc.row + 1 > h.row) bad.push(at + ' sits on house ' + id + ' (' + h.name + ')');
+      });
+    });
+  }
   hs.forEach((h, id) => {
     const at = 'house ' + id + (h && h.name ? ' (' + h.name + ')' : '');
     if (!h || typeof h.name !== 'string' || !h.name) bad.push(at + ': needs a name');

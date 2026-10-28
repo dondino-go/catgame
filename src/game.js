@@ -620,6 +620,58 @@ function drawVenue(h) {
   text(h.name, px, pyy, 20, 'rgba(255,233,201,.88)', 'center', 600);
 }
 
+/* Scenery (street.scenery): something to look at beside the road in a row no
+   house uses. Drawn from above like the houses, on the garden side of the
+   pavement, and never tapped (a tap on it is a road tap). */
+function drawScenery(sc) {
+  const left = sc.side < 0, fx = fenceX(sc.side);
+  const x0 = left ? 0 : fx, x1 = left ? fx : DW, y0 = sy(sc.row), rh = L.rowH, cy = y0 + rh / 2;
+  const cx = (x0 + x1) / 2;
+  ctx.fillStyle = GRASS;
+  ctx.fillRect(x0, y0 + 4, x1 - x0, rh - 8);
+  /* the same low fence as the gardens */
+  ctx.strokeStyle = '#6a5a96'; ctx.lineWidth = 7 * STROKE; ctx.lineCap = 'round';
+  for (let yy = y0 + 10; yy < y0 + rh - 14; yy += 21) { ctx.beginPath(); ctx.moveTo(fx, yy); ctx.lineTo(fx, Math.min(yy + 12, y0 + rh - 8)); ctx.stroke(); }
+
+  if (sc.kind === 'busstop') {
+    /* a shelter with a bench under it, and the stop's sign out on the pavement edge */
+    const w = Math.min(130, x1 - x0 - 60), h = 150, sx0 = left ? x0 + 14 : x1 - 14 - w, sy0 = cy - h / 2;
+    rr(sx0, sy0, w, h, 8); fillStroke('rgba(150,200,210,.55)', INK, 4);
+    ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 2.5 * STROKE;
+    for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.moveTo(sx0 + k * w / 4, sy0 + 4); ctx.lineTo(sx0 + k * w / 4, sy0 + h - 4); ctx.stroke(); }
+    rr(sx0 + 14, cy - 12, w - 28, 24, 6); fillStroke('#7a5a3a', INK, 3);
+    const px = left ? x1 - 22 : x0 + 22;
+    ctx.strokeStyle = INK; ctx.lineWidth = 6 * STROKE; ctx.beginPath(); ctx.moveTo(px, cy - 40); ctx.lineTo(px, cy + 46); ctx.stroke();
+    circle(px, cy - 46, 17); fillStroke('#d94a4a', INK, 3.5);
+    text('BUS', px, cy - 46, 14, '#fff', 'center', 800);
+    return;
+  }
+  if (sc.kind === 'beergarden') {
+    /* the pub's garden: decking, two tables under parasols, a string of lights */
+    const dx = left ? x0 + 8 : x0 + 14, dw = x1 - x0 - 22, dy = y0 + 20, dh = rh - 40;
+    rr(dx, dy, dw, dh, 12); fillStroke('#8a6a4a', INK, 3.5);
+    ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 2.5 * STROKE;
+    for (let yy = dy + 18; yy < dy + dh; yy += 18) { ctx.beginPath(); ctx.moveTo(dx + 4, yy); ctx.lineTo(dx + dw - 4, yy); ctx.stroke(); }
+    [[cx, dy + dh * 0.3], [cx, dy + dh * 0.72]].forEach(([tx, ty], i) => {
+      for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + 0.7; circle(tx + Math.cos(a) * 44, ty + Math.sin(a) * 44, 11); fillStroke('#5a3a2a', INK, 3); }
+      circle(tx, ty, 34);
+      fillStroke(i ? '#f1e2c6' : '#e07a5f', INK, 4);
+      for (let k = 0; k < 8; k += 2) { ctx.beginPath(); ctx.moveTo(tx, ty); ctx.arc(tx, ty, 34, k * Math.PI / 4, (k + 1) * Math.PI / 4); ctx.closePath(); ctx.fillStyle = i ? '#d9c39a' : '#f1e2c6'; ctx.fill(); }
+      circle(tx, ty, 34); ctx.strokeStyle = INK; ctx.lineWidth = 4 * STROKE; ctx.stroke();
+      circle(tx, ty, 4); fillStroke(INK, null);
+    });
+    /* string lights along the top and bottom of the garden */
+    for (const ly of [dy + 6, dy + dh - 6]) {
+      for (let k = 0; k < 6; k++) {
+        const lx = dx + 14 + k * (dw - 28) / 5, on = 0.6 + 0.4 * Math.sin(elapsed * 2.2 + k * 1.7 + sc.row);
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 * on;
+        circle(lx, ly, 14); ctx.fillStyle = '#ffd978'; ctx.fill(); ctx.restore();
+        circle(lx, ly, 4.5); fillStroke('#ffe9a8', INK, 2);
+      }
+    }
+  }
+}
+
 function drawHouse(h) {
   if (h.venue) { drawVenue(h); return; }
   const v = vis[h.id];
@@ -2234,6 +2286,7 @@ function draw() {
   drawLamp(L.roadL + 14, sy(boundary(0.25)), 1);
   drawLamp(L.roadR - 14, sy(boundary(0.75)), -1);
 
+  for (const sc of g.street.scenery || []) drawScenery(sc);
   for (const h of g.houses) drawHouse(h);
   for (const h of g.houses) drawBowl(h);
 
