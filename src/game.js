@@ -2076,6 +2076,14 @@ function drawStreetPicker() {
     text(st.name, r.x + 28, r.y + (open ? 31 : 36), 30, open ? CREAM : 'rgba(255,233,201,.45)', 'left', 700);
     if (open) text(b ? 'BEST ' + b + ' · ' + C.rankFor(b, st) : 'not played yet', r.x + 28, r.y + 62, 21, 'rgba(255,233,201,.6)', 'left', 600);
     else      text(C.unlockHint(st), r.x + 28, r.y + 64, 20, 'rgba(255,233,201,.5)', 'left', 600);
+    if (st.wip) {                                /* a street still being worked on: say so, for testers */
+      ctx.font = '700 15px ' + FONT;
+      const label = 'WORK IN PROGRESS', tw = ctx.measureText(label).width;
+      ctx.font = '700 30px ' + FONT;
+      const nx = r.x + 28 + ctx.measureText(st.name).width + 14;
+      rr(nx, r.y + 14, tw + 20, 26, 13); fillStroke('rgba(255,217,120,.18)', WARM, 2);
+      text(label, nx + 10, r.y + 27, 15, WARM, 'left', 700);
+    }
     if (!open) text('LOCKED', r.x + r.w - 28, r.y + r.h / 2, 21, 'rgba(255,233,201,.4)', 'right', 800);
     else if (on) text('✓', r.x + r.w - 30, r.y + r.h / 2, 34, MINT, 'right', 800);
   });

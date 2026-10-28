@@ -47,6 +47,7 @@
  *   robbing. Both travel along the vertical line x = `x`.
  * A house has one to three neighbours: the close-up has three windows, and the
  * practice night needs someone to watch.
+ * wip (renderer only, optional): the picker tags the street "work in progress".
  * look, house.size (renderer only, optional): colours, mood and house sizes, see LOOK in game.js.
  * roadHalf (optional): half the road's width as a fraction of the street's.
  * roadX stays within 2% of the middle: the renderer draws the road there with a
@@ -83,6 +84,7 @@ const MARROW_STREET = {
 const TERRACE_STREET = {
   id: 'terrace',
   name: 'Terrace Row',
+  wip: true,                               // the picker says so: still being worked on (renderer only)
   unlock: { street: 'marrow', rank: 1 },   // reach the second rung (Bin Lid Regular, 700) of Marrow Street's ladder: eased for playtesting
   rows: 5,
   roadX: 0.5,
