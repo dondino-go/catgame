@@ -160,7 +160,7 @@ const SCENES = {
     a.check('and tapping Marrow Street goes back', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.houses.length === 8));
     await a.tap(360, row(1)); await a.run(300);
   } },
-  'title-locked': { bests: { marrow: 1399 }, setup: async a => {
+  'title-locked': { bests: { marrow: 699 }, setup: async a => {
     await a.tap(360, a.DH * 0.45 + 98 + 42); await a.run(100);
     a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
   } },

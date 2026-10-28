@@ -25,7 +25,7 @@ into the feature branch (`claude/new-streets`), not the other way round.
   five terrace houses and a pub opposite that watches every bowl from wave 3
   (a `venue` house: no bowl, watch only), per-street ranks and wave wording,
   a street picker on the title screen, a best score per street, and Terrace
-  Row unlocking at Street Sweetheart (1400) on Marrow Street. It still needs a
+  Row unlocking at Bin Lid Regular (700, eased for playtesting; Street Sweetheart, 1400, was the first bar) on Marrow Street. It still needs a
   preview, a playtest and a `/code-review` before it goes to
   `claude/mobile-redesign`. Next: Phase 3 walking routes (#7), then more
   streets (#12) and minigames (#9).

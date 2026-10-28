@@ -81,7 +81,7 @@ const MARROW_STREET = {
 const TERRACE_STREET = {
   id: 'terrace',
   name: 'Terrace Row',
-  unlock: { street: 'marrow', rank: 2 },   // reach the third rung of Marrow Street's ladder
+  unlock: { street: 'marrow', rank: 1 },   // reach the second rung (Bin Lid Regular, 700) of Marrow Street's ladder: eased for playtesting
   rows: 5,
   roadX: 0.5,
   walk: { x: [0.29, 0.71], y: [0.2, 4.8] },
