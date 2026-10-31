@@ -20,9 +20,11 @@
 <script src="src/core.js"></script>
 <script src="src/game.js"></script>
 <script>
-  /* offline play once installed; skipped when opened as a file */
+  /* offline play once installed; skipped when opened as a file.
+     updateViaCache 'none' so the worker script itself is always checked
+     against the server: an old worker is what keeps an old build alive. */
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
   }
 </script>
 </body>

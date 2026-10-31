@@ -1,2 +1,2 @@
 /* Written by tools/stamp-build.sh. Don't edit by hand. */
-window.BOWL_BUILD = { time: '2026-10-28T22:37:16Z', branch: 'claude/mobile-redesign' };
+window.BOWL_BUILD = { time: '2026-10-31T10:24:42Z', branch: 'claude/iphone-home-screen-cache-vfzflx' };

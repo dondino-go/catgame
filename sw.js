@@ -6,7 +6,7 @@
  * (or a network slower than NET_TIMEOUT) it opens from the copy saved last
  * time. Bump VERSION only to throw the old cache away.
  */
-const VERSION = 'bowl-bandit-v3';
+const VERSION = 'bowl-bandit-v4';
 const NET_TIMEOUT = 3000;
 const SHELL = [
   './mobile.html',
@@ -21,8 +21,13 @@ const SHELL = [
   './icons/apple-touch-icon.png',
 ];
 
+/* 'reload' so the first fill can't come out of the browser's own HTTP cache:
+   GitHub Pages serves these files with ten minutes of max-age, and an install
+   that quietly saved ten-minute-old files would be stale from birth. */
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION)
+    .then(c => Promise.all(SHELL.map(u => c.add(new Request(u, { cache: 'reload' })))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -42,6 +47,11 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET') return;
+  /* The game's update check asks for src/version.js?bbfresh=... to find out
+     whether the build it is running is still the newest one. Never answer
+     that from the cache: a stale copy of the game would be told it is current
+     and would stay stale for as long as the install lasts. */
+  if (url.searchParams.has('bbfresh')) return;
   if (FONT_HOSTS.includes(url.origin)) {
     e.respondWith(caches.open(VERSION).then(cache => cache.match(req).then(hit =>
       hit || fetch(req).then(res => { if (res.ok || res.type === 'opaque') cache.put(req, res.clone()); return res; }))));
