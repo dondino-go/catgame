@@ -104,7 +104,10 @@ steps frames itself with `__bb.advance(seconds)`.
 - `tests/safearea.js`: the canvas and the HUD must stay clear of the status
   bar, the Dynamic Island and the home indicator. Chromium doesn't emulate
   `env(safe-area-inset-*)`, so it puts the same values on `#stage` as padding,
-  which is what the CSS does on a real phone.
+  which is what the CSS does on a real phone. The HUD checks read where the
+  game actually drew (`fillText` and `strokeText` are recorded with the
+  transform in force), so text creeping back under the island fails even when
+  the canvas itself is placed correctly.
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
@@ -173,7 +176,7 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 findings; 1-6 fixed in `77f61cc`, 3 filed as issues)
+last reviewed: `8aa48e6` (`claude/iphone-home-screen-cache-vfzflx`, the installed-app cache fix and the safe-area fix, high, 5 findings; all 5 fixed)
 
 ## Things learnt the hard way
 

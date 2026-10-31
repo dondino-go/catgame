@@ -2034,17 +2034,29 @@ function drawBuild() {
  * waits for the next PLAY, so it never cuts into a round or skips results. */
 let updateReady = false;
 const canUpdate = !framed && /^https?:/.test(location.protocol);
-async function checkForUpdate() {
+
+/* One check at a time. Opening the app can fire visibilitychange, pageshow and
+   the start-up timer within moments of each other, and a second check that
+   overtook the first would read the marks the first had just written and take
+   a healthy phone for a stuck one -- wiping its offline copy for nothing. */
+let checking = null;
+function checkForUpdate() {
+  if (!checking) checking = runCheck().then(() => { checking = null; }, () => { checking = null; });
+  return checking;
+}
+
+async function runCheck() {
   if (!canUpdate || !window.BOWL_BUILD) return;
   /* Nudge the browser to re-fetch sw.js first. An installed app can sit on a
      service worker from the day it was installed, and an old worker is exactly
      what keeps serving an old game. (An iPhone home-screen app is the worst
      for this: it is resumed, not relaunched, so days can pass without the
-     worker ever being checked.) */
+     worker ever being checked.) Awaited, so a rejection -- offline, a 404, a
+     worker being uninstalled -- lands in the catch instead of going unhandled. */
   try {
     const reg = await navigator.serviceWorker.getRegistration();
-    if (reg) reg.update();
-  } catch (e) { /* no worker, or not allowed here */ }
+    if (reg) await reg.update();
+  } catch (e) { /* no worker, or nothing to update */ }
   try {
     /* 'bbfresh' tells our worker to stay out of the way (see sw.js), so a
        stale cache can't answer the one question that detects staleness. */
@@ -2052,7 +2064,8 @@ async function checkForUpdate() {
     const m = (await res.text()).match(/time: '([^']+)'/);
     if (m && m[1] !== window.BOWL_BUILD.time) {
       updateReady = m[1];
-      if (g.scene === 'title') loadUpdate(false);
+      /* awaited, so the single-flight guard above covers the reload too */
+      if (g.scene === 'title') await loadUpdate(false);
     }
   } catch (e) { /* offline: keep playing what we have */ }
 }
@@ -2062,7 +2075,9 @@ async function checkForUpdate() {
    forever. So refresh every file first, and reload on our own at most once
    per new build. */
 const GAME_FILES = ['mobile.html', 'src/version.js', 'src/core.js', 'src/game.js', 'src/style.css'];
+let loading = false;
 async function loadUpdate(byTap) {
+  if (loading) return;                 /* a tap and a check can arrive together */
   const stamp = updateReady;
   let tried = null, wiped = null;
   try {
@@ -2075,29 +2090,45 @@ async function loadUpdate(byTap) {
      Nothing short of throwing that away will fix it, and a phone in that state
      can't be reached any other way, so wipe and start clean. Once per build,
      so a phone that is stuck for some other reason can't loop on it. */
-  if (tried === stamp && wiped !== stamp) {
-    try { sessionStorage.setItem('bowlbandit.wipedFor', stamp); } catch (e) {}
-    await wipeOfflineCopy();
+  const stuck = tried === stamp && wiped !== stamp;
+  if (!stuck && !byTap && tried === stamp) return;
+  loading = true;
+  try {
+    if (stuck) {
+      try { sessionStorage.setItem('bowlbandit.wipedFor', stamp); } catch (e) {}
+      await wipeOfflineCopy();
+    }
+    try { sessionStorage.setItem('bowlbandit.reloadedFor', stamp); } catch (e) {}
+    /* Past the browser's own HTTP cache, wipe or no wipe: GitHub Pages serves
+       these files with ten minutes of max-age, so a plain reload can hand back
+       the very copies we just threw away -- and by then both marks are spent
+       and the automatic path is out of moves. */
+    try { await Promise.all(GAME_FILES.map(u => fetch(u, { cache: 'reload' }))); } catch (e) {}
+  } finally {
     location.reload();
-    return;
   }
-  if (!byTap && tried === stamp) return;
-  try { sessionStorage.setItem('bowlbandit.reloadedFor', stamp); } catch (e) {}
-  try { await Promise.all(GAME_FILES.map(u => fetch(u, { cache: 'reload' }))); } catch (e) {}
-  location.reload();
 }
 
-/* The last resort: delete every cache store and unregister every worker, so
-   the next load has nowhere to go but the network. mobile.html registers
-   sw.js again on that load, so offline play comes back by itself. */
+/* The last resort: throw away our offline copy so the next load has nowhere to
+   go but the network. mobile.html registers sw.js again on that load, so
+   offline play comes back by itself.
+   Ours only: dondino-go.github.io is one origin for every GitHub Pages site on
+   the account, and both caches.keys() and getRegistrations() answer for the
+   whole origin, so an unfiltered wipe would take the neighbours with it. */
+const CACHE_PREFIX = 'bowl-bandit-';                  /* see VERSION in sw.js */
 async function wipeOfflineCopy() {
   try {
-    if (window.caches) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+    if (window.caches) {
+      const mine = (await caches.keys()).filter(k => k.startsWith(CACHE_PREFIX));
+      await Promise.all(mine.map(k => caches.delete(k)));
+    }
   } catch (e) {}
   try {
     if (navigator.serviceWorker) {
+      /* our own directory, and anything registered below it */
+      const here = new URL('./', location.href).href;
       const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map(r => r.unregister()));
+      await Promise.all(regs.filter(r => r.scope.startsWith(here)).map(r => r.unregister()));
     }
   } catch (e) {}
 }
