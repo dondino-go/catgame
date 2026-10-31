@@ -2028,8 +2028,19 @@ let updateReady = false;
 const canUpdate = !framed && /^https?:/.test(location.protocol);
 async function checkForUpdate() {
   if (!canUpdate || !window.BOWL_BUILD) return;
+  /* Nudge the browser to re-fetch sw.js first. An installed app can sit on a
+     service worker from the day it was installed, and an old worker is exactly
+     what keeps serving an old game. (An iPhone home-screen app is the worst
+     for this: it is resumed, not relaunched, so days can pass without the
+     worker ever being checked.) */
   try {
-    const res = await fetch('src/version.js?check=' + Date.now(), { cache: 'no-store' });
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) reg.update();
+  } catch (e) { /* no worker, or not allowed here */ }
+  try {
+    /* 'bbfresh' tells our worker to stay out of the way (see sw.js), so a
+       stale cache can't answer the one question that detects staleness. */
+    const res = await fetch('src/version.js?bbfresh=' + Date.now(), { cache: 'no-store' });
     const m = (await res.text()).match(/time: '([^']+)'/);
     if (m && m[1] !== window.BOWL_BUILD.time) {
       updateReady = m[1];
@@ -2041,18 +2052,52 @@ async function checkForUpdate() {
 /* A plain reload can still take the game's scripts from the browser's cache,
    in which case the stamp never changes and the title screen would reload
    forever. So refresh every file first, and reload on our own at most once
-   per new build; if that didn't take, wait for the player's tap. */
+   per new build. */
 const GAME_FILES = ['mobile.html', 'src/version.js', 'src/core.js', 'src/game.js', 'src/style.css'];
 async function loadUpdate(byTap) {
   const stamp = updateReady;
-  let tried = null;
-  try { tried = sessionStorage.getItem('bowlbandit.reloadedFor'); } catch (e) {}
+  let tried = null, wiped = null;
+  try {
+    tried = sessionStorage.getItem('bowlbandit.reloadedFor');
+    wiped = sessionStorage.getItem('bowlbandit.wipedFor');
+  } catch (e) {}
+  /* Second time round for the same build: the reload didn't take, so something
+     between us and the server is still handing out the old files -- usually a
+     worker from an older install that answers from its cache before it asks.
+     Nothing short of throwing that away will fix it, and a phone in that state
+     can't be reached any other way, so wipe and start clean. Once per build,
+     so a phone that is stuck for some other reason can't loop on it. */
+  if (tried === stamp && wiped !== stamp) {
+    try { sessionStorage.setItem('bowlbandit.wipedFor', stamp); } catch (e) {}
+    await wipeOfflineCopy();
+    location.reload();
+    return;
+  }
   if (!byTap && tried === stamp) return;
   try { sessionStorage.setItem('bowlbandit.reloadedFor', stamp); } catch (e) {}
   try { await Promise.all(GAME_FILES.map(u => fetch(u, { cache: 'reload' }))); } catch (e) {}
   location.reload();
 }
+
+/* The last resort: delete every cache store and unregister every worker, so
+   the next load has nowhere to go but the network. mobile.html registers
+   sw.js again on that load, so offline play comes back by itself. */
+async function wipeOfflineCopy() {
+  try {
+    if (window.caches) await Promise.all((await caches.keys()).map(k => caches.delete(k)));
+  } catch (e) {}
+  try {
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {}
+}
+
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+/* iOS restores a home-screen app from the page cache instead of reloading it,
+   and that restore doesn't reliably fire visibilitychange. pageshow does. */
+window.addEventListener('pageshow', () => checkForUpdate());
 setTimeout(checkForUpdate, 1500);
 
 /* ---------- title ---------- */
