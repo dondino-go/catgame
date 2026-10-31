@@ -67,6 +67,7 @@ into the feature branch (`claude/new-streets`), not the other way round.
 node tests/run.js                 # all Node suites
 node tests/golden.test.js         # seeded playthroughs vs tests/golden/*.log
 node tests/screens.js             # reference screenshots (needs Playwright)
+node tests/safearea.js            # canvas stays inside a phone's safe area
 sh tools/stamp-build.sh           # stamp the build by hand
 ```
 
@@ -100,6 +101,13 @@ steps frames itself with `__bb.advance(seconds)`.
   `--update` only for intended visual changes, and never re-record a Marrow
   screen during the refactor. Output goes to `tests/screens/out/`
   (git-ignored).
+- `tests/safearea.js`: the canvas and the HUD must stay clear of the status
+  bar, the Dynamic Island and the home indicator. Chromium doesn't emulate
+  `env(safe-area-inset-*)`, so it puts the same values on `#stage` as padding,
+  which is what the CSS does on a real phone. The HUD checks read where the
+  game actually drew (`fillText` and `strokeText` are recorded with the
+  transform in force), so text creeping back under the island fails even when
+  the canvas itself is placed correctly.
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
@@ -168,7 +176,7 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 findings; 1-6 fixed in `77f61cc`, 3 filed as issues)
+last reviewed: `8aa48e6` (`claude/iphone-home-screen-cache-vfzflx`, the installed-app cache fix and the safe-area fix, high, 5 findings; all 5 fixed)
 
 ## Things learnt the hard way
 
@@ -204,3 +212,13 @@ last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 finding
   reload for nothing.
 - `pkill -f tests/screens.js` also kills the shell command that contains that
   text. Wait for a background run or stop it by its task id.
+- **Safe areas don't look after themselves.** `#stage` carries the phone's
+  insets as padding, but `getBoundingClientRect()` returns the *border* box,
+  padding included: measuring that sized the canvas to the whole screen, which
+  overflowed under the Dynamic Island (taking the timer) and off the bottom
+  (taking the build stamp). Measure the content box, and keep
+  `tests/safearea.js` passing.
+- The status bar style is `black`, not `black-translucent`. Translucent puts
+  the game under the status bar and relies on iOS reporting an inset to lay
+  out around, which it doesn't always do in an installed app. A phone-shaped
+  bug like this can't be seen in the artifact preview, only on a phone.

@@ -7,7 +7,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Bowl Bandit">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- 'black', not 'black-translucent': translucent puts the game under the
+     status bar, and on a Dynamic Island phone iOS reported no safe-area inset
+     to lay out around, so the timer ended up behind the island. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Bowl Bandit</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
