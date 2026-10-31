@@ -182,7 +182,7 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `8aa48e6` (`claude/iphone-home-screen-cache-vfzflx`, the installed-app cache fix and the safe-area fix, high, 5 findings; all 5 fixed)
+last reviewed: `34a55c0` (`claude/iphone-home-screen-cache-vfzflx`, the update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
 
 ## Things learnt the hard way
 
@@ -223,7 +223,12 @@ last reviewed: `8aa48e6` (`claude/iphone-home-screen-cache-vfzflx`, the installe
   one, so it is laid out from a fit factor measured against its own content,
   not from a fixed size with the prompt pulled up to suit -- that put TAP TO
   PROWL AGAIN on top of NEW BEST and NEW STREET on shorter phones. Keep
-  `tests/results.js` passing when anything is added to it.
+  `tests/results.js` passing when anything is added to it. The fit makes the
+  bottom clamp bind exactly, so whatever `footer` reserves under the prompt is
+  the clearance the build stamp gets: change one and check the other.
+- `reg.update()` is never awaited. It only settles once a new worker has
+  finished installing, and ours precaches ten files first, so waiting on it
+  holds up the very fetch that detects a new build.
 - **Safe areas don't look after themselves.** `#stage` carries the phone's
   insets as padding, but `getBoundingClientRect()` returns the *border* box,
   padding included: measuring that sized the canvas to the whole screen, which

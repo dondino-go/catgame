@@ -10,8 +10,10 @@
  * So: set up the worst case the game can produce -- every stat line, a new
  * best, a new street, and a street choice to offer -- and measure it at every
  * phone shape the renderer allows (the aspect is clamped to 0.42..0.64, which
- * is DH 1125..1714). Nothing may overlap anything, and nothing may be drawn
- * off the bottom.
+ * is DH 1125..1714). Nothing may overlap anything, nothing may be drawn off
+ * the bottom, and no text may sit on the outline of a box: the lowest thing
+ * on the screen is the Choose a street pill, and it used to clear the build
+ * stamp by less than the width of its own stroke.
  *
  *   node tests/results.js
  */
@@ -24,21 +26,58 @@ const ROOT = path.join(__dirname, '..');
 const VW = 390;
 const STEP = 10;                       /* viewport heights to try, in CSS px */
 
-/* Record the box of every line of text, in design units. A full-canvas opaque
-   fill wipes what came before it, so the street under the results background
-   doesn't count as something the player can see. */
+/* Record the box of every line of text and of every shape, in design units.
+   A full-canvas opaque fill wipes what came before it, so the street under
+   the results background doesn't count as something the player can see.
+   Shapes are caught by following the path as it is built (rr() draws with
+   moveTo/lineTo/quadraticCurveTo, not roundRect) and emitting its bounds when
+   it is filled or stroked. */
 const RECORD = () => {
   window.__drawn = [];
+  window.__shapes = [];
   const proto = CanvasRenderingContext2D.prototype;
   const fill = proto.fillRect;
   proto.fillRect = function (x, y, w, h) {
     try {
       const m = this.getTransform();
       if (x <= 0 && y <= 0 && w >= this.canvas.width / m.a && h >= this.canvas.height / m.d &&
-          this.globalAlpha > 0.98) window.__drawn.length = 0;
+          this.globalAlpha > 0.98) { window.__drawn.length = 0; window.__shapes.length = 0; }
     } catch (e) {}
     return fill.apply(this, arguments);
   };
+
+  let bb = null;
+  const bp = proto.beginPath;
+  proto.beginPath = function () { bb = null; return bp.apply(this, arguments); };
+  const grow = (ctx, x, y) => {
+    const m = ctx.getTransform(), per = ctx.canvas.width / 720;
+    const px = (m.a * x + m.e) / per, py = (m.d * y + m.f) / per;
+    bb = bb ? { l: Math.min(bb.l, px), r: Math.max(bb.r, px), t: Math.min(bb.t, py), b: Math.max(bb.b, py) }
+            : { l: px, r: px, t: py, b: py };
+  };
+  for (const [name, pairs] of [['moveTo', [[0, 1]]], ['lineTo', [[0, 1]]],
+                               ['quadraticCurveTo', [[0, 1], [2, 3]]], ['rect', [[0, 1]]]]) {
+    const real = proto[name];
+    proto[name] = function () {
+      try { for (const [i, j] of pairs) grow(this, arguments[i], arguments[j]); } catch (e) {}
+      if (name === 'rect') { try { grow(this, arguments[0] + arguments[2], arguments[1] + arguments[3]); } catch (e) {} }
+      return real.apply(this, arguments);
+    };
+  }
+  for (const name of ['fill', 'stroke']) {
+    const real = proto[name];
+    proto[name] = function () {
+      try {
+        if (bb && window.__bb && window.__bb.g.scene === 'over' && this.globalAlpha > 0.05) {
+          const per = this.canvas.width / 720;
+          const lw = name === 'stroke' ? (this.lineWidth * this.getTransform().a) / per : 0;
+          window.__shapes.push({ l: bb.l, r: bb.r, t: bb.t, b: bb.b, lw, how: name });
+        }
+      } catch (e) {}
+      return real.apply(this, arguments);
+    };
+  }
+
   for (const name of ['fillText', 'strokeText']) {
     const real = proto[name];
     proto[name] = function (str, x, y) {
@@ -115,16 +154,38 @@ function overlaps(B) {
     await p.evaluate(() => window.__bb.advance(1 / 60));
     const DH = await p.evaluate(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return 720 * r.height / r.width; });
     const B = boxes(await p.evaluate(() => window.__drawn));
+    /* the two big boxes: the stats card (DW-96 wide) and the Choose a street
+       pill (320). The street map's house tiles are far narrower, and a tick
+       drawn in the middle of one is meant to be there. */
+    const S = (await p.evaluate(() => window.__shapes)).filter(s => s.r - s.l > 240 && s.b - s.t > 20);
     shapes++;
 
     const clash = overlaps(B);
-    const off = B.filter(b => b.bot > DH + 1 || b.top < -1).map(b => '"' + b.str + '"');
-    if (clash.length || off.length || B.length < 10) {
+    const off = B.filter(b => b.bot > DH + 1 || b.top < -1).map(b => '"' + b.str + '"')
+      .concat(S.filter(s => s.b + s.lw / 2 > DH + 1 || s.t - s.lw / 2 < -1).map(s => 'a box'));
+    /* Text must not sit on a box's outline: inside it or properly clear of it,
+       never on the line. The band is the stroke plus 5 either side, because
+       the fit makes the clamp bind exactly, so whatever the footer reserves
+       is the clearance -- it was 3.5 units under the Choose a street pill,
+       which reads as touching. */
+    const onEdge = [];
+    for (const s of S) {
+      if (!s.lw) continue;
+      const pad = s.lw / 2 + 5;
+      for (const b of B) {
+        if (b.r < s.l - pad || b.l > s.r + pad || b.bot < s.t - pad || b.top > s.b + pad) continue;   /* clear */
+        if (b.l > s.l + pad && b.r < s.r - pad && b.top > s.t + pad && b.bot < s.b - pad) continue;   /* inside */
+        onEdge.push('"' + b.str + '"');
+      }
+    }
+    if (clash.length || off.length || onEdge.length || B.length < 10 || S.length < 2) {
       bad++;
       console.log('  FAIL DH=' + DH.toFixed(0) +
         (clash.length ? '  overlapping: ' + clash.join(', ') : '') +
         (off.length ? '  off screen: ' + off.join(', ') : '') +
-        (B.length < 10 ? '  only ' + B.length + ' lines drawn' : ''));
+        (onEdge.length ? '  on a box outline: ' + onEdge.join(', ') : '') +
+        (B.length < 10 ? '  only ' + B.length + ' lines drawn' : '') +
+        (S.length < 2 ? '  only ' + S.length + ' boxes drawn' : ''));
     }
   }
   await browser.close();

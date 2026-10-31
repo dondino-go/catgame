@@ -2051,12 +2051,17 @@ async function runCheck() {
      service worker from the day it was installed, and an old worker is exactly
      what keeps serving an old game. (An iPhone home-screen app is the worst
      for this: it is resumed, not relaunched, so days can pass without the
-     worker ever being checked.) Awaited, so a rejection -- offline, a 404, a
-     worker being uninstalled -- lands in the catch instead of going unhandled. */
+     worker ever being checked.)
+     Not awaited: update() only settles once a new worker has finished
+     installing, and ours precaches ten files first. Waiting for that would
+     hold up the one fetch that detects a new build -- exactly when there is
+     one -- long enough for the player to leave the title screen and miss the
+     automatic reload. Its own catch keeps the rejection from going unhandled
+     (offline, a 404, a worker being uninstalled). */
   try {
     const reg = await navigator.serviceWorker.getRegistration();
-    if (reg) await reg.update();
-  } catch (e) { /* no worker, or nothing to update */ }
+    if (reg) reg.update().catch(() => {});
+  } catch (e) { /* no worker here */ }
   try {
     /* 'bbfresh' tells our worker to stay out of the way (see sw.js), so a
        stale cache can't answer the one question that detects staleness. */
@@ -2300,10 +2305,19 @@ function drawOver() {
      a screen with room to spare it is 1 and nothing moves. Only the big
      numeral scales with it; the rest of the type keeps its size. */
   const multi = canChoose();
-  const footer = multi ? 150 : 74;              /* the prompt down to the last button */
+  /* the prompt down past the last thing under it, with the build stamp clear */
+  const footer = multi ? 162 : 86;
   const mapRow = 54 * Math.min(1, 4 / g.street.rows);
-  const GAPS = 112 + 116 + 74 + 62 + 56 + 40 + 44 + 48 + (newStreets.length ? 38 : 0) + 76;
-  const s = clamp((DH - 28 - footer) / (GAPS + mapRow * g.street.rows + lines.length * 44), 0.62, 1);
+  /* 58 is half the numeral: the gap under it is measured from its edge, not
+     from its middle, so a scaled-down numeral can't grow into POINTS. The
+     28 and the 16 are the card's padding and that clearance, which don't
+     scale with anything. */
+  const GAPS = 112 + 116 + 58 + 62 + 56 + 40 + 44 + 48 + (newStreets.length ? 38 : 0) + 76;
+  /* The floor is 0.72 because the type doesn't shrink with the gaps: below
+     about 0.69 the gaps that are still measured middle-to-middle stop
+     clearing their own type. Nothing the game can say today gets near it
+     (the worst case is about 0.75), so it is a backstop, not a size. */
+  const s = clamp((DH - 44 - footer) / (GAPS + mapRow * g.street.rows + lines.length * 44), 0.72, 1);
   const gap = v => Math.round(v * s);
 
   let y = gap(112);
@@ -2316,7 +2330,7 @@ function drawOver() {
   const shown = Math.round(g.score * (1 - Math.pow(1 - k, 3)));
   y += gap(116);
   outlined(String(shown), DW / 2, y, gap(116), MINT);
-  y += gap(74);
+  y += Math.round(gap(116) / 2) + 16;          /* from the numeral's edge */
   text('POINTS', DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 700);
 
   /* the rank lands with a bump */
@@ -2357,7 +2371,7 @@ function drawOver() {
   else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 600);
 
   if (newStreets.length) {
-    y += 38;
+    y += gap(38);                              /* budgeted scaled, so spent scaled */
     outlined('NEW STREET: ' + newStreets.map(st => st.name.toUpperCase()).join(' + '), DW / 2, y, 26, WARM);
   }
 
