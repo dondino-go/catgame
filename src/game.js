@@ -2051,12 +2051,17 @@ async function runCheck() {
      service worker from the day it was installed, and an old worker is exactly
      what keeps serving an old game. (An iPhone home-screen app is the worst
      for this: it is resumed, not relaunched, so days can pass without the
-     worker ever being checked.) Awaited, so a rejection -- offline, a 404, a
-     worker being uninstalled -- lands in the catch instead of going unhandled. */
+     worker ever being checked.)
+     Not awaited: update() only settles once a new worker has finished
+     installing, and ours precaches ten files first. Waiting for that would
+     hold up the one fetch that detects a new build -- exactly when there is
+     one -- long enough for the player to leave the title screen and miss the
+     automatic reload. Its own catch keeps the rejection from going unhandled
+     (offline, a 404, a worker being uninstalled). */
   try {
     const reg = await navigator.serviceWorker.getRegistration();
-    if (reg) await reg.update();
-  } catch (e) { /* no worker, or nothing to update */ }
+    if (reg) reg.update().catch(() => {});
+  } catch (e) { /* no worker here */ }
   try {
     /* 'bbfresh' tells our worker to stay out of the way (see sw.js), so a
        stale cache can't answer the one question that detects staleness. */
@@ -2277,44 +2282,8 @@ function drawOver() {
 
   const homes = g.houses.filter(h => !h.venue), kept = homes.filter(h => !h.angry).length;
   const food = g.score - g.keptBonus;
-  const tight = DH < 1300;                       /* shorter phones: tighten the map */
-  let y = tight ? 84 : 112;
 
-  outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
-           kept === 0 ? ALARM : WARM);
-
-  /* score counts up */
-  const k = clamp((t - 0.25) / 1.0, 0, 1);
-  const shown = Math.round(g.score * (1 - Math.pow(1 - k, 3)));
-  y += tight ? 96 : 116;
-  outlined(String(shown), DW / 2, y, tight ? 96 : 116, MINT);
-  y += tight ? 62 : 74;
-  text('POINTS', DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 700);
-
-  /* the rank lands with a bump */
-  y += tight ? 52 : 62;
-  if (t > 1.15) {
-    if (!rankRung) { rankRung = true; Sfx.clear(); }
-    const pop = clamp((t - 1.15) / 0.2, 0, 1);
-    const sc = 1 + (1 - pop) * 0.6;
-    ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
-    ctx.globalAlpha = pop;
-    outlined('— ' + C.rankFor(g.score, g.street).toUpperCase() + ' —', 0, 0, 38, WARM);
-    ctx.restore();
-  }
-
-  /* who still feeds you, laid out like the street */
-  y += tight ? 42 : 56;
-  /* tuned for four rows: a taller street's rows shrink to take the same height */
-  const rowH = (tight ? 44 : 54) * Math.min(1, 4 / g.street.rows);
-  drawStreetMap(DW / 2, y, rowH);
-  y += rowH * g.street.rows + (tight ? 30 : 40);
-  const total = homes.length;
-  text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
-       kept ? MINT : ALARM, 'center', 800);
-
-  /* the working */
-  y += tight ? 34 : 44;
+  /* the working, built first because how tall it is decides everything below */
   const lines = [
     ['Bowls licked clean', String(g.bowlsCleared)],
     ['Bites', g.bites + (g.perfects ? '  (' + g.perfects + ' perfect)' : '')],
@@ -2326,7 +2295,68 @@ function drawOver() {
   lines.push(['Points from food', String(food)]);
   lines.push(['Still feeding you', kept + ' × ' + C.KEPT_BONUS + ' = ' + g.keptBonus, kept ? MINT : ALARM]);
 
-  const lh = tight ? 38 : 44;
+  /* How much this screen has to say varies by a couple of hundred units: the
+     card grows a line for every kind of trouble the round had, and NEW BEST
+     and NEW STREET only turn up after a good one. It used to be laid out at
+     one of two fixed sizes with the prompt pulled up to fit, which on a short
+     screen put TAP TO PROWL AGAIN straight on top of those two banners -- a
+     playtest found all three on one line. So measure what there is and squeeze
+     the gaps to suit. Everything below is in terms of this one factor, and on
+     a screen with room to spare it is 1 and nothing moves. Only the big
+     numeral scales with it; the rest of the type keeps its size. */
+  const multi = canChoose();
+  /* the prompt down past the last thing under it, with the build stamp clear */
+  const footer = multi ? 162 : 86;
+  const mapRow = 54 * Math.min(1, 4 / g.street.rows);
+  /* 58 is half the numeral: the gap under it is measured from its edge, not
+     from its middle, so a scaled-down numeral can't grow into POINTS. The
+     28 and the 16 are the card's padding and that clearance, which don't
+     scale with anything. */
+  const GAPS = 112 + 116 + 58 + 62 + 56 + 40 + 44 + 48 + (newStreets.length ? 38 : 0) + 76;
+  /* The floor is 0.72 because the type doesn't shrink with the gaps: below
+     about 0.69 the gaps that are still measured middle-to-middle stop
+     clearing their own type. Nothing the game can say today gets near it
+     (the worst case is about 0.75), so it is a backstop, not a size. */
+  const s = clamp((DH - 44 - footer) / (GAPS + mapRow * g.street.rows + lines.length * 44), 0.72, 1);
+  const gap = v => Math.round(v * s);
+
+  let y = gap(112);
+
+  outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
+           kept === 0 ? ALARM : WARM);
+
+  /* score counts up */
+  const k = clamp((t - 0.25) / 1.0, 0, 1);
+  const shown = Math.round(g.score * (1 - Math.pow(1 - k, 3)));
+  y += gap(116);
+  outlined(String(shown), DW / 2, y, gap(116), MINT);
+  y += Math.round(gap(116) / 2) + 16;          /* from the numeral's edge */
+  text('POINTS', DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 700);
+
+  /* the rank lands with a bump */
+  y += gap(62);
+  if (t > 1.15) {
+    if (!rankRung) { rankRung = true; Sfx.clear(); }
+    const pop = clamp((t - 1.15) / 0.2, 0, 1);
+    const sc = 1 + (1 - pop) * 0.6;
+    ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
+    ctx.globalAlpha = pop;
+    outlined('— ' + C.rankFor(g.score, g.street).toUpperCase() + ' —', 0, 0, 38, WARM);
+    ctx.restore();
+  }
+
+  /* who still feeds you, laid out like the street */
+  y += gap(56);
+  /* tuned for four rows: a taller street's rows shrink to take the same height */
+  const rowH = mapRow * s;
+  drawStreetMap(DW / 2, y, rowH);
+  y += rowH * g.street.rows + gap(40);
+  const total = homes.length;
+  text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
+       kept ? MINT : ALARM, 'center', 800);
+
+  y += gap(44);
+  const lh = gap(44);
   const cardH = lines.length * lh + 28;
   ctx.fillStyle = 'rgba(30,20,56,.95)';
   rr(48, y, DW - 96, cardH, 24); ctx.fill();
@@ -2335,19 +2365,20 @@ function drawOver() {
     text(ln[0], 80, ly, 22, 'rgba(255,233,201,.7)', 'left', 500);
     text(ln[1], DW - 80, ly, 23, ln[2] || CREAM, 'right', 700);
   });
-  y += cardH + (tight ? 36 : 48);
+  y += cardH + gap(48);
 
   if (newBest) outlined('NEW BEST!', DW / 2, y, 30, MINT);
   else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, y, 22, 'rgba(255,233,201,.55)', 'center', 600);
 
   if (newStreets.length) {
-    y += 38;
+    y += gap(38);                              /* budgeted scaled, so spent scaled */
     outlined('NEW STREET: ' + newStreets.map(st => st.name.toUpperCase()).join(' + '), DW / 2, y, 26, WARM);
   }
 
   if (t > OVER_LOCK) {
-    const multi = canChoose();
-    const py = Math.min(DH - (multi ? 150 : 74), y + (tight ? 56 : 76));
+    /* Below the banners before anything else. The fit above should already
+       have left the room; if it ever doesn't, text must not land on text. */
+    const py = Math.max(y + 44, Math.min(DH - footer, y + gap(76)));
     ctx.globalAlpha = clamp((t - OVER_LOCK) / 0.4, 0, 1);
     ctx.globalAlpha *= 0.72 + 0.28 * Math.sin(elapsed * 3);
     outlined('TAP TO PROWL AGAIN', DW / 2, py, 36, CREAM);

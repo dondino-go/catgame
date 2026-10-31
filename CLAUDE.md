@@ -68,6 +68,7 @@ node tests/run.js                 # all Node suites
 node tests/golden.test.js         # seeded playthroughs vs tests/golden/*.log
 node tests/screens.js             # reference screenshots (needs Playwright)
 node tests/safearea.js            # canvas stays inside a phone's safe area
+node tests/results.js             # the results screen fits on every phone shape
 sh tools/stamp-build.sh           # stamp the build by hand
 ```
 
@@ -108,6 +109,11 @@ steps frames itself with `__bb.advance(seconds)`.
   game actually drew (`fillText` and `strokeText` are recorded with the
   transform in force), so text creeping back under the island fails even when
   the canvas itself is placed correctly.
+- `tests/results.js`: the worst-case results screen -- every stat line, a new
+  best, a new street and a street choice -- measured at every phone shape the
+  renderer allows (DH 1125..1714). Nothing may overlap and nothing may fall off
+  the bottom. The screen is laid out from a fit factor computed from its own
+  content, so adding a stat line or a banner can't push it back into a clash.
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
@@ -176,7 +182,7 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `8aa48e6` (`claude/iphone-home-screen-cache-vfzflx`, the installed-app cache fix and the safe-area fix, high, 5 findings; all 5 fixed)
+last reviewed: `34a55c0` (`claude/iphone-home-screen-cache-vfzflx`, the update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
 
 ## Things learnt the hard way
 
@@ -212,6 +218,17 @@ last reviewed: `8aa48e6` (`claude/iphone-home-screen-cache-vfzflx`, the installe
   reload for nothing.
 - `pkill -f tests/screens.js` also kills the shell command that contains that
   text. Wait for a background run or stop it by its task id.
+- **The results screen is the one that runs out of room.** It grows a card
+  line for every kind of trouble in the round and two banners after a good
+  one, so it is laid out from a fit factor measured against its own content,
+  not from a fixed size with the prompt pulled up to suit -- that put TAP TO
+  PROWL AGAIN on top of NEW BEST and NEW STREET on shorter phones. Keep
+  `tests/results.js` passing when anything is added to it. The fit makes the
+  bottom clamp bind exactly, so whatever `footer` reserves under the prompt is
+  the clearance the build stamp gets: change one and check the other.
+- `reg.update()` is never awaited. It only settles once a new worker has
+  finished installing, and ours precaches ten files first, so waiting on it
+  holds up the very fetch that detects a new build.
 - **Safe areas don't look after themselves.** `#stage` carries the phone's
   insets as padding, but `getBoundingClientRect()` returns the *border* box,
   padding included: measuring that sized the canvas to the whole screen, which
