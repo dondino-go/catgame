@@ -166,8 +166,16 @@ function layout() {
 }
 
 function fit() {
+  /* The stage carries the phone's safe-area insets as padding, but
+     getBoundingClientRect() measures the border box, padding included. Laying
+     the canvas out in that box sized it to the whole screen, so it overflowed
+     the insets and slid up under the Dynamic Island, taking the timer with it
+     (and off the bottom, taking the build stamp). Measure the content box. */
+  const cs = getComputedStyle(stage);
+  const pad = side => parseFloat(cs.getPropertyValue('padding-' + side)) || 0;
   const box = stage.getBoundingClientRect();
-  const vw = Math.max(1, box.width), vh = Math.max(1, box.height);
+  const vw = Math.max(1, box.width - pad('left') - pad('right'));
+  const vh = Math.max(1, box.height - pad('top') - pad('bottom'));
   /* Clamped so a desktop window shows a phone-shaped panel rather than a
      stretched one, and an extra-tall phone doesn't get an absurd street. */
   const ar = clamp(vw / vh, 0.42, 0.64);
