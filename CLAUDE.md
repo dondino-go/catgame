@@ -194,6 +194,7 @@ node tests/screens.js             # reference screenshots (needs Playwright)
 node tests/safearea.js            # canvas stays inside a phone's safe area
 node tests/results.js             # the results screen fits on every phone shape
 node tests/title.js               # the title screen fits, and PLAY always starts a round
+node tests/update.js              # picking up a new build, over HTTP
 sh tools/stamp-build.sh           # stamp the build by hand
 ```
 
@@ -243,6 +244,10 @@ steps frames itself with `__bb.advance(seconds)`.
   renderer allows (DH 1125..1714). Nothing may overlap and nothing may fall off
   the bottom. The screen is laid out from a fit factor computed from its own
   content, so adding a stat line or a banner can't push it back into a clash.
+- `tests/update.js`: picking up a new build, served over HTTP because the
+  check is skipped on `file://`. It stalls the stamp request, then mends it,
+  and insists the game asks again and reloads. A stalled fetch used to leave
+  the single-flight guard up for the life of the page.
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
@@ -408,6 +413,13 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   `tests/results.js` passing when anything is added to it. The fit makes the
   bottom clamp bind exactly, so whatever `footer` reserves under the prompt is
   the clearance the build stamp gets: change one and check the other.
+- **A promise guarding a network call needs a way out.** `fetch` has no
+  timeout, so one stalled request left the update check's single-flight guard
+  up for ever and every later check did nothing -- on iOS, where the app is
+  resumed rather than relaunched, that page lives for days and the phone sits
+  a build behind with no way back but a force-quit. The guard races a timeout
+  now and the fetch is aborted. A wedged phone recovers on a force-quit alone:
+  the wedge is page state, not storage, so it needs no clearing of site data.
 - `reg.update()` is never awaited. It only settles once a new worker has
   finished installing, and ours precaches ten files first, so waiting on it
   holds up the very fetch that detects a new build.
