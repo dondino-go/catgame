@@ -2097,14 +2097,38 @@ function drawBuild() {
 let updateReady = false;
 const canUpdate = !framed && /^https?:/.test(location.protocol);
 
-/* One check at a time. Opening the app can fire visibilitychange, pageshow and
-   the start-up timer within moments of each other, and a second check that
-   overtook the first would read the marks the first had just written and take
-   a healthy phone for a stuck one -- wiping its offline copy for nothing. */
+/* One check at a time -- but never for ever.
+   Opening the app can fire visibilitychange, pageshow and the start-up timer
+   within moments of each other, and a second check that overtook the first
+   would read the marks the first had just written and take a healthy phone
+   for a stuck one, wiping its offline copy for nothing. So they queue behind
+   one promise.
+   The catch is that a fetch has no timeout of its own: one stalled call (a
+   flaky connection, a captive portal, a tunnel that swallows the request)
+   left that promise pending, and with it up every later check returned the
+   same dead promise and did nothing at all. For the life of the page -- and
+   iOS resumes a home-screen app for days rather than reloading it, so the
+   page outlives the trip that broke it. A phone could sit a build behind
+   indefinitely with no way back but a force-quit. So the guard expires, and
+   the fetch underneath it is actually aborted rather than left dangling. */
+const CHECK_TIMEOUT = 8000;
+const timeout = ms => new Promise(r => setTimeout(r, ms));
+
 let checking = null;
 function checkForUpdate() {
-  if (!checking) checking = runCheck().then(() => { checking = null; }, () => { checking = null; });
-  return checking;
+  if (checking) return checking;
+  const guard = Promise.race([runCheck(), timeout(CHECK_TIMEOUT)]).then(() => {}, () => {});
+  checking = guard;
+  guard.then(() => { if (checking === guard) checking = null; });
+  return guard;
+}
+
+/* fetch, but it gives up: without this the promise above has nothing to race */
+function fetchBriefly(url, opts) {
+  const ac = typeof AbortController === 'function' ? new AbortController() : null;
+  const t = setTimeout(() => { if (ac) ac.abort(); }, CHECK_TIMEOUT);
+  const o = ac ? Object.assign({}, opts, { signal: ac.signal }) : opts;
+  return Promise.resolve(fetch(url, o)).finally(() => clearTimeout(t));
 }
 
 async function runCheck() {
@@ -2127,7 +2151,7 @@ async function runCheck() {
   try {
     /* 'bbfresh' tells our worker to stay out of the way (see sw.js), so a
        stale cache can't answer the one question that detects staleness. */
-    const res = await fetch('src/version.js?bbfresh=' + Date.now(), { cache: 'no-store' });
+    const res = await fetchBriefly('src/version.js?bbfresh=' + Date.now(), { cache: 'no-store' });
     const m = (await res.text()).match(/time: '([^']+)'/);
     if (m && m[1] !== window.BOWL_BUILD.time) {
       updateReady = m[1];
@@ -2170,7 +2194,15 @@ async function loadUpdate(byTap) {
        these files with ten minutes of max-age, so a plain reload can hand back
        the very copies we just threw away -- and by then both marks are spent
        and the automatic path is out of moves. */
-    try { await Promise.all(GAME_FILES.map(u => fetch(u, { cache: 'reload' }))); } catch (e) {}
+    /* Same trap as the check above: these are a courtesy, to get past the
+       browser's own HTTP cache, and must never be able to hold up the reload
+       they are meant to improve. */
+    try {
+      await Promise.race([
+        Promise.all(GAME_FILES.map(u => fetchBriefly(u, { cache: 'reload' }).catch(() => {}))),
+        timeout(CHECK_TIMEOUT),
+      ]);
+    } catch (e) {}
   } finally {
     location.reload();
   }
@@ -2774,6 +2806,9 @@ function advance(secs) {
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
 if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
+  /* whether a check is in flight, for tests/update.js: the stall it guards
+     against is only visible as a check that never clears */
+  checking: () => !!checking,
   /* the title screen's hit areas, in design units, for tests/title.js and the
      picker scenes in tests/screens.js -- so neither has to restate the layout */
   titleRects: () => ({ play: playRect(), how: howRect(), DH,
