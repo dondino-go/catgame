@@ -191,7 +191,7 @@ steps frames itself with `__bb.advance(seconds)`.
   cover them.
 
 last reviewed: `c69e469` (Terrace Row, `6b88173..c69e469`, high, 6 findings;
-1-4 fixed, 5-6 filed as issues). The Terrace Row work shipped before its
+1-4 fixed in `7584741`, 5-6 filed as #28 and #29). The Terrace Row work shipped before its
 review, so this one reached back past the marker below it; both ranges have
 now been reviewed.
 before that: `34a55c0` (`claude/iphone-home-screen-cache-vfzflx`, the
