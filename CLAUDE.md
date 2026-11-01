@@ -4,19 +4,12 @@ A portrait mobile game about a cat raiding food bowls on a street of nosy
 neighbours. Plain HTML, CSS and JavaScript on one canvas: no framework, no
 build step, no dependencies (Playwright is used by one optional test only).
 
-> **On `main`?** This branch still holds only the original desktop game
-> (`index.html`) and its tests. The mobile game, the tools and the tests
-> described below live on the `claude/` branches: check out
-> `claude/new-streets` for new features, or `claude/mobile-redesign` for
-> playtest fixes, before changing anything. This copy of CLAUDE.md is kept
-> here so every session sees these rules; the branch copies are the source
-> of truth.
-
 ## Branches: read this before committing
 
 | Branch | What it is |
 |---|---|
-| `main` | The original desktop game (`index.html`). Untouched since the redesign began, apart from this file. |
+| `main` | **The mobile game: the canonical source.** Not the live branch -- see the note below. |
+| `legacy-desktop` | The original desktop game (`index.html`) and its three suites, exactly as `main` held them before the swap. Kept until #10 retires them. |
 | `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
 | `claude/new-streets` | Where new features are built (new streets, minigames), branched from `claude/mobile-redesign`. Merged back after a preview and a `/code-review`. |
 | `claude/data-driven-streets` | The refactor that made the street a data description (Phases 1 and 2). **Merged into `claude/mobile-redesign`; don't commit here any more.** |
@@ -24,16 +17,33 @@ build step, no dependencies (Playwright is used by one optional test only).
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
 into the feature branch (`claude/new-streets`), not the other way round.
 
+**`main` is the canonical source, but `claude/mobile-redesign` is still what
+testers run.** GitHub Pages was deliberately left pointing at it through the
+swap, so nothing on a tester's phone moved. Shipping to testers therefore
+still means pushing to `claude/mobile-redesign`, and `main` follows. Moving
+Pages to `main` is a separate, deliberate step, best taken together with #10
+(making the mobile game `index.html`), since that is what decides what the
+site's root serves.
+
 ## Where things stand
 
 - Phases 1 (#5: the rules read a street description) and 2 (#6: the renderer
   reads it) of the data-driven refactor are done, reviewed and live on
   `claude/mobile-redesign`. Marrow Street plays and looks exactly as before.
-- Next, on `claude/new-streets`: Phase 3 walking routes (#7), the first new
-  street, a terrace with a pub opposite (#8; a straight road, so it doesn't
-  need #7), then more streets (#12) and minigames (#9).
-- Open follow-ups: review findings #16 to #20, the flaky screenshot tests
-  (#21), art style feedback being collected (#22), and the playtest checklist
+- Terrace Row, the first new street (#8), is live on `claude/mobile-redesign`
+  and tagged "work in progress" in the picker for testers (`wip: true` on the
+  street; remove it when the street is done). Five brick terrace houses on a
+  narrow road at a warm evening, and a pub opposite that watches every bowl
+  from wave 3 (a `venue` house: no bowl, watch only) with a bus stop and a beer
+  garden beside it (`scenery`). It has its own ranks, wave wording, picker row,
+  best score and unlock (Bin Lid Regular, 700, on Marrow Street: eased for
+  playtesting, the first bar was Street Sweetheart, 1400). Shipped before its
+  `/code-review`, which is still owed. #8 stays open until it is playtested.
+  Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
+  Undecided: whether the eating screen should follow each street's look (#23).
+- Open follow-ups: review findings #16 to #20, the screenshot flake (#21,
+  mitigated by a retry, cause unknown), art style feedback being collected
+  (#22), and the playtest checklist
   (#13).
 - A new street is a description checked by `validateStreet` (see
   `tests/streets.js` for an odd-shaped one), with its own sight-line test,
@@ -66,6 +76,8 @@ into the feature branch (`claude/new-streets`), not the other way round.
 node tests/run.js                 # all Node suites
 node tests/golden.test.js         # seeded playthroughs vs tests/golden/*.log
 node tests/screens.js             # reference screenshots (needs Playwright)
+node tests/safearea.js            # canvas stays inside a phone's safe area
+node tests/results.js             # the results screen fits on every phone shape
 sh tools/stamp-build.sh           # stamp the build by hand
 ```
 
@@ -81,18 +93,36 @@ steps frames itself with `__bb.advance(seconds)`.
 ## Tests and what they guard
 
 - `tests/core.test.js`: the rules, directly against `src/core.js`.
-- `tests/golden.test.js`: eight seeded bot rounds must replay **identically**.
+- `tests/terrace.test.js`: Terrace Row's sight lines (every window sees exactly
+  the bowls it should, pub included), the pub's rules, its ranks and wording,
+  and street unlocks and switching. A new street gets its own file like this.
+- `tests/golden.test.js`: eight seeded Marrow rounds and four Terrace Row ones
+  must replay **identically**.
   Any change that alters play fails it. If the change is intended, re-record
   with `--update` and say so in the commit message. During the refactor the
   logs must not change at all.
 - `tests/screens.js`: key screens rendered in `?manual` mode and compared
-  with `tests/screens/*.png` (pixel differences over 48/255 fail). Six are
-  Marrow Street; two (`lane-*`) run on the odd-shaped test street in
+  with `tests/screens/*.png` (pixel differences over 48/255 fail). Eight are
+  Marrow Street (two of them the title with the street picker); four are
+  Terrace Row (`terrace-*`: the pub shut and open, the close-up, the results
+  map) and check that a tap on the pub walks to the road; two (`lane-*`) run on the odd-shaped test street in
   `tests/streets.js`, handed to the page as `window.__bbStreet` under `?debug`,
   and also check that taps land on the houses as drawn. Re-record with
   `--update` only for intended visual changes, and never re-record a Marrow
   screen during the refactor. Output goes to `tests/screens/out/`
   (git-ignored).
+- `tests/safearea.js`: the canvas and the HUD must stay clear of the status
+  bar, the Dynamic Island and the home indicator. Chromium doesn't emulate
+  `env(safe-area-inset-*)`, so it puts the same values on `#stage` as padding,
+  which is what the CSS does on a real phone. The HUD checks read where the
+  game actually drew (`fillText` and `strokeText` are recorded with the
+  transform in force), so text creeping back under the island fails even when
+  the canvas itself is placed correctly.
+- `tests/results.js`: the worst-case results screen -- every stat line, a new
+  best, a new street and a street choice -- measured at every phone shape the
+  renderer allows (DH 1125..1714). Nothing may overlap and nothing may fall off
+  the bottom. The screen is laid out from a fit factor computed from its own
+  content, so adding a stat line or a banner can't push it back into a clash.
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
@@ -107,6 +137,12 @@ steps frames itself with `__bb.advance(seconds)`.
   phone's aspect (`DH`). Lay things out in those units, never CSS pixels.
 - **World units** in the core: one row of houses is 1.0 tall; x runs 0..1
   across the street.
+- **Streets and ranks.** A street may carry its own `ranks` ladder and
+  `waveBlurbs`; `rankFor(score, street)` and `blurbFor(street, wave)` read
+  them. A street with fewer bowls scores lower, so scale its ladder from
+  `node tools/simulate.js --street <name>`. Street unlocks name a street and a
+  rung of its ladder (`unlock`); bests are stored per street id
+  (`bowlbandit.bests`).
 - **Difficulty and scoring are tuned by simulation.** After any change to
   scoring, the streak, the waves or the reaction windows, run
   `node tools/simulate.js` and re-check the `RANKS` thresholds in
@@ -155,7 +191,7 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 findings; 1-6 fixed in `77f61cc`, 3 filed as issues)
+last reviewed: `34a55c0` (`claude/iphone-home-screen-cache-vfzflx`, the update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
 
 ## Things learnt the hard way
 
@@ -173,9 +209,14 @@ last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 finding
 - `node tests/screens.js --update` re-records **every** screen, Marrow ones
   included. To change one reference, delete just that PNG and rerun (or
   `git checkout` the others afterwards).
-- The screenshot tests flake about one run in three (#21), on screens that
-  haven't changed (`results` 53 pixels, `eating-seen` 8, `title` 28). Rerun
-  before believing a failure, and compare the saved `tests/screens/out/` image.
+- The screenshot tests used to flake about one run in three (#21), on screens
+  that hadn't changed (`results` 53 pixels, `eating-seen` 8, `title` 28); the
+  cause was never found and it stopped reproducing (about 80 clean runs). A
+  failing screen is now rendered once more, and a pass on the retry is
+  reported as "needed a retry", with the first render kept in
+  `tests/screens/out/<name>.first.png`. A real change fails both renders. If
+  the retry notice appears often, the flake is back: compare that image with
+  the reference and add what you find to #21.
 - A new session can't overwrite the preview until it has read the files
   already published there (Artifact `read` with `paths`), and may start on a
   detached HEAD or a random `claude/...` branch: check `git status -sb` and
@@ -186,3 +227,24 @@ last reviewed: `f6c7d95` (`claude/data-driven-streets`, Phase 2, high, 9 finding
   reload for nothing.
 - `pkill -f tests/screens.js` also kills the shell command that contains that
   text. Wait for a background run or stop it by its task id.
+- **The results screen is the one that runs out of room.** It grows a card
+  line for every kind of trouble in the round and two banners after a good
+  one, so it is laid out from a fit factor measured against its own content,
+  not from a fixed size with the prompt pulled up to suit -- that put TAP TO
+  PROWL AGAIN on top of NEW BEST and NEW STREET on shorter phones. Keep
+  `tests/results.js` passing when anything is added to it. The fit makes the
+  bottom clamp bind exactly, so whatever `footer` reserves under the prompt is
+  the clearance the build stamp gets: change one and check the other.
+- `reg.update()` is never awaited. It only settles once a new worker has
+  finished installing, and ours precaches ten files first, so waiting on it
+  holds up the very fetch that detects a new build.
+- **Safe areas don't look after themselves.** `#stage` carries the phone's
+  insets as padding, but `getBoundingClientRect()` returns the *border* box,
+  padding included: measuring that sized the canvas to the whole screen, which
+  overflowed under the Dynamic Island (taking the timer) and off the bottom
+  (taking the build stamp). Measure the content box, and keep
+  `tests/safearea.js` passing.
+- The status bar style is `black`, not `black-translucent`. Translucent puts
+  the game under the status bar and relies on iOS reporting an inset to lay
+  out around, which it doesn't always do in an installed app. A phone-shaped
+  bug like this can't be seen in the artifact preview, only on a phone.

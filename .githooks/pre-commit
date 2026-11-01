@@ -1,0 +1,7 @@
+#!/bin/sh
+# Stamp every commit with its time and branch, so the title and results
+# screens show exactly which build is running. Enabled per clone with
+#   git config core.hooksPath .githooks
+# (the SessionStart hook in .claude/ does this for Claude Code sessions).
+sh "$(git rev-parse --show-toplevel)/tools/stamp-build.sh" >/dev/null || exit 1
+git add src/version.js
