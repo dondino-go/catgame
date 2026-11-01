@@ -132,10 +132,12 @@ then the button earns itself.
   until it is playtested.
   Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
-- Open follow-ups: review findings #16 to #20, the screenshot flake (#21,
-  mitigated by a retry, cause unknown -- but see the resize lesson below for a
-  lead), art style feedback being collected (#22), and the playtest checklist
-  (#13).
+- Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
+  helpers read the page now, the street-row ones still restate `L.hud`), the
+  screenshot flake (#21, mitigated by a retry, cause unknown -- but see the
+  resize lesson below for a lead), and art style feedback being collected
+  (#22). The old playtest checklist (#13) is closed: it was written for the
+  clock round and its numbers would mislead.
 - **The night is live.** The clock loop was kept beside it for a playtest and
   lost; the attention meter was the clear winner. Shipped to testers on 1 Nov
   after two `/code-review` passes (7 findings then 4, all addressed). All
