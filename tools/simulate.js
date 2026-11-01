@@ -8,7 +8,7 @@
  *
  *   node tools/simulate.js              60 rounds per row
  *   node tools/simulate.js --rounds 200
- *   node tools/simulate.js --street terrace
+ *   node tools/simulate.js --street terrace    (and that street's ladder)
  *
  * Bots have human-ish limits: they aim at the centre of the green with a
  * timing error (sigma, in bar widths) and react to windows after a delay.
@@ -64,22 +64,23 @@ function play(skill, style, seed) {
     cool -= DT;
     C.update(g, DT); C.drainEvents(g);
   }
-  return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length, mult: g.bestMult, rank: C.rankFor(g.score) };
+  return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length, mult: g.bestMult, rank: C.rankFor(g.score, STREET) };
 }
 
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
 const short = name => name.split(' ').map(w => w[0]).join('');      /* "Bowl Bandit" -> "BB" */
 
 console.log('Balance simulation, ' + ROUNDS + ' rounds per row\n');
+console.log('Street: ' + STREET.name + '\n');
 console.log('skill   style     score p10 / p50 / p90   kept   best x   ranks (' +
-            C.RANKS.map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
+            C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
 for (const [k, s] of Object.entries(SKILLS)) {
   for (const style of ['cautious', 'greedy']) {
     const r = [];
     for (let i = 1; i <= ROUNDS; i++) r.push(play(s, style, i * 7919 + 13));
     const sc = r.map(x => x.score).sort((x, y) => x - y);
     const avg = f => (r.reduce((n, x) => n + x[f], 0) / r.length).toFixed(1);
-    const ranks = C.RANKS.map(([, name]) => {
+    const ranks = C.ranksOf(STREET).map(([, name]) => {
       const n = r.filter(x => x.rank === name).length;
       return n ? short(name) + ' ' + Math.round(100 * n / r.length) + '%' : null;
     }).filter(Boolean).join(', ');

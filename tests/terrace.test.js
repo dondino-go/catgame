@@ -80,6 +80,56 @@ console.log('\n=== TERRACE ROW: RANKS AND WORDING ===');
   ok(C.blurbFor(C.MARROW_STREET, 3) === C.WAVES[3].blurb, 'Marrow Street keeps the stock wave blurbs');
   ok(/STAG/.test(C.blurbFor(ST, ST.houses[PUB].venue.from)), 'the wave the pub opens in says so');
 }
+/* Both of these were found by the code review of the Terrace Row work. */
+console.log('\n=== TERRACE ROW: THE DOG AND THE SHUT PUB ===');
+{
+  /* The dog puts the whole street at its windows. It used to do that to the
+     pub as well, before last orders -- and watchersOfBowl only tests state,
+     so the player was watched by a building drawn shuttered and dark. */
+  const run = wave => {
+    const g = fresh(); quiet(g); setWave(g, wave);
+    g.dogTimer = 0;
+    /* Run a few frames into the run phase: the frame that flips bark -> run
+       returns before moving the dog, so the watching only starts after it. */
+    let barked = false, ran = 0;
+    for (let i = 0; i < 60 * 12 && ran < 3; i++) {
+      C.update(g, DT); C.drainEvents(g);
+      if (g.dog && g.dog.phase === 'bark') barked = true;
+      if (g.dog && g.dog.phase === 'run') ran++;
+    }
+    return { g, barked, ran: ran >= 3, pub: g.houses[PUB] };
+  };
+  const shut = run(ST.houses[PUB].venue.from - 1);
+  ok(shut.barked && shut.ran, 'the dog barks and runs before last orders');
+  ok(shut.pub.state === 'idle', 'the dog does not bring a shut pub to its window');
+  ok(!C.isOpen(shut.g, shut.pub), 'and the pub really is shut at that wave');
+  for (let i = 0; i < N; i++) {
+    ok(!C.watchersOfBowl(shut.g, shut.g.houses[i]).some(w => w.venue),
+       'no bowl is watched by the shut pub while the dog runs (' + ST.houses[i].name + ')');
+  }
+  const open = run(ST.houses[PUB].venue.from);
+  ok(open.pub.state === 'watch', 'but after last orders the dog does bring the pub to its window');
+}
+
+console.log('\n=== TERRACE ROW: A CLATTER REACHES THE PUB ===');
+{
+  /* makeNoise measured to a house's `row`, which for the pub is the top of a
+     three-row span, so the far end of the terrace was out of reach of the one
+     watcher that sees every bowl. Reach runs to 2.0 house-spacings at the
+     widest (see makeNoise). */
+  const REACH = 2.0, pub = ST.houses[PUB];
+  for (let i = 0; i < N; i++) {
+    const d = C.houseDist(ST.houses[i], pub);
+    ok(d <= REACH, 'a clatter at ' + ST.houses[i].name + ' can reach the pub (' + d.toFixed(2) + ' <= ' + REACH + ')');
+  }
+  ok(C.houseDist(pub, pub) === 0, 'the pub is no distance from itself');
+  /* Marrow Street has no venues, so nothing there may move. */
+  const M = C.MARROW_STREET;
+  ok(M.houses.every(a => M.houses.every(b =>
+       C.houseDist(a, b) === Math.hypot(a.col - b.col, a.row - b.row))),
+     'on a street without venues the distance is unchanged');
+}
+
 console.log('\n=== STREETS AND UNLOCKS ===');
 {
   const M = C.MARROW_STREET, need = C.RANKS[ST.unlock.rank][0];

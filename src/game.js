@@ -2145,16 +2145,39 @@ window.addEventListener('pageshow', () => checkForUpdate());
 setTimeout(checkForUpdate, 1500);
 
 /* ---------- title ---------- */
-function playRect() { return { x: DW / 2 - 180, y: DH * 0.6, w: 360, h: 108 }; }
+/* The lower half of the title screen flows, rather than each piece sitting at
+   its own fraction of the height: tagline, then the street picker, then PLAY
+   and How to play. On a phone every piece keeps exactly the place it had. It
+   only gives way on a short, wide screen (the aspect is clamped at DH 1125,
+   so any desktop or tablet window), where the fixed fractions stacked the
+   picker on the tagline above it and on PLAY below -- and because onDown
+   tests the picker first, the top of PLAY quietly re-selected a street
+   instead of starting a round.
+   Note the budget is finite: beyond three streets the rows will reach the
+   build stamp at the widest aspect, and the picker will need its own
+   answer (paging, or a shorter row). tests/title.js fails when that day
+   comes. */
+function playRect() {
+  const under = pickerOn() ? pickerTop() + pickerBlock() + 30 : 0;
+  return { x: DW / 2 - 180, y: Math.max(DH * 0.6, under), w: 360, h: 108 };
+}
 function howRect()  { const p = playRect(); return { x: DW / 2 - 150, y: p.y + p.h + 30, w: 300, h: 60 }; }
 
 /* The street picker: one row per street, under the tagline. Only after the
    first-launch lesson, which is always on Marrow Street. */
 const STREET_ROW = { w: 600, h: 84, gap: 14 };
 const pickerOn = () => onboarded && C.STREETS.length > 1;
+/* the foot of the second tagline line (drawn 'middle', so half its size down),
+   plus a little air */
+const taglineBottom = () => DH * 0.25 + 240 + 16 + 8;
+const pickerTop = () => Math.max(DH * 0.45, taglineBottom() + 16);
+function pickerBlock() {
+  const r = STREET_ROW, n = C.STREETS.length;
+  return pickerOn() ? n * r.h + (n - 1) * r.gap : 0;
+}
 function streetRect(i) {
   const r = STREET_ROW;
-  return { x: DW / 2 - r.w / 2, y: DH * 0.45 + i * (r.h + r.gap), w: r.w, h: r.h };
+  return { x: DW / 2 - r.w / 2, y: pickerTop() + i * (r.h + r.gap), w: r.w, h: r.h };
 }
 function drawStreetPicker() {
   C.STREETS.forEach((st, i) => {
@@ -2629,7 +2652,13 @@ function advance(secs) {
 }
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
-if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance };
+if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
+  /* the title screen's hit areas, in design units, for tests/title.js and the
+     picker scenes in tests/screens.js -- so neither has to restate the layout */
+  titleRects: () => ({ play: playRect(), how: howRect(), DH,
+                       tagline: { x: 0, y: DH * 0.25 + 240 - 16, w: DW, h: 32 },
+                       build: { x: 0, y: DH - 52, w: DW, h: 34 },
+                       picker: pickerOn() ? C.STREETS.map((_, i) => streetRect(i)) : [] }) };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */
