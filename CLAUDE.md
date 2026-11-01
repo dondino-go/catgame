@@ -11,7 +11,7 @@ build step, no dependencies (Playwright is used by one optional test only).
 | `main` | The original desktop game (`index.html`). Untouched since the redesign began. |
 | `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
 | `claude/new-streets` | Where new features are built (new streets, minigames), branched from `claude/mobile-redesign`. Merged back after a preview and a `/code-review`. |
-| `claude/slow-loop` | **The night.** The clock round was replaced by an open-ended night with an attention meter; playtested against the clock side by side, and the clock lost. Not merged yet: it needs a `/code-review` and a playtest on a phone. |
+| `claude/slow-loop` | The night: the clock round replaced by an open-ended night with an attention meter. **Merged into `claude/mobile-redesign` and live; don't commit here any more.** |
 | `claude/data-driven-streets` | The refactor that made the street a data description (Phases 1 and 2). **Merged into `claude/mobile-redesign`; don't commit here any more.** |
 
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
@@ -136,10 +136,13 @@ then the button earns itself.
   mitigated by a retry, cause unknown -- but see the resize lesson below for a
   lead), art style feedback being collected (#22), and the playtest checklist
   (#13).
-- **The clock loop is gone** (`claude/slow-loop`). It was kept beside the night
-  for a playtest and lost: the attention meter was the clear winner. All twelve
-  golden logs were re-recorded as night playthroughs, and the wave cards, the
-  HUD's wave row, `timeLeft`, `GAME_SECONDS` and `waveAt` went with it.
+- **The night is live.** The clock loop was kept beside it for a playtest and
+  lost; the attention meter was the clear winner. Shipped to testers on 1 Nov
+  after two `/code-review` passes (7 findings then 4, all addressed). All
+  twelve golden logs are night playthroughs now, and the wave cards, the HUD's
+  wave row, `timeLeft`, `GAME_SECONDS` and `waveAt` are gone. Testers had only
+  ever played the clock version, so the first round of feedback is a reaction
+  to a different game, not an update to the old one.
 - Open on the night: fighting the fox off at a bowl (#30) -- the fox now races
   you for a bowl rather than eating out of it, which cost it most of its teeth
   -- and whether a dog pass in the endgame is unfair (#31).
