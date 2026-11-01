@@ -1033,12 +1033,16 @@ function leaveCamera() {
   const t = g.leave.t;
   const z = 1 + 0.62 * (1 - Math.pow(1 - clamp(t / 1.3, 0, 1), 3));
   const ease = clamp(t / 1.3, 0, 1);
-  const out = clamp((t - C.LEAVE_SECS + 1.1) / 1.1, 0, 1);     /* let it walk out of frame */
-  const fx = sx(g.cat.x), fy = sy(g.cat.y);
   const anchorY = DH * 0.55;
+  /* Keep the painted street filling the frame. The cat walks on past the end
+     of the road, and following it out there showed the void below the
+     pavement -- a cat strolling into nothing. Clamped like this it walks out
+     of the bottom of the frame instead, which is what was wanted. */
+  const lo = L.top + anchorY / z, hi = L.bot - (DH - anchorY) / z;
+  const fy = clamp(sy(g.cat.y), Math.min(lo, hi), Math.max(lo, hi));
   ctx.translate(DW / 2, anchorY);
   ctx.scale(z, z);
-  ctx.translate(-lerp(DW / 2, fx, ease), -lerp(anchorY, fy, ease * (1 - out * 0.55)));
+  ctx.translate(-lerp(DW / 2, sx(g.cat.x), ease), -lerp(anchorY, fy, ease));
 }
 
 /* Gentle push-in on the cat, then follow the owner home. Only the street
@@ -1696,6 +1700,25 @@ function drawCloseUp() {
   /* peripheral warnings, so the bar never has to be abandoned to see them */
   if (alert)         edgeGlow('255,60,60', 0.3 + pulse * 0.22);
   else if (warned()) edgeGlow('255,190,70', 0.3 + (0.5 + 0.5 * Math.sin(elapsed * 6)) * 0.2);
+}
+
+/* A good night gets the same hearts the cat gives its owner when it is
+   carried home; a thin one gets none. A send-off should not congratulate a
+   player who has just been chased off the street. Drawn inside the street's
+   transform, with the cat, so the camera carries them. */
+function drawLeaveHearts(x, y, face) {
+  if (!g.leave || tut || C.nightGrade(g).idx < 3) return;
+  const t = g.leave.t, until = C.LEAVE_CIRCLE + 0.8;
+  if (t < 0.3 || t > until) return;
+  const fade = clamp((until - t) / 0.5, 0, 1);
+  for (let i = 0; i < 3; i++) {
+    if (t - 0.3 < i * 0.3) continue;
+    const ht = ((t - 0.3) * 0.8 + i * 0.33) % 1;
+    ctx.globalAlpha = (1 - ht) * fade;
+    text('\u2665', x + face * 12 + Math.sin(ht * 6 + i) * 11, y - 30 - ht * 62,
+         22 + i * 3, '#ff9ecd', 'center', 800);
+    ctx.globalAlpha = 1;
+  }
 }
 
 /* The send-off. The street stays on screen and the cat walks itself off the
@@ -2499,6 +2522,14 @@ function draw() {
   ctx.save();
   if (shake > 0) ctx.translate(rand(-1, 1) * shake * 14, rand(-1, 1) * shake * 14);
 
+  /* Clear the canvas in screen space, before the camera. drawStreet's own
+     full-canvas fill is inside the transform, so as soon as a camera move
+     follows the cat past the end of the road that fill stops covering the
+     screen and the previous frame shows through -- the cat smeared across the
+     road, drawn again at every step, as it walked off. */
+  ctx.fillStyle = NIGHT;
+  ctx.fillRect(0, 0, DW, DH);
+
   ctx.save();
   pickupCamera();
   leaveCamera();
@@ -2519,6 +2550,7 @@ function draw() {
   if (!held) {
     const face = g.pickup ? (pickupPlan().ox > sx(g.cat.x) ? 1 : -1) : g.cat.face;
     drawCat(sx(g.cat.x), sy(g.cat.y), face, !!g.eat);
+    drawLeaveHearts(sx(g.cat.x), sy(g.cat.y), face);
   }
   drawDog();
   drawOwner();

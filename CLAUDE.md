@@ -45,8 +45,9 @@ on the spot for `LEAVE_CIRCLE` and then a walk off the end of the road, shot
 the same way the pickup is -- `leaveCamera` pushes in on the cat and follows
 it out, easing off at the end so the street does not whip past. The caption
 is up during the turn and gone before the cat is, so the last beat is the
-street emptying rather than words sitting over it. A tap skips the lot after
-`LEAVE_SKIP`. Scene order is `play` -> `leaving`/`pickup` -> `over`, so a
+street emptying rather than words sitting over it. A good night gets the hearts the cat gives
+its owner when it is carried home; a thin one gets none. A tap skips the lot
+after `LEAVE_SKIP`. Scene order is `play` -> `leaving`/`pickup` -> `over`, so a
 test that settles a street sees `leaving`, not `over`.
 
 **The endgame waits scale down** (`endgameScale`). A bowl comes back 5.5-9s
@@ -355,6 +356,14 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   fail about one run in five until it waited for the canvas to match the
   window. Worth trying against the screenshot flake (#21), whose symptom --
   two alternating renders rather than random noise -- has the same shape.
+- **The canvas is cleared in screen space, before the camera.** `drawStreet`
+  has a full-canvas fill of its own, but it is inside the transform: as soon
+  as a camera move followed the cat past the end of the road it stopped
+  covering the screen and the previous frame showed through, so the cat was
+  smeared across the road as it walked off. For the same reason `leaveCamera`
+  clamps to the painted street -- following the cat out showed the void below
+  the pavement. `tests/screens/leaving-thin.png` is taken late in the walk,
+  where both would show.
 - A new layout number belongs in one place and is asked of the page by the
   tests (`__bb.titleRects()`, `__bb.g.street.rows`), not restated in them.
   The same goes for thresholds: `tests/screens.js` hard-coded a best of 699 to

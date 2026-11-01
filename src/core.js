@@ -320,7 +320,11 @@ const PICKUP_SECS  = 4.8;     // walk up, scoop the cat, carry it home
    game -- cut to the results on the same frame, so the one ending with a
    moment to it was the one you are trying to avoid. A playtest put it
    plainly: "the game just ended". */
-const LEAVE_SECS   = 4.8;
+/* Long enough for the turn, the walk and a moment of quiet street after the
+   cat has gone; not so long that the quiet outstays it. The camera holds on
+   the street rather than following the cat off the end of the road, so the
+   cat leaves the frame at about 3.3s. */
+const LEAVE_SECS   = 4.2;
 const LEAVE_CIRCLE = 1.9;     // a turn on the spot first: the cat is in no hurry
 const LEAVE_SKIP   = 1.2;     // ...but a player on their tenth night can tap past it
 

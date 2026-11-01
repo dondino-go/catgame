@@ -144,6 +144,5 @@
 4099 stir house=3
 4101 stir house=5
 4140 @ leaving cat=0.494499,6.2 score=792 streak=12 st=i-.w-.w-.s-.i-.s-
-4200 @ leaving cat=0.499415,6.2 score=792 streak=12 st=i-.w-.w-.w-.i-.w-
-4223 over score=992
+4187 over score=992
 end over score=992 kept=5 cleared=5 bites=16 perfects=15 misses=0 caught=0 fox=3 bestMult=3 ending=cleared got=5/5

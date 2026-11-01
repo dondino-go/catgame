@@ -184,6 +184,24 @@ const SCENES = {
     a.check('a cleared street starts the send-off', await a.game(() => window.__bb.g.scene === 'leaving'));
     await a.run(700);
   } },
+  /* The other send-off: a night that went badly gets the walk but no hearts.
+     Taken late, well into the walk off, which is also where the street used to
+     smear -- the canvas was cleared inside the camera transform, so once the
+     camera followed the cat past the end of the road the previous frame showed
+     through and the cat was drawn again at every step. A trail would show
+     here. */
+  'leaving-thin': { setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);
+    await a.game(() => { const g = window.__bb.g;
+      g.houses.forEach((h, i) => { if (h.venue) return;
+        h.bowl = null; if (i < 3) h.cleared = true; else h.angry = true; }); });
+    await a.run(16);
+    a.check('a street that shut you out still gets a send-off',
+            await a.game(() => window.__bb.g.scene === 'leaving' && window.__bb.g.ending === 'done'));
+    a.check('and it is not a night worth hearts',
+            await a.game(() => window.__bb.C.nightGrade(window.__bb.g).idx < 3));
+    await a.run(3600);
+  } },
   /* a clean sweep: the headline every player is chasing */
   'results-cleared': { setup: async a => {
     await a.tap(360, await a.playY()); await a.run(400);

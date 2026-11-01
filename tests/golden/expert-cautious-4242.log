@@ -189,7 +189,5 @@
 4672 stir house=0
 4680 @ leaving cat=0.503322,-0.9605 score=1467 streak=12 st=s-.i-.i-.i-.i-.s-.i-.i-
 4687 stir house=4
-4726 stir house=1
-4740 @ leaving cat=0.500353,-1.2 score=1467 streak=12 st=w-.s-.i-.i-.w-.w-.i-.i-
-4744 over score=1787
+4708 over score=1787
 end over score=1787 kept=8 cleared=8 bites=26 perfects=25 misses=0 caught=0 fox=4 bestMult=3 ending=cleared got=8/8

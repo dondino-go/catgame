@@ -103,6 +103,5 @@
 2454 stir house=1
 2460 @ leaving cat=0.493369,5.4285 score=258 streak=0 st=i-.s-.w-.Xw-.i-.i-
 2470 stir house=4
-2520 @ leaving cat=0.499295,6.2 score=258 streak=0 st=i-.w-.w-.Xw-.w-.i-
-2548 over score=418
+2512 over score=418
 end over score=418 kept=4 cleared=4 bites=12 perfects=5 misses=5 caught=2 fox=0 bestMult=1.5 ending=done got=4/5

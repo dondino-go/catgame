@@ -191,6 +191,5 @@
 5228 stir house=3
 5243 stir house=4
 5280 @ leaving cat=0.49607,-1.2 score=386 streak=0 st=Xi-.i-.i-.w-.s-.w-
-5340 @ leaving cat=0.499582,-1.2 score=386 streak=0 st=Xi-.i-.i-.w-.w-.i-
-5354 over score=546
+5318 over score=546
 end over score=546 kept=4 cleared=4 bites=18 perfects=8 misses=8 caught=2 fox=3 bestMult=2 ending=done got=4/5

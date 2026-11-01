@@ -252,6 +252,5 @@
 5785 stir house=2
 5820 @ leaving cat=0.471001,4.674833 score=670 streak=3 st=i-.i-.s-.s-.i-.i-.w-.s-
 5880 @ leaving cat=0.496917,5.2 score=670 streak=3 st=i-.i-.w-.w-.i-.i-.w-.w-
-5940 @ leaving cat=0.499672,5.2 score=670 streak=3 st=i-.i-.w-.w-.i-.i-.i-.w-
-5942 over score=990
+5906 over score=990
 end over score=990 kept=8 cleared=8 bites=28 perfects=10 misses=15 caught=1 fox=4 bestMult=2 ending=cleared got=8/8
