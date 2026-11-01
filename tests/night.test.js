@@ -114,6 +114,25 @@ console.log('\n=== HOW THE NIGHT ENDS ===');
   ok(g.scene === 'pickup' || g.scene === 'over', 'a full racket meter brings the owner out');
   ok(g.ending === 'owner', 'and the night is recorded as the owner finding you');
 }
+console.log('\n=== A FULL METER ALWAYS MEANS THE OWNER ===');
+{
+  /* The attention check sits in the `play` branch, which the caught beat
+     returns before reaching. A catch that both filled the meter and settled
+     the last house therefore ended the night as `done` -- the cat walking off
+     with the bar at 1.00 and the owner never coming. */
+  const g = fresh(); quiet(g);
+  const hs = g.houses.filter(h => !h.venue);
+  hs.forEach((h, i) => { if (i < hs.length - 1) { h.cleared = true; h.bowl = null; } });
+  const last = hs[hs.length - 1];
+  last.strikes = C.NIGHT.STRIKES - 1;                /* one scare from gone */
+  const caught = catchAt(g, last.id);
+  ok(caught && g.scene === 'caught', 'the last house is caught out');
+  g.racket = 1;
+  run(g, C.CAUGHT_SECS + 0.2, quiet);
+  ok(g.ending === 'owner', 'a full meter fetches the owner even as the street settles (got ' + g.ending + ')');
+  ok(g.scene === 'pickup' || g.scene === 'over', '... and it is the pickup that plays, not the walk off');
+}
+
 console.log('\n=== THE RACKET ===');
 {
   const g = fresh(); quiet(g);

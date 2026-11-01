@@ -108,14 +108,14 @@
 2378 caught grass=true loser=7 owner=7 shut=true witness=3
 2400 @ caught cat=0.71,3.5 score=321 streak=0 st=i-.i-.i-.Xi-.i-.i-.i-.i-
 2460 @ caught cat=0.71,3.5 score=321 streak=0 st=i-.i-.i-.Xi-.i-.i-.i-.i-
-2476 call
+2475 call
 2520 @ pickup cat=0.71,3.5 score=321 streak=0 st=i-.i-.i-.Xi-.i-.i-.i-.i-
 2580 @ pickup cat=0.71,3.5 score=321 streak=0 st=i-.i-.i-.Xi-.i-.i-.i-.i-
-2590 stir house=3
+2589 stir house=3
 2640 @ pickup cat=0.71,3.5 score=321 streak=0 st=i-.i-.i-.Xs-.i-.i-.i-.i-
-2643 stir house=7
+2642 stir house=7
 2700 @ pickup cat=0.71,3.5 score=321 streak=0 st=i-.i-.i-.Xw-.i-.i-.i5.s-
-2708 stir house=4
+2707 stir house=4
 2760 @ pickup cat=0.71,3.5 score=321 streak=0 st=i-.i-.i-.Xw-.s-.i-.i5.w-
-2765 over score=601
+2764 over score=601
 end over score=601 kept=7 cleared=4 bites=15 perfects=7 misses=6 caught=4 fox=1 bestMult=2 ending=owner got=4/8

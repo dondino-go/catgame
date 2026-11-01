@@ -1052,7 +1052,14 @@ function update(g, dt) {
     updateHouses(g, dt);
     if (g.caught.t <= 0) {
       g.caught = null;
-      if (!g.practice && g.houses.every(h => isSettled(g, h))) beginLeave(g);
+      /* The attention check lives in the `play` branch, which this one returns
+         before reaching -- so a catch that both fills the meter and settles the
+         last house used to end the night as `done`, the cat strolling off with
+         the bar sitting at 1.00 and the owner never arriving. If they have
+         found you, that is how the night ended, whatever else happened on the
+         same tick. */
+      if (!g.practice && g.racket >= 1) { g.ending = 'owner'; beginPickup(g); }
+      else if (!g.practice && g.houses.every(h => isSettled(g, h))) beginLeave(g);
       else g.scene = 'play';
     }
     return;
