@@ -304,7 +304,11 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `e0b35c6` (the night, `origin/claude/mobile-redesign..claude/slow-loop`,
+last reviewed: `b5ed7b3` (the night's second pass, `e0b35c6..b5ed7b3`, high,
+4 findings; all 4 fixed in `0954268` -- a results line that clipped at 719 of
+720 units, the two ranks disagreeing, a frozen RUN bar through the send-off,
+and a stale threshold in a comment).
+before that: `e0b35c6` (the night, `origin/claude/mobile-redesign..claude/slow-loop`,
 high, 7 findings; all 7 addressed -- the score ladders were re-derived rather
 than dropped).
 before that: `c69e469` (Terrace Row, `6b88173..c69e469`, high, 6 findings;
