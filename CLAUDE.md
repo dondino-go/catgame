@@ -37,14 +37,21 @@ site's root serves.
   from wave 3 (a `venue` house: no bowl, watch only) with a bus stop and a beer
   garden beside it (`scenery`). It has its own ranks, wave wording, picker row,
   best score and unlock (Bin Lid Regular, 700, on Marrow Street: eased for
-  playtesting, the first bar was Street Sweetheart, 1400). Shipped before its
-  `/code-review`, which is still owed. #8 stays open until it is playtested.
+  playtesting, the first bar was Street Sweetheart, 1400). Its owed
+  `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 stays open
+  until it is playtested.
   Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
 - Open follow-ups: review findings #16 to #20, the screenshot flake (#21,
-  mitigated by a retry, cause unknown), art style feedback being collected
-  (#22), and the playtest checklist
+  mitigated by a retry, cause unknown -- but see the resize lesson below for a
+  lead), art style feedback being collected (#22), and the playtest checklist
   (#13).
+- **New streets are on hold** until the art style feedback (#22) lands: each
+  street is drawn by hand, so a restyle would mean redrawing them. The work
+  that isn't art carries on -- per-street events (#27), walking routes (#7),
+  and how the streets fit together (the picker, unlocks and transitions).
+  The rule that keeps this cheap: no `if (street.id === ...)` in the renderer.
+  Everything per-street comes from the street description, `look` included.
 - A new street is a description checked by `validateStreet` (see
   `tests/streets.js` for an odd-shaped one), with its own sight-line test,
   golden playthroughs and screenshots, a preview, and a `/code-review`.
@@ -78,6 +85,7 @@ node tests/golden.test.js         # seeded playthroughs vs tests/golden/*.log
 node tests/screens.js             # reference screenshots (needs Playwright)
 node tests/safearea.js            # canvas stays inside a phone's safe area
 node tests/results.js             # the results screen fits on every phone shape
+node tests/title.js               # the title screen fits, and PLAY always starts a round
 sh tools/stamp-build.sh           # stamp the build by hand
 ```
 
@@ -191,7 +199,12 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `34a55c0` (`claude/iphone-home-screen-cache-vfzflx`, the update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
+last reviewed: `c69e469` (Terrace Row, `6b88173..c69e469`, high, 6 findings;
+1-4 fixed in `7584741`, 5-6 filed as #28 and #29). The Terrace Row work shipped before its
+review, so this one reached back past the marker below it; both ranges have
+now been reviewed.
+before that: `34a55c0` (`claude/iphone-home-screen-cache-vfzflx`, the
+update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
 
 ## Things learnt the hard way
 
@@ -227,6 +240,14 @@ last reviewed: `34a55c0` (`claude/iphone-home-screen-cache-vfzflx`, the update-p
   reload for nothing.
 - `pkill -f tests/screens.js` also kills the shell command that contains that
   text. Wait for a background run or stop it by its task id.
+- **Playwright's `setViewportSize` returns before the page has relaid out**, so
+  the canvas can still report its old size. Measuring or clicking through a
+  stale rect maps design units to the wrong place: it made `tests/title.js`
+  fail about one run in five until it waited for the canvas to match the
+  window. Worth trying against the screenshot flake (#21), whose symptom --
+  two alternating renders rather than random noise -- has the same shape.
+- A new layout number belongs in one place and is asked of the page by the
+  tests (`__bb.titleRects()`, `__bb.g.street.rows`), not restated in them.
 - **The results screen is the one that runs out of room.** It grows a card
   line for every kind of trouble in the round and two banners after a good
   one, so it is laid out from a fit factor measured against its own content,

@@ -85,16 +85,16 @@
 2182 eatStart house=2
 2196 bark
 2211 bite house=2 mult=2 multUp=2.5 perfect=true points=30 streak=10
-2220 @ play cat=0.329,2.5 score=957 streak=10 st=w-.s-.s2.s3.w3.s-
+2220 @ play cat=0.329,2.5 score=957 streak=10 st=w-.s-.s2.s3.w3.i-
 2265 bark
 2266 streakLost by=1 streak=10
-2280 @ play cat=0.329,2.5 score=957 streak=0 st=w-.w-.w2.w3.w3.w-
+2280 @ play cat=0.329,2.5 score=957 streak=0 st=w-.w-.w2.w3.w3.i-
 2297 eatStart house=2
 2328 eatStart house=2
-2340 @ play cat=0.329,2.5 score=957 streak=0 st=w-.w-.w2.w3.w3.w-
+2340 @ play cat=0.329,2.5 score=957 streak=0 st=w-.w-.w2.w3.w3.i-
 2359 eatStart house=2
 2390 eatStart house=2
-2400 @ play cat=0.329,2.5 score=957 streak=0 st=w-.w4.w2.w3.w3.w-
+2400 @ play cat=0.329,2.5 score=957 streak=0 st=w-.w4.w2.w3.w3.i-
 2421 eatStart house=2
 2452 eatStart house=2
 2460 @ play cat=0.329,2.5 score=957 streak=0 st=i4.i4.i2.i3.i3.i-

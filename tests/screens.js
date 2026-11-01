@@ -59,6 +59,10 @@ async function scene(browser, name, { onboarded = true, street, bests, setup }) 
     run: ms => p.evaluate(s => window.__bb.advance(s), ms / 1000),
     row: r => 132 + (r + 0.5) * ((DH - 24 - 132) / 4),
     game: fn => p.evaluate(fn),
+    /* where a street picker row's centre is, asked of the page rather than
+       restated here: the title screen's layout flows, so it is not a fixed
+       fraction of the height */
+    streetRow: i => p.evaluate(i => { const r = window.__bb.titleRects().picker[i]; return r.y + r.h / 2; }, i),
     /* where a row's centre is on screen, for the street the page is running */
     rowAt: async r => p.evaluate(([r, DH]) => { const rows = window.__bb.g.street.rows; return 132 + (r + 0.5) * ((DH - 24 - 132) / rows); }, [r, DH]),
     check: (what, cond) => CHECKS.push([name + ': ' + what, !!cond]),
@@ -153,15 +157,14 @@ const SCENES = {
   } },
   /* the title once Terrace Row is open: pick it, and the game is on it */
   'title-streets': { bests: { marrow: 1500, terrace: 640 }, setup: async a => {
-    const row = i => a.DH * 0.45 + i * 98 + 42;
-    await a.tap(360, row(1)); await a.run(100);
+    await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('tapping Terrace Row selects it', await a.game(() => window.__bb.g.street.id === 'terrace' && window.__bb.g.houses.length === 6));
-    await a.tap(360, row(0)); await a.run(100);
+    await a.tap(360, await a.streetRow(0)); await a.run(100);
     a.check('and tapping Marrow Street goes back', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.houses.length === 8));
-    await a.tap(360, row(1)); await a.run(300);
+    await a.tap(360, await a.streetRow(1)); await a.run(300);
   } },
   'title-locked': { bests: { marrow: 699 }, setup: async a => {
-    await a.tap(360, a.DH * 0.45 + 98 + 42); await a.run(100);
+    await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
   } },
   'results': { setup: async a => {

@@ -553,12 +553,22 @@ function takeBite(g, atT) {
 /* A missed bite clatters the bowl and brings nearby residents to the window.
    Reach is in house-spacings: early on only the neighbours hear it, later the
    diagonals and then the houses two along. */
+function houseDist(from, h) {
+  /* A venue spans several rows (the pub is three deep) and `row` is the top of
+     that span. Measure to the nearest row it occupies, or the far end of a
+     terrace can never reach it: from No. 7 the pub's corner is 2.24 away and
+     from No. 9 it is 3.16, both past the widest reach, so a clatter there
+     could never bring to its window the one watcher that sees every bowl. */
+  const span = (h.venue && h.venue.span) || 1;
+  return dist(from.col, from.row, h.col, clamp(from.row, h.row, h.row + span - 1));
+}
+
 function makeNoise(g, bowlHouse) {
   const reach = lerp(1.1, 2.0, wt(g));
   const lo = lerp(1.8, 0.35, wt(g)), hi = lerp(3.0, 1.1, wt(g));
   for (const h of g.houses) {
     if (h.state !== 'idle' || !isOpen(g, h)) continue;
-    if (dist(bowlHouse.col, bowlHouse.row, h.col, h.row) <= reach) h.t = Math.min(h.t, rand(g, lo, hi));
+    if (houseDist(bowlHouse, h) <= reach) h.t = Math.min(h.t, rand(g, lo, hi));
   }
 }
 
@@ -692,8 +702,10 @@ function updateDog(g, dt) {
   }
   const d = g.dog;
   if (d.phase === 'bark') {
-    // telegraph: every curtain twitches before the dog appears
+    // telegraph: every curtain twitches before the dog appears -- except
+    // behind a shut pub's shutters, where there is nobody to twitch them.
     for (const h of g.houses) {
+      if (!isOpen(g, h)) continue;
       if (h.state === 'idle') h.state = 'stir';
       h.t = Math.max(h.t, 0.35);
     }
@@ -702,7 +714,11 @@ function updateDog(g, dt) {
     return;
   }
   d.y += d.dir * DOG_SPEED * dt;
-  for (const h of g.houses) { h.state = 'watch'; h.t = 0.7; }
+  /* The dog brings every open house to its window. A venue that hasn't opened
+     yet has to be left out: watchersOfBowl only tests state, so a pub stirred
+     by the dog before last orders became a watcher the player had no way of
+     seeing -- drawVenue goes on drawing it shuttered and dark. */
+  for (const h of g.houses) { if (!isOpen(g, h)) continue; h.state = 'watch'; h.t = 0.7; }
   const run = g.street.dog;
   if (d.y < Math.min(...run.ends) - run.overrun || d.y > Math.max(...run.ends) + run.overrun) g.dog = null;
 }
@@ -874,6 +890,6 @@ return {
   RANKS, rankFor, ranksOf, blurbFor, isOpen,
   create, start, update, drainEvents, setPractice, practiceResident, practiceBowl, practiceHoldBowl,
   tapHouse, tapRoad, tapEat,
-  bowlSpot, waveAt, wave, watchersOfBowl, isThreat, spawnBowl,
+  bowlSpot, waveAt, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
 };
 });
