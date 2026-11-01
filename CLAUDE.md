@@ -342,8 +342,14 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
 - For visual changes, render options side by side and let the user pick,
   rather than guessing in successive pushes.
 - `node tests/screens.js --update` re-records **every** screen, Marrow ones
-  included. To change one reference, delete just that PNG and rerun (or
-  `git checkout` the others afterwards).
+  included. **To change one reference, delete just that PNG and rerun without
+  `--update`**: a missing reference is recorded (`REC`) and nothing else is
+  touched. Do not reach for `--update` and tidy up afterwards with
+  `git checkout` -- that reverts to the last *commit*, so a reference that
+  legitimately changed earlier in the same session, but is not on the list you
+  are tidying around, is silently restored to a stale version. It happened to
+  `results-partial`: re-recorded correctly for a shortened line, reverted by
+  the next clean-up, and it sat wrong until the final check before shipping.
 - The screenshot tests used to flake about one run in three (#21), on screens
   that hadn't changed (`results` 53 pixels, `eating-seen` 8, `title` 28); the
   cause was never found and it stopped reproducing (about 80 clean runs). A
