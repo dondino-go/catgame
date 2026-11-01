@@ -288,13 +288,18 @@ console.log('\n=== CORE RULE ===');
   run(g, 1.5);
   ok(last.angry && g.scene === 'caught', 'a second catch angers it for good');
   run(g, C.CAUGHT_SECS + 0.1);
-  ok(g.scene === 'over' && g.caught === null, '... and then the round ends, with nothing left dangling');
+  /* the cat sees itself off the street before the results */
+  ok(g.scene === 'leaving' && g.caught === null, '... and then it walks off, with nothing left dangling');
+  run(g, C.LEAVE_SECS + 0.1);
+  ok(g.scene === 'over', '... and the round ends after the send-off');
 
   // everyone gone: round ends early
   g = fresh(); quiet(g);
   g.houses.forEach(h => { h.angry = true; h.bowl = null; });
   run(g, 0.1);
-  ok(g.scene === 'over' && g.keptBonus === 0, 'when every house has given up the round ends early');
+  ok(g.scene === 'leaving', 'when every house has given up the night ends early');
+  run(g, C.LEAVE_SECS + 0.1);
+  ok(g.scene === 'over' && g.keptBonus === 0, '... and nobody is left feeding you');
 }
 
 console.log('\n=== THE DOG ===');

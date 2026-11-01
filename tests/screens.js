@@ -175,6 +175,15 @@ const SCENES = {
     await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
   } },
+  /* the send-off: the cat walking itself off a street it has cleared */
+  'leaving': { setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);
+    await a.game(() => { const g = window.__bb.g;
+      g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } }); });
+    await a.run(16);                       /* one frame: the street settles */
+    a.check('a cleared street starts the send-off', await a.game(() => window.__bb.g.scene === 'leaving'));
+    await a.run(700);
+  } },
   /* a clean sweep: the headline every player is chasing */
   'results-cleared': { setup: async a => {
     await a.tap(360, await a.playY()); await a.run(400);

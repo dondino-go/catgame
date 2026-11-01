@@ -37,6 +37,21 @@ A night ends three ways, and the results headline says which:
 | `done` | every house settled, but some were lost |
 | `owner` | the attention meter filled |
 
+**Every ending gets a moment.** The owner's arrival has `PICKUP_SECS` of
+animation; clearing the street used to cut to the results on the same frame,
+so the one ending with a beat was the one you are trying to avoid ("the game
+just ended"). `beginLeave` now walks the cat off the end of the road for
+`LEAVE_SECS` first, with a line over the top, skippable by a tap after
+`LEAVE_SKIP`. Scene order is `play` -> `leaving`/`pickup` -> `over`, so a
+test that settles a street sees `leaving`, not `over`.
+
+**The endgame waits scale down** (`endgameScale`). A bowl comes back 5.5-9s
+after a fox theft and a frightened house reopens after `SHUT_SECS`; those
+pace a street with somewhere else to be, but with one or two houses left
+there is nowhere else and a playtest found it was just standing about waiting
+for the fox. The wait halves with two houses in play and quarters with one.
+It is not a discount on the penalty -- being caught still costs the tempo.
+
 **Attention** replaces the clock: it drifts up slowly (`RACKET_DRIFT`, a
 backstop so a flawless cat cannot prowl for ever), jumps on a clattered bowl
 (`RACKET_MISS`) and on being caught (`RACKET_CAUGHT`), and climbs while a

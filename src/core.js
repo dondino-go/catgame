@@ -315,6 +315,13 @@ function multFor(streak) {
   return 1 + Math.floor(Math.min(streak, STREAK_CAP) / STREAK_STEP) * 0.5;
 }
 const PICKUP_SECS  = 4.8;     // walk up, scoop the cat, carry it home
+/* Leaving under your own steam. The owner's arrival had four and a half
+   seconds of animation while clearing the street -- the hardest thing in the
+   game -- cut to the results on the same frame, so the one ending with a
+   moment to it was the one you are trying to avoid. A playtest put it
+   plainly: "the game just ended". */
+const LEAVE_SECS   = 2.8;
+const LEAVE_SKIP   = 0.9;     // ...but a player on their tenth night can tap past it
 
 /* What a final score makes you. Re-derived for the night: without a clock to
    farm against, one dinner per house caps what a street can pay, and scores
@@ -474,7 +481,7 @@ function reset(g) {
   g.streak = 0; g.bestMult = 1;
   g.elapsed = 0;
   g.racket = 0; g.ending = null; g.waveLock = null;
-  g.eat = null; g.caught = null; g.pickup = null;
+  g.eat = null; g.caught = null; g.pickup = null; g.leave = null;
   g.spot = { heat: 0, by: null };
   g.dog = null; g.dogTimer = 0; g.fox = null;
   g.events = [];
@@ -495,7 +502,7 @@ function create(opts) {
   const g = { rng: (opts && opts.rng) || Math.random, street: adoptStreet((opts && opts.street) || MARROW_STREET),
              practice: opts && opts.practice ? makePractice() : null };
   reset(g);
-  g.scene = 'title';           // title | play | caught | pickup | over
+  g.scene = 'title';           // title | play | caught | leaving | pickup | over
   return g;
 }
 
@@ -638,6 +645,19 @@ function takeBite(g, atT) {
 /* A missed bite clatters the bowl and brings nearby residents to the window.
    Reach is in house-spacings: early on only the neighbours hear it, later the
    diagonals and then the houses two along. */
+/* How long a house takes to put a bowl back out, and how long a frightened
+   one stays shut. The wait is there to pace a street with somewhere else to
+   be: with six bowls in play you go and raid another one. At the end of a
+   night there is nowhere else, so waiting on the last house -- while the fox
+   circles it -- is simply dead time, which is what a playtest reported. So
+   the wait shortens as the street empties. It is not a discount on the
+   penalty: being caught still shuts the house and still costs the tempo,
+   just not a half-minute of standing about. */
+function endgameScale(g) {
+  const live = g.houses.filter(h => !h.venue && !h.angry && !h.cleared).length;
+  return live <= 1 ? 0.25 : live === 2 ? 0.5 : 1;
+}
+
 function houseDist(from, h) {
   /* A venue spans several rows (the pub is three deep) and `row` is the top of
      that span. Measure to the nearest row it occupies, or the far end of a
@@ -776,7 +796,7 @@ function getCaught(g, witness, owner) {
   loser.strikes++;
   loser.bowl = null;
   if (loser.strikes >= STRIKES) loser.angry = true;
-  else { loser.shut = SHUT_SECS; loser.respawn = rand(g, 0.5, 2); }
+  else { loser.shut = SHUT_SECS * endgameScale(g); loser.respawn = rand(g, 0.5, 2); }
   if (!g.practice) g.racket = Math.min(1, g.racket + RACKET_CAUGHT);
   g.timesCaught++;
   witness.state = 'idle'; witness.t = rand(g, 2.2, 3.6);
@@ -898,7 +918,8 @@ function updateFox(g, dt) {
     if (h.bowl) {
       h.bowl.food--;
       if (h.bowl.food <= 0) {
-        h.bowl = null; h.respawn = rand(g, 5.5, 9);
+        const k = endgameScale(g);
+        h.bowl = null; h.respawn = rand(g, 5.5 * k, 9 * k);
         g.foxLosses++;
         emit(g, 'steal', { house: h.id });
         if (g.eat && g.eat.h === h) stopEating(g);
@@ -916,6 +937,24 @@ function beginPickup(g) {
   g.pickup = { t: 0, side: g.cat.x > g.street.roadX ? 1 : 0 };
   g.scene = 'pickup';
   emit(g, 'call', {});
+}
+
+/* The cat goes off the end of the road by itself: nothing left worth staying
+   for, or nothing left at all. */
+function beginLeave(g) {
+  stopEating(g);
+  g.cat.target = null;
+  if (!g.ending) g.ending = g.houses.every(h => h.venue || (h.cleared && !h.angry)) ? 'cleared' : 'done';
+  const w = g.street.walk.y;
+  g.leave = { t: 0, up: Math.abs(g.cat.y - w[0]) <= Math.abs(g.cat.y - w[1]) };
+  g.scene = 'leaving';
+  emit(g, 'leave', { ending: g.ending });
+}
+
+function skipLeave(g) {
+  if (g.scene !== 'leaving' || g.leave.t < LEAVE_SKIP) return false;
+  endRound(g);
+  return true;
 }
 
 function endRound(g) {
@@ -972,12 +1011,23 @@ function update(g, dt) {
     if (g.pickup.t > PICKUP_SECS) endRound(g);
     return;
   }
+  if (g.scene === 'leaving') {
+    g.leave.t += dt;
+    /* out past the end of the road, drifting to the middle of it on the way */
+    const w = g.street.walk.y, endY = g.leave.up ? w[0] - 1.4 : w[1] + 1.4;
+    const dy = endY - g.cat.y, step = CAT_SPEED * 1.1 * dt;
+    g.cat.y += Math.abs(dy) > step ? Math.sign(dy) * step : dy;
+    g.cat.x = lerp(g.cat.x, g.street.roadX, dt * 2.2);
+    updateHouses(g, dt);
+    if (g.leave.t > LEAVE_SECS) endRound(g);
+    return;
+  }
   if (g.scene === 'caught') {
     g.caught.t -= dt;
     updateHouses(g, dt);
     if (g.caught.t <= 0) {
       g.caught = null;
-      if (!g.practice && g.houses.every(h => isSettled(g, h))) endRound(g);
+      if (!g.practice && g.houses.every(h => isSettled(g, h))) beginLeave(g);
       else g.scene = 'play';
     }
     return;
@@ -1019,7 +1069,7 @@ function update(g, dt) {
 
   /* Only from open play: if this tick's catch took the last friendly house,
      the 'caught' scene shows SPOTTED! first and ends the round itself. */
-  if (g.scene === 'play' && !g.practice && g.houses.every(h => isSettled(g, h))) endRound(g);
+  if (g.scene === 'play' && !g.practice && g.houses.every(h => isSettled(g, h))) beginLeave(g);
 }
 
 return {
@@ -1031,7 +1081,8 @@ return {
   tapHouse, tapRoad, tapEat,
   bowlSpot, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
   /* the slow night */
-  progress, waveByProgress, nightGrade, lockWave,
+  progress, waveByProgress, nightGrade, lockWave, skipLeave, LEAVE_SECS, LEAVE_SKIP,
   NIGHT: { SHUT_SECS, STRIKES, RACKET_DRIFT, RACKET_MISS, RACKET_CAUGHT, RACKET_SEEN },
+  endgameScale,
 };
 });

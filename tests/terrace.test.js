@@ -57,8 +57,9 @@ console.log('\n=== TERRACE ROW: THE PUB ===');
   const g = fresh(); quiet(g);
   g.houses.forEach(h => { if (!h.venue) h.angry = true; });
   C.update(g, DT);
-  ok(g.scene === 'over', 'all five houses angry ends the round');
-  ok(g.keptBonus === 0, 'the pub earns no kept-neighbour bonus');
+  ok(g.scene === 'leaving', 'all five houses angry ends the round');
+  for (let i = 0; i < Math.round((C.LEAVE_SECS + 0.2) * 60); i++) C.update(g, DT);
+  ok(g.scene === 'over' && g.keptBonus === 0, 'the pub earns no kept-neighbour bonus');
 }
 {
   const g = fresh(); quiet(g); g.racket = 1; C.update(g, 1); C.update(g, 6);

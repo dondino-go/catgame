@@ -141,6 +141,9 @@ const Sfx = {
   steal()  { this.tone(520, 0.22, 'sawtooth', 0.10, 180); },
   call()   { [523, 392].forEach((f, i) => this.tone(f, 0.4, 'sine', 0.13, null, i * 0.34)); },
   over()   { [520, 440, 330, 262].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.14, null, i * 0.15)); },
+  /* walking off: pleased with yourself, or not */
+  sweep()  { [660, 880, 1100, 1320].forEach((f, i) => this.tone(f, 0.17, 'triangle', 0.15, null, i * 0.1)); },
+  slink()  { [330, 262].forEach((f, i) => this.tone(f, 0.34, 'sine', 0.11, null, i * 0.24)); },
   tap()    { this.tone(340, 0.05, 'sine', 0.05, 420); },
 };
 
@@ -361,6 +364,7 @@ function handleEvents() {
         break;
       case 'bark': Sfx.bark(); hintOnce('dog'); break;
       case 'call': Sfx.call(); break;
+      case 'leave': (e.ending === 'cleared' ? Sfx.sweep() : Sfx.slink()); break;
       case 'caught': {
         Sfx.caught(); shake = 0.5; flash = 0.6;
         const l = g.houses[e.loser];
@@ -1677,6 +1681,21 @@ function drawCloseUp() {
   else if (warned()) edgeGlow('255,190,70', 0.3 + (0.5 + 0.5 * Math.sin(elapsed * 6)) * 0.2);
 }
 
+/* The send-off. The street stays on screen and the cat walks itself off the
+   end of the road (the core moves it); this is just the line over the top,
+   fading in and out so it never sits there squarely. */
+function drawLeaving() {
+  if (!g.leave || tut) return;
+  const t = g.leave.t, T = C.LEAVE_SECS;
+  const a = clamp(Math.min(t / 0.45, (T - t) / 0.5), 0, 1);
+  if (a <= 0) return;
+  const cleared = g.ending === 'cleared';
+  ctx.globalAlpha = a;
+  outlined(cleared ? 'NOT A CRUMB LEFT' : 'NOTHING MORE TO BE HAD',
+           DW / 2, DH * 0.33, cleared ? 46 : 38, cleared ? MINT : CREAM);
+  ctx.globalAlpha = 1;
+}
+
 /* ---------- screens ---------- */
 function drawCaught() {
   if (!g.caught) return;
@@ -2507,6 +2526,7 @@ function draw() {
   drawHud();
   drawHint();
   drawTutorial();
+  if (g.scene === 'leaving') drawLeaving();
   if (g.scene === 'caught' && !tut) drawCaught();
   if (g.scene === 'title')  drawTitle();
   if (g.scene === 'over')   drawOver();
@@ -2565,6 +2585,9 @@ function onDown(ev) {
   const p = toDesign(ev);
 
   if (!g.eat && inside(p, muteRect())) { Sfx.muted = !Sfx.muted; return; }
+
+  /* the send-off is skippable, but only once it has had a moment to register */
+  if (g.scene === 'leaving') { if (C.skipLeave(g)) handleEvents(); return; }
 
   if (g.scene === 'over' && elapsed - overAt < OVER_LOCK) return;
   if (g.scene === 'title' && installMode() === 'prompt' && inside(p, installRect())) {

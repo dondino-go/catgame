@@ -79,8 +79,19 @@ console.log('\n=== HOW THE NIGHT ENDS ===');
   const g = fresh(); quiet(g);
   g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } });
   C.update(g, DT);
-  ok(g.scene === 'over', 'the night ends when every house is settled');
+  ok(g.scene === 'leaving', 'the night ends when every house is settled');
   ok(g.ending === 'cleared', 'and reports a cleared street (got ' + g.ending + ')');
+  /* the send-off: the cat walks itself off the end of the road first */
+  const y0 = g.cat.y;
+  run(g, 1, quiet);
+  ok(Math.abs(g.cat.y - y0) > 0.5, 'the cat walks off rather than vanishing');
+  ok(C.skipLeave(g) === true && g.scene === 'over', 'and a tap can skip the rest of it');
+  const g2 = fresh(); quiet(g2);
+  g2.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } });
+  C.update(g2, DT);
+  ok(C.skipLeave(g2) === false, 'but not before it has had a moment to register');
+  run(g2, C.LEAVE_SECS + 0.2, quiet);
+  ok(g2.scene === 'over', 'and it ends on its own if nobody taps');
 }
 {
   /* a shut house is NOT settled: there is still something to wait for */

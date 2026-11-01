@@ -85,30 +85,20 @@
 2040 @ play cat=0.329,4.5 score=258 streak=3 st=i-.s-.i-.s-.i-.i-
 2046 stir house=2
 2066 stir house=4
-2100 @ play cat=0.329,4.5 score=258 streak=3 st=i-.w-.w-.w-.s-.i-
-2160 @ play cat=0.329,4.5 score=258 streak=3 st=i-.w-.w-.w-.w-.i-
-2220 @ play cat=0.329,4.5 score=258 streak=3 st=i-.i-.w-.i-.w-.i-
-2226 stir house=5
-2236 stir house=0
-2280 @ play cat=0.329,4.5 score=258 streak=3 st=w-.i-.i-.i-.w-.w-
-2340 @ play cat=0.329,4.5 score=258 streak=3 st=w-.i-.i-.i-.i-.w-
-2373 stir house=3
-2400 @ play cat=0.329,4.5 score=258 streak=3 st=w-.i-.i-.s-.i-.w-
-2438 stir house=1
-2441 stir house=2
-2460 @ play cat=0.329,4.5 score=258 streak=3 st=i-.s-.s-.w-.i-.i-
-2490 stir house=4
-2520 @ play cat=0.329,4.5 score=258 streak=3 st=i-.w-.w-.w-.s-.i-
-2580 @ play cat=0.329,4.5 score=258 streak=3 st=i-.w-.w-.i-.w-.i-
-2640 @ play cat=0.329,4.5 score=258 streak=3 st=i-.w-.w-.i-.w-.i-
-2647 bark
-2700 @ play cat=0.329,4.5 score=258 streak=3 st=s-.s-.s-.s-.w-.s-
-2716 bark
-2760 @ play cat=0.329,4.29 score=258 streak=3 st=w-.w-.w-.w6.w-.w-
-2794 eatStart house=3
-2794 streakLost by=2 streak=3
-2820 @ play cat=0.329,3.5 score=258 streak=0 st=w-.w-.w-.w6.w-.w-
-2822 caught grass=true loser=3 owner=3 shut=false witness=2
-2880 @ caught cat=0.329,3.5 score=258 streak=0 st=i-.i-.i-.Xi-.i-.i-
-2919 over score=418
-end over score=418 kept=4 cleared=4 bites=12 perfects=5 misses=4 caught=2 fox=0 bestMult=1.5 ending=done got=4/5
+2100 @ play cat=0.329,4.29 score=258 streak=3 st=i-.w-.w-.w6.s-.i-
+2134 eatStart house=3
+2134 streakLost by=2 streak=3
+2142 miss house=3 streak=0 streakBefore=0
+2160 @ play cat=0.329,3.5 score=258 streak=0 st=i-.w-.w-.w6.w-.i-
+2162 caught grass=true loser=3 owner=3 shut=false witness=2
+2172 stir house=5
+2220 @ caught cat=0.329,3.5 score=258 streak=0 st=i-.i-.i-.Xi-.w-.w-
+2231 stir house=0
+2259 leave ending=done
+2280 @ leaving cat=0.421962,4.039 score=258 streak=0 st=w-.i-.i-.Xi-.w-.w-
+2317 stir house=2
+2340 @ leaving cat=0.491703,5.579 score=258 streak=0 st=w-.i-.s-.Xi-.i-.w-
+2370 stir house=3
+2400 @ leaving cat=0.499118,6.2 score=258 streak=0 st=w-.i-.w-.Xs-.i-.i-
+2428 over score=418
+end over score=418 kept=4 cleared=4 bites=12 perfects=5 misses=5 caught=2 fox=0 bestMult=1.5 ending=done got=4/5
