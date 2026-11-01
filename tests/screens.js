@@ -30,15 +30,13 @@ const URL = 'file://' + path.join(ROOT, 'mobile.html') + '?debug&manual';
 const NOISE = 48;
 const VW = 390, VH = 844;
 
-async function scene(browser, name, { onboarded = true, street, bests, loop, setup }) {
+async function scene(browser, name, { onboarded = true, street, bests, setup }) {
   const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1,
                                          locale: 'en-GB', timezoneId: 'Europe/London' });
   /* a scene can run on another street, handed to the page as data */
   if (street) await ctx.addInitScript(st => { window.__bbStreet = st; }, street);
   /* best scores already on the board, to open streets */
   if (bests) await ctx.addInitScript(b => { try { localStorage.setItem('bowlbandit.bests', JSON.stringify(b)); } catch (e) {} }, bests);
-  /* which loop to play: the slow night is an experiment behind this flag */
-  if (loop) await ctx.addInitScript(l => { try { localStorage.setItem('bowlbandit.loop', l); } catch (e) {} }, loop);
   await ctx.addInitScript(on => {
     let a = 12345;
     Math.random = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
@@ -124,7 +122,7 @@ const SCENES = {
   'lane-results': { street: TEST_LANE, setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
     await a.game(() => { const g = window.__bb.g; g.score = 1520; g.bowlsCleared = 7; g.bites = 30; g.perfects = 9;
-      g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[2].angry = true; g.houses[2].bowl = null; g.timeLeft = 0.01; });
+      g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[2].angry = true; g.houses[2].bowl = null; g.racket = 1; });
     await a.run(9000);
   } },
   /* Terrace Row: the pub shut (wave 1), then open and watching (wave 3), the
@@ -134,7 +132,7 @@ const SCENES = {
   } },
   'terrace-pub-open': { street: TERRACE, setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(3400);
-    await a.game(() => { const g = window.__bb.g; g.waveIdx = 2; g.timeLeft = 120 - 2 * 30 - 1; g.dogTimer = 1e9; });
+    await a.game(() => { const g = window.__bb.g; window.__bb.C.lockWave(g, 2); g.waveIdx = 2; g.dogTimer = 1e9; });
     await a.game(QUIET);
     const target = () => a.game(() => { const t = window.__bb.g.cat.target; return t ? t.house : 'none'; });
     const poke = async (x, row) => { await a.game(() => { window.__bb.g.cat.target = null; }); await a.tap(x, await a.rowAt(row)); return target(); };
@@ -145,7 +143,7 @@ const SCENES = {
   } },
   'terrace-eating': { street: TERRACE, setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(3400);
-    await a.game(() => { const g = window.__bb.g; g.waveIdx = 2; g.timeLeft = 120 - 2 * 30 - 1; g.dogTimer = 1e9; });
+    await a.game(() => { const g = window.__bb.g; window.__bb.C.lockWave(g, 2); g.waveIdx = 2; g.dogTimer = 1e9; });
     await a.game(QUIET);
     await a.game(() => { window.__bb.C.WAVES[2].react = 30; window.__bb.C.tapHouse(window.__bb.g, 2); });
     await a.run(2600);
@@ -156,7 +154,7 @@ const SCENES = {
   'terrace-results': { street: TERRACE, setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
     await a.game(() => { const g = window.__bb.g; g.score = 1700; g.bowlsCleared = 7; g.bites = 30; g.perfects = 9;
-      g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[3].angry = true; g.houses[3].bowl = null; g.timeLeft = 0.01; });
+      g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[3].angry = true; g.houses[3].bowl = null; g.racket = 1; });
     await a.run(9000);
   } },
   /* the title once Terrace Row is open: pick it, and the game is on it */
@@ -171,14 +169,8 @@ const SCENES = {
     await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
   } },
-  /* the slow night: the attention meter where the clock was, GOT instead of
-     FEEDING YOU, and the SLIP AWAY button at the foot of the street */
-  'night-street': { loop: 'night', setup: async a => {
-    await a.tap(360, await a.playY()); await a.run(3400); await a.game(QUIET); await a.run(300);
-    a.check('the slow night is running', await a.game(() => window.__bb.C.isNight(window.__bb.g)));
-    a.check('and there is no clock', await a.game(() => window.__bb.g.racket >= 0 && window.__bb.g.ending === null));
-  } },
-  'night-results': { loop: 'night', setup: async a => {
+  /* a clean sweep: the headline every player is chasing */
+  'results-cleared': { setup: async a => {
     await a.tap(360, await a.playY()); await a.run(400);
     await a.game(() => { const g = window.__bb.g, C = window.__bb.C;
       g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } });
@@ -188,7 +180,7 @@ const SCENES = {
   } },
   /* the case the results screen has to get right: seven of eight and carried
      home is a good night, and must not read like being carried home with two */
-  'night-partial': { loop: 'night', setup: async a => {
+  'results-partial': { setup: async a => {
     await a.tap(360, await a.playY()); await a.run(400);
     await a.game(() => { const g = window.__bb.g;
       const hs = g.houses.filter(h => !h.venue);
@@ -203,7 +195,7 @@ const SCENES = {
   'results': { setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
     await a.game(() => { const g = window.__bb.g; g.score = 2480; g.bowlsCleared = 12; g.bites = 51; g.perfects = 20;
-      g.misses = 3; g.timesCaught = 1; g.foxLosses = 2; g.bestMult = 2.5; g.houses[5].angry = true; g.houses[5].bowl = null; g.timeLeft = 0.01; });
+      g.misses = 3; g.timesCaught = 1; g.foxLosses = 2; g.bestMult = 2.5; g.houses[5].angry = true; g.houses[5].bowl = null; g.racket = 1; });
     await a.run(9000);
   } },
 };

@@ -137,7 +137,7 @@ function overlaps(B) {
   await p.evaluate(() => {
     const g = window.__bb.g;
     g.score = 760; g.bites = 26; g.perfects = 9; g.misses = 3;
-    g.timesCaught = 2; g.foxLosses = 1; g.bestMult = 4; g.timeLeft = 0.02;
+    g.timesCaught = 2; g.foxLosses = 1; g.bestMult = 4; g.racket = 1;   /* fetch the owner */
   });
   for (let i = 0; i < 400 && !(await p.evaluate(() => window.__bb.g.scene === 'over')); i++) {
     await p.evaluate(() => window.__bb.advance(0.1));

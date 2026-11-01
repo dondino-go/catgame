@@ -236,7 +236,6 @@ for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake:
 
 let floaters = [];
 let shake = 0, flash = 0, elapsed = 0;
-let banner = null;                  /* wave announcement */
 /* Best score per street, by street id. `best` is the one for the street on
    screen. Before streets there was one score, 'bowlbandit.best': it was
    earned on Marrow Street, so that is where it goes. */
@@ -370,13 +369,12 @@ function handleEvents() {
       }
       case 'wave':
         if (tut) break;
+        /* Nothing is announced. A wave is the street getting nosier, and that
+           is already on screen: more windows lit at once, the dog's bark with
+           every curtain twitching, the fox walking on. A card over the top
+           only says in words what the player can see, and covers the street
+           while it says it. The sound is cue enough. */
         if (e.idx > 0) Sfx.waveUp();
-        /* The slow night announces nothing. A wave is the street getting
-           nosier, and that is already on screen: more windows lit at once, the
-           dog's bark and every curtain twitching, the fox walking on. A card
-           over the top of it only says in words what the player can see, and
-           covers the street while it does. */
-        if (!C.isNight(g)) banner = { t: 2.8, idx: e.idx };
         break;
       case 'over':
         Sfx.over();
@@ -408,9 +406,8 @@ function updateVisuals(dt) {
   if (!g.eat && !linger) crumbs = [];
   for (const f of floaters) f.t += dt;
   floaters = floaters.filter(f => f.t < 1.3);
-  if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
   if (streakFx) { streakFx.t -= dt; if (streakFx.t <= 0) streakFx = null; }
-  if (hint && !banner) { hint.t -= dt; if (hint.t <= 0) hint = null; }
+  if (hint) { hint.t -= dt; if (hint.t <= 0) hint = null; }
   if (poke) { poke.t -= dt; if (poke.t <= 0) poke = null; }
   if (g.fox && g.scene === 'play') hintOnce('fox');
 
@@ -1159,39 +1156,21 @@ function drawHud() {
     drawStreak(24 + ctx.measureText(String(g.score)).width + 18, 66, 'left');
   }
 
-  const secs = Math.max(0, Math.ceil(g.timeLeft));
-  const clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
-  const low = g.timeLeft < 15 && g.scene === 'play';
   if (tut) outlined('PRACTICE', DW / 2, 50, 40, MINT);
-  else if (C.isNight(g)) drawAttention();
-  else outlined(clock, DW / 2, 50, 50, low && Math.sin(elapsed * 9) > 0 ? ALARM : CREAM);
+  else drawAttention();
 
-  const homes = g.houses.filter(h => !h.venue), kept = homes.filter(h => !h.angry).length;
-  if (C.isNight(g)) {
-    /* under the clock what matters is who still feeds you; in the slow night
-       it is how much of the street you have actually got */
-    const pr = C.progress(g);
-    text('GOT', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
-    outlined(pr.cleared + '/' + pr.total, DW - 24, 64, 42,
-             pr.cleared === pr.total ? MINT : CREAM, 'right');
-  } else {
-    text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
-    outlined(kept + '/' + homes.length, DW - 24, 64, 42, kept <= homes.length / 4 ? ALARM : MINT, 'right');
-  }
+  /* How much of the street you have got: the night's whole purpose, and what
+     the results screen grades. */
+  const pr = C.progress(g);
+  text('GOT', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
+  outlined(pr.cleared + '/' + pr.total, DW - 24, 64, 42,
+           pr.cleared === pr.total ? MINT : CREAM, 'right');
 
   /* while eating, the second row goes: less to look at above the windows */
   if (g.eat) return;
-  /* second row: which wave we're in, and the sound toggle */
-  /* Same reason: in the slow night the wave is neither named nor counted. The
-     dots would only repeat GOT, since the waves follow how far you have got. */
-  if (!C.isNight(g)) {
-    if (!tut) text('WAVE ' + (g.waveIdx + 1) + ' · ' + C.WAVES[g.waveIdx].name,
-         24, 109, 20, 'rgba(255,233,201,.55)', 'left', 600);
-    for (let i = 0; i < C.WAVES.length; i++) {
-      circle(DW / 2 - 36 + i * 24, 109, 6);
-      fillStroke(i <= g.waveIdx ? WARM : 'rgba(255,233,201,.22)', INK, 2.5);
-    }
-  }
+  /* Second row: leaving, and the sound toggle. The wave is neither named nor
+     counted -- the dots would only repeat GOT, since the waves follow how far
+     you have got. */
   drawSlip();
   const m = muteRect();
   rr(m.x, m.y, m.w, m.h, 17);
@@ -1204,8 +1183,12 @@ function drawHud() {
    in the slow night: it creeps up on its own, jumps when you clatter a bowl or
    get shouted at, and climbs steadily while a neighbour has eyes on you. */
 function drawAttention() {
-  const w = 236, h = 22, x = DW / 2 - w / 2, y = 38, r = clamp(g.racket, 0, 1);
-  text('ATTENTION', DW / 2, 20, 18, 'rgba(255,233,201,.5)', 'center', 600);
+  /* Sat level with the SCORE and GOT labels rather than above them: at y 20
+     the label cleared an iPhone 15's Dynamic Island by about 6px, which is the
+     margin #25 was filed over. The row the waves used to occupy is free now,
+     so there is no reason to crowd the top. */
+  const w = 236, h = 22, x = DW / 2 - w / 2, y = 46, r = clamp(g.racket, 0, 1);
+  text('ATTENTION', DW / 2, 28, 18, 'rgba(255,233,201,.5)', 'center', 600);
   rr(x, y, w, h, h / 2);
   fillStroke('rgba(10,6,20,.5)', 'rgba(255,233,201,.25)', 2);
   if (r > 0.005) {
@@ -1222,7 +1205,7 @@ function drawAttention() {
    HUD, though it sits at the foot of the street. */
 function slipRect() { return { x: DW / 2 - 132, y: L.bot - 80, w: 264, h: 60 }; }
 function drawSlip() {
-  if (!C.isNight(g) || tut || g.eat || g.scene !== 'play') return;
+  if (tut || g.eat || g.scene !== 'play') return;
   const r = slipRect();
   rr(r.x, r.y, r.w, r.h, 30);
   fillStroke('rgba(18,12,36,.72)', 'rgba(255,233,201,.35)', 2.5);
@@ -1708,34 +1691,7 @@ function drawCloseUp() {
   else if (warned()) edgeGlow('255,190,70', 0.3 + (0.5 + 0.5 * Math.sin(elapsed * 6)) * 0.2);
 }
 
-/* ---------- banners and screens ---------- */
-function drawWaveBanner() {
-  if (!banner) return;
-  const w = C.WAVES[banner.idx];
-  const a = clamp(banner.t > 2.3 ? (2.8 - banner.t) / 0.5 : Math.min(1, banner.t / 0.5), 0, 1);
-  ctx.globalAlpha = a;
-  if (g.eat || linger) {
-    /* Eating: the bar and the windows must stay in sight, so the news goes
-       below them, over the cat, as a compact strip. */
-    const c = closeLayout(), y = c.rowY2 + 70;
-    rr(36, y, DW - 72, 104, 24);
-    fillStroke('rgba(18,12,36,.94)', WARM, 3);
-    outlined('WAVE ' + (banner.idx + 1) + ' \u00b7 ' + w.name, DW / 2, y + 34, 28, WARM);
-    text(C.blurbFor(g.street, banner.idx), DW / 2, y + 72, 20, CREAM, 'center', 500);
-    ctx.globalAlpha = 1;
-    return;
-  }
-  const y = DH * 0.34;
-  ctx.fillStyle = 'rgba(18,12,36,.94)';
-  rr(30, y - 76, DW - 60, 152, 26); ctx.fill();
-  ctx.strokeStyle = WARM; ctx.lineWidth = 3;
-  rr(30, y - 76, DW - 60, 152, 26); ctx.stroke();
-  text('WAVE ' + (banner.idx + 1), DW / 2, y - 42, 23, 'rgba(255,233,201,.6)', 'center', 600);
-  outlined(w.name, DW / 2, y - 2, 38, WARM);
-  text(C.blurbFor(g.street, banner.idx), DW / 2, y + 44, 22, CREAM, 'center', 500);
-  ctx.globalAlpha = 1;
-}
-
+/* ---------- screens ---------- */
 function drawCaught() {
   if (!g.caught) return;
   const c = g.caught;
@@ -1824,7 +1780,6 @@ function startTutorial() {
   C.setPractice(g, true);
   C.start(g);
   C.drainEvents(g);
-  banner = null;
   tut = { step: 'tap', t: 0, first: null, watcher: null };
 }
 function finishTutorial() {
@@ -2001,7 +1956,7 @@ function drawTutorial() {
 function skipRect() { return { x: 16, y: 90, w: 116, h: 36 }; }
 
 function drawHint() {
-  if (!hint || tut || banner || g.scene !== 'play') return;
+  if (!hint || tut || g.scene !== 'play') return;
   const a = clamp(Math.min(hint.t / 0.4, (3.2 - hint.t) / 0.25), 0, 1);
   const y = g.eat ? closeLayout().rowY2 + 70 : L.hud + 26;
   drawCoach(hint.lines, y, a);
@@ -2219,13 +2174,7 @@ const pickerOn = () => onboarded && C.STREETS.length > 1;
 /* the foot of the second tagline line (drawn 'middle', so half its size down),
    plus a little air */
 const taglineBottom = () => DH * 0.25 + 240 + 16 + 8;
-/* Experiment only: a switch between the clock loop and the slow night, so the
-   two can be played back to back on one build while we decide. It goes above
-   the street picker, and the picker and PLAY flow down to make room -- which
-   is why they were made to flow in the first place. */
-const LOOP_ROW = { w: 600, h: 58 };
-function loopRect() { return { x: DW / 2 - LOOP_ROW.w / 2, y: taglineBottom() + 16, w: LOOP_ROW.w, h: LOOP_ROW.h }; }
-const pickerTop = () => Math.max(DH * 0.45, loopRect().y + LOOP_ROW.h + 18);
+const pickerTop = () => Math.max(DH * 0.45, taglineBottom() + 16);
 function pickerBlock() {
   const r = STREET_ROW, n = C.STREETS.length;
   return pickerOn() ? n * r.h + (n - 1) * r.gap : 0;
@@ -2234,18 +2183,6 @@ function streetRect(i) {
   const r = STREET_ROW;
   return { x: DW / 2 - r.w / 2, y: pickerTop() + i * (r.h + r.gap), w: r.w, h: r.h };
 }
-function drawLoopPicker() {
-  const r = loopRect(), night = C.isNight(g);
-  const halves = [{ label: 'THE CLOCK', on: !night }, { label: 'THE SLOW NIGHT', on: night }];
-  rr(r.x, r.y, r.w, r.h, 29);
-  fillStroke('rgba(18,12,36,.55)', 'rgba(255,233,201,.22)', 2.5);
-  halves.forEach((h, i) => {
-    const w = r.w / 2, x = r.x + i * w;
-    if (h.on) { rr(x + 4, r.y + 4, w - 8, r.h - 8, 25); fillStroke('rgba(255,233,201,.16)', WARM, 3); }
-    text(h.label, x + w / 2, r.y + r.h / 2 + 1, 22, h.on ? CREAM : 'rgba(255,233,201,.5)', 'center', 700);
-  });
-}
-
 function drawStreetPicker() {
   C.STREETS.forEach((st, i) => {
     const r = streetRect(i), open = C.isUnlocked(st, bests), on = st === g.street || st.id === g.street.id;
@@ -2267,16 +2204,6 @@ function drawStreetPicker() {
     else if (on) text('✓', r.x + r.w - 30, r.y + r.h / 2, 34, MINT, 'right', 800);
   });
 }
-/* Experiment only: which loop to play, remembered like the chosen street. */
-let loopMode = 'clock';
-try { loopMode = localStorage.getItem('bowlbandit.loop') === 'night' ? 'night' : 'clock'; } catch (e) {}
-function selectLoop(mode) {
-  if (g.scene !== 'title' && g.scene !== 'over') return;
-  loopMode = mode === 'night' ? 'night' : 'clock';
-  C.setLoop(g, loopMode);
-  try { localStorage.setItem('bowlbandit.loop', loopMode); } catch (e) {}
-}
-
 /* Swap the game to another street, between rounds. */
 function selectStreet(st) {
   C.setStreet(g, st);
@@ -2284,7 +2211,6 @@ function selectStreet(st) {
   for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake: 0, pop: 0 });
   layout();
   best = bests[streetKey()] || 0;
-  banner = null;
   if (st.id) saveJSON('bowlbandit.street', st.id);
 }
 
@@ -2313,7 +2239,6 @@ function drawTitle() {
   ctx.fillStyle = 'rgba(255,233,201,.4)';
   ctx.fillRect(DW / 2 - 70, hr.y + hr.h / 2 + 18, 140, 2);
 
-  drawLoopPicker();
   if (pickerOn()) drawStreetPicker();
   else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, hr.y + hr.h + 34, 22,
                           'rgba(255,233,201,.5)', 'center', 600);
@@ -2387,8 +2312,7 @@ function drawOver() {
   /* the working, built first because how tall it is decides everything below */
   const pr = C.progress(g);
   const lines = [
-    C.isNight(g) ? ['Street cleared', pr.cleared + ' of ' + pr.total, pr.cleared === pr.total ? MINT : CREAM]
-                 : ['Bowls licked clean', String(g.bowlsCleared)],
+    ['Street cleared', pr.cleared + ' of ' + pr.total, pr.cleared === pr.total ? MINT : CREAM],
     ['Bites', g.bites + (g.perfects ? '  (' + g.perfects + ' perfect)' : '')],
     ['Best streak', '\u00d7' + g.bestMult, g.bestMult > 1 ? WARM : CREAM],
   ];
@@ -2431,16 +2355,13 @@ function drawOver() {
      night was for. How it ended is flavour and goes under the map: a player
      who got seven of eight and was carried home should read that as a good
      night, not as the same failure as being carried home with two. */
-  const grade = C.isNight(g) && C.nightGrade(g);
-  if (grade) {
-    const whole = grade.cleared === grade.total && grade.total > 0;
-    const title = whole ? 'THE WHOLE STREET'
-      : (NUMBER_WORDS[grade.cleared] || grade.cleared).toUpperCase() + ' OF ' +
-        (NUMBER_WORDS[grade.total] || grade.total).toUpperCase();
-    outlined(title, DW / 2, y, whole ? 44 : 46, grade.idx >= 3 ? MINT : grade.idx >= 2 ? WARM : grade.idx >= 1 ? CREAM : ALARM);
-  }
-  else outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
-                kept === 0 ? ALARM : WARM);
+  const grade = C.nightGrade(g);
+  const whole = grade.cleared === grade.total && grade.total > 0;
+  outlined(whole ? 'THE WHOLE STREET'
+                 : (NUMBER_WORDS[grade.cleared] || grade.cleared).toUpperCase() + ' OF ' +
+                   (NUMBER_WORDS[grade.total] || grade.total).toUpperCase(),
+           DW / 2, y, whole ? 44 : 46,
+           grade.idx >= 3 ? MINT : grade.idx >= 2 ? WARM : grade.idx >= 1 ? CREAM : ALARM);
 
   /* score counts up */
   const k = clamp((t - 0.25) / 1.0, 0, 1);
@@ -2458,7 +2379,7 @@ function drawOver() {
     const sc = 1 + (1 - pop) * 0.6;
     ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
     ctx.globalAlpha = pop;
-    outlined('— ' + (grade ? grade.name : C.rankFor(g.score, g.street)).toUpperCase() + ' —', 0, 0, 38, WARM);
+    outlined('— ' + grade.name.toUpperCase() + ' —', 0, 0, 38, WARM);
     ctx.restore();
   }
 
@@ -2471,11 +2392,9 @@ function drawOver() {
   const total = homes.length;
   const ENDED = { cleared: ['YOU CLEARED THE STREET', MINT], done: ['NOTHING LEFT TO TAKE', WARM],
                   slipped: ['YOU SLIPPED AWAY', CREAM],      owner: ['THE OWNER CAME FOR YOU', WARM] };
-  const ended = grade && ENDED[g.ending];
-  if (ended) text(ended[0] + (grade.lost ? '  ·  ' + grade.lost + ' WON\u2019T FEED YOU AGAIN' : ''),
-                  DW / 2, y, 22, ended[1], 'center', 800);
-  else text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
-       kept ? MINT : ALARM, 'center', 800);
+  const ended = ENDED[g.ending] || ENDED.done;
+  text(ended[0] + (grade.lost ? '  \u00b7  ' + grade.lost + ' WON\u2019T FEED YOU AGAIN' : ''),
+       DW / 2, y, 22, ended[1], 'center', 800);
 
   y += gap(44);
   const lh = gap(44);
@@ -2566,7 +2485,6 @@ function draw() {
   if (g.eat || linger) drawFloaters('close');
   drawPoke();
   drawHud();
-  drawWaveBanner();
   drawHint();
   drawTutorial();
   if (g.scene === 'caught' && !tut) drawCaught();
@@ -2638,10 +2556,6 @@ function onDown(ev) {
   if ((g.scene === 'title' || g.scene === 'over') && updateReady) { loadUpdate(true); return; }
   if (g.scene === 'title') {
     askForMotion();
-    if (inside(p, loopRect())) {
-      selectLoop(p.x < DW / 2 ? 'clock' : 'night');
-      Sfx.tap(); return;
-    }
     if (pickerOn()) {
       const i = C.STREETS.findIndex((st, i) => inside(p, streetRect(i)));
       if (i >= 0) { if (C.isUnlocked(C.STREETS[i], bests) && C.STREETS[i].id !== g.street.id) selectStreet(C.STREETS[i]); Sfx.tap(); return; }
@@ -2665,7 +2579,7 @@ function onDown(ev) {
 
   /* the slow night: leaving is a tap, and it has to be tested before the
      street underneath takes that tap as a walk */
-  if (C.isNight(g) && !g.eat && inside(p, slipRect())) {
+  if (!g.eat && inside(p, slipRect())) {
     C.slipAway(g); handleEvents(); Sfx.tap(); return;
   }
 
@@ -2751,8 +2665,6 @@ function frame(ts) {
 {
   const saved = C.streetById(loadJSON('bowlbandit.street', null));
   if (saved && onboarded && !(DEBUG && window.__bbStreet) && saved !== g.street && C.isUnlocked(saved, bests)) selectStreet(saved);
-  /* experiment only: and which loop was last chosen */
-  if (loopMode === 'night') C.setLoop(g, 'night');
 }
 
 fit();
@@ -2766,7 +2678,7 @@ function advance(secs) {
 if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
   /* the title screen's hit areas, in design units, for tests/title.js and the
      picker scenes in tests/screens.js -- so neither has to restate the layout */
-  titleRects: () => ({ play: playRect(), how: howRect(), DH, loop: loopRect(),
+  titleRects: () => ({ play: playRect(), how: howRect(), DH,
                        tagline: { x: 0, y: DH * 0.25 + 240 - 16, w: DW, h: 32 },
                        build: { x: 0, y: DH - 52, w: DW, h: 34 },
                        picker: pickerOn() ? C.STREETS.map((_, i) => streetRect(i)) : [] }) };

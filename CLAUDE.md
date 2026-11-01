@@ -11,10 +11,55 @@ build step, no dependencies (Playwright is used by one optional test only).
 | `main` | The original desktop game (`index.html`). Untouched since the redesign began. |
 | `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
 | `claude/new-streets` | Where new features are built (new streets, minigames), branched from `claude/mobile-redesign`. Merged back after a preview and a `/code-review`. |
+| `claude/slow-loop` | **The night.** The clock round was replaced by an open-ended night with an attention meter; playtested against the clock side by side, and the clock lost. Not merged yet: it needs a `/code-review` and a playtest on a phone. |
 | `claude/data-driven-streets` | The refactor that made the street a data description (Phases 1 and 2). **Merged into `claude/mobile-redesign`; don't commit here any more.** |
 
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
 into the feature branch (`claude/new-streets`), not the other way round.
+
+## The night: how a round works
+
+There is no countdown. Each house has **one dinner**: eating a bowl to the
+bottom settles that house (`h.cleared`), so the street empties as it is worked
+through and there is no safe bowl to farm. That is what makes a night finite
+without a clock, and what makes its length follow the street's size rather
+than a constant.
+
+Being caught **shuts** a house for `SHUT_SECS` rather than angering it; the
+second catch at the same house (`STRIKES`) ends it for good. A single mistake
+costs tempo, not the night.
+
+A night ends four ways, and the results headline says which:
+
+| Ending | Trigger |
+|---|---|
+| `cleared` | a bowl from every house |
+| `done` | every house settled, but some were lost |
+| `slipped` | the player tapped SLIP AWAY |
+| `owner` | the attention meter filled |
+
+**Attention** replaces the clock: it drifts up slowly (`RACKET_DRIFT`, a
+backstop so a flawless cat cannot prowl for ever), jumps on a clattered bowl
+(`RACKET_MISS`) and on being caught (`RACKET_CAUGHT`), and climbs while a
+neighbour has eyes on you (`RACKET_SEEN`). The first tuning fed it only from
+misses and catches with a faster drift, which punished patience -- careful
+bots got the owner on 20% of nights and reckless ones on none, the same
+inversion #13 found under the clock. Feeding it mainly from **being noticed**
+is what makes careful play win.
+
+**Waves follow progress**, not time (`waveByProgress`): the street wakes up as
+you take its food, so playing slowly no longer means missing the late waves.
+`lockWave(g, i)` stands the street at a wave for tests and `?debug`.
+
+A night is **graded on how much of the street you got** (`nightGrade`), not on
+what you scored: eight of eight is rare, so seven has to read as a good night
+rather than a near miss. Thresholds are fractions (0.35, 0.6, 0.8, 1) so a
+five-bowl street grades like an eight-bowl one, and the names come from the
+street's own `ranks`.
+
+Nothing is announced. A wave is the street getting nosier and that is already
+on screen -- more windows lit, the dog's bark, the fox walking on. **Don't add
+a card back.**
 
 ## Where things stand
 
@@ -37,6 +82,13 @@ into the feature branch (`claude/new-streets`), not the other way round.
   mitigated by a retry, cause unknown -- but see the resize lesson below for a
   lead), art style feedback being collected (#22), and the playtest checklist
   (#13).
+- **The clock loop is gone** (`claude/slow-loop`). It was kept beside the night
+  for a playtest and lost: the attention meter was the clear winner. All twelve
+  golden logs were re-recorded as night playthroughs, and the wave cards, the
+  HUD's wave row, `timeLeft`, `GAME_SECONDS` and `waveAt` went with it.
+- Open on the night: fighting the fox off at a bowl (#30) -- the fox now races
+  you for a bowl rather than eating out of it, which cost it most of its teeth
+  -- and whether a dog pass in the endgame is unfair (#31).
 - **New streets are on hold** until the art style feedback (#22) lands: each
   street is drawn by hand, so a restyle would mean redrawing them. The work
   that isn't art carries on -- per-street events (#27), walking routes (#7),
@@ -95,6 +147,10 @@ steps frames itself with `__bb.advance(seconds)`.
 - `tests/terrace.test.js`: Terrace Row's sight lines (every window sees exactly
   the bowls it should, pub included), the pub's rules, its ranks and wording,
   and street unlocks and switching. A new street gets its own file like this.
+- `tests/night.test.js`: what the night added -- cooling off, one dinner per
+  house, the four endings, the attention meter, waves following progress, the
+  fox racing rather than sharing, and that the lesson is left alone by all of
+  it. `tests/core.test.js` covers the rules the night inherited.
 - `tests/golden.test.js`: eight seeded Marrow rounds and four Terrace Row ones
   must replay **identically**.
   Any change that alters play fails it. If the change is intended, re-record
@@ -143,9 +199,13 @@ steps frames itself with `__bb.advance(seconds)`.
   rung of its ladder (`unlock`); bests are stored per street id
   (`bowlbandit.bests`).
 - **Difficulty and scoring are tuned by simulation.** After any change to
-  scoring, the streak, the waves or the reaction windows, run
-  `node tools/simulate.js` and re-check the `RANKS` thresholds in
-  `src/core.js` against its output.
+  scoring, the streak, the waves, the reaction windows or the attention
+  constants, run `node tools/simulate.js` (and `--street terrace`) and check
+  its output: careful play must beat greedy on what it *gets* as well as what
+  it scores, and night length must follow the street's size. Bots see every
+  window at once, so they get far more of the street than a real player --
+  a tester not reaching the last bowl is the simulator being optimistic, not
+  the night being too easy. Do not retune against bot numbers alone.
 - **Comments explain why**, especially for anything learnt from a playtest.
   Match that density and tone.
 - **Commits**: one clear subject line, then a body that says what was wrong or

@@ -4,9 +4,9 @@
  * Seeded bots play whole rounds through the core's public API, and every
  * event plus a once-a-second snapshot of the cat, the score and the
  * residents is written to a log. The logs in tests/golden/ were recorded
- * before the street became data-driven; the same seeds must reproduce them
- * exactly afterwards, or the game has changed. On a mismatch the first
- * differing line is shown.
+ * before the street became data-driven and re-recorded when the clock gave way
+ * to the night; the same seeds must reproduce them exactly, or the game has
+ * changed. On a mismatch the first differing line is shown.
  *
  *   node tests/golden.test.js            check against tests/golden/
  *   node tests/golden.test.js --update   re-record (only when a change to
@@ -35,7 +35,10 @@ function playthrough(skill, style, seed, street) {
   const g = C.create({ rng, street }); C.start(g);
   const DT = 1 / 60, log = [];
   let react = 0, aim = null, cool = 0;
-  for (let f = 0; f < 60 * 140 && g.scene !== 'over'; f++) {
+  /* A night has no fixed length -- it ends when the street is done, when the
+     bot slips away or when the owner comes -- so this cap is a backstop for a
+     bot that has wedged, not the length of a round. */
+  for (let f = 0; f < 60 * 400 && g.scene !== 'over'; f++) {
     if (g.scene === 'play') {
       const e = g.eat;
       if (e) {
@@ -70,7 +73,10 @@ function playthrough(skill, style, seed, street) {
   }
   log.push('end ' + g.scene + ' score=' + g.score + ' kept=' + g.houses.filter(h => !h.venue && !h.angry).length +
            ' cleared=' + g.bowlsCleared + ' bites=' + g.bites + ' perfects=' + g.perfects +
-           ' misses=' + g.misses + ' caught=' + g.timesCaught + ' fox=' + g.foxLosses + ' bestMult=' + g.bestMult);
+           ' misses=' + g.misses + ' caught=' + g.timesCaught + ' fox=' + g.foxLosses + ' bestMult=' + g.bestMult +
+           /* how the night ended, and how much of the street it got: the two
+              things a change to the loop shows up in first */
+           ' ending=' + g.ending + ' got=' + C.progress(g).cleared + '/' + C.progress(g).total);
   return log;
 }
 

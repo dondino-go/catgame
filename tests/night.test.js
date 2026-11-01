@@ -1,17 +1,17 @@
-/* The slow night (src/core.js, loop: 'night'), tested directly against the
-   core. No canvas, no DOM.
+/* The night (src/core.js), tested directly against the core. No canvas, no
+   DOM. core.test.js covers the rules the night inherited; this file covers
+   what the night itself added.
 
-   The loop under test: each house has one dinner, being caught shuts a house
-   for a while rather than for good, and the night ends when the street has
-   nothing left to offer, when the player slips away, or when the racket
-   fetches the owner. The clock loop must be entirely unaffected. */
+   Each house has one dinner, being caught shuts a house for a while rather
+   than for good, and the night ends when the street has nothing left to
+   offer, when the player slips away, or when the racket fetches the owner. */
 require('./harness');
 const C = require('../src/core.js');
 
 const DT = 1 / 60;
 const N = C.NIGHT;
 const fresh = (opts) => { let a = 7; const rng = () => (a = (a * 1664525 + 1013904223) >>> 0) / 4294967296;
-  const g = C.create(Object.assign({ rng, loop: 'night' }, opts)); C.start(g); C.drainEvents(g); return g; };
+  const g = C.create(Object.assign({ rng }, opts)); C.start(g); C.drainEvents(g); return g; };
 const quiet = g => g.houses.forEach(h => { h.state = 'idle'; h.t = 9999; });
 const run = (g, secs, each) => { for (let i = 0; i < Math.round(secs * 60); i++) { if (each) each(g); C.update(g, DT); C.drainEvents(g); } };
 
@@ -59,15 +59,6 @@ console.log('\n=== COOLING OFF ===');
   run(g, N.SHUT_SECS + 10, quiet);
   ok(!h.bowl, 'an angry house never puts another bowl out');
 }
-{
-  /* the clock loop is untouched: one catch still angers outright */
-  const g = (() => { let a = 7; const rng = () => (a = (a * 1664525 + 1013904223) >>> 0) / 4294967296;
-    const x = C.create({ rng }); C.start(x); C.drainEvents(x); return x; })();
-  const c = catchAt(g, 0);
-  ok(!C.isNight(g) && g.houses[c.loser].angry, 'under the clock one catch still angers a house outright');
-  ok(g.houses[c.loser].strikes === 0, 'and the clock loop never touches the strike count');
-}
-
 console.log('\n=== ONE DINNER PER HOUSE ===');
 {
   const g = fresh();
@@ -114,16 +105,6 @@ console.log('\n=== HOW THE NIGHT ENDS ===');
   ok(g.scene === 'pickup' || g.scene === 'over', 'a full racket meter brings the owner out');
   ok(g.ending === 'owner', 'and the night is recorded as the owner finding you');
 }
-{
-  /* the clock loop still ends on the clock */
-  const g = (() => { let a = 7; const rng = () => (a = (a * 1664525 + 1013904223) >>> 0) / 4294967296;
-    const x = C.create({ rng }); C.start(x); C.drainEvents(x); return x; })();
-  quiet(g);
-  g.timeLeft = 0.02;
-  run(g, 0.5, quiet);
-  ok(g.scene === 'pickup', 'under the clock the owner still arrives when time runs out');
-}
-
 console.log('\n=== THE RACKET ===');
 {
   const g = fresh(); quiet(g);
@@ -217,9 +198,16 @@ console.log('\n=== HOW GOOD A NIGHT WAS ===');
   ok(C.nightGrade(g).name === C.ranksOf(C.TERRACE_STREET)[0][1], 'and it is named from that street\'s own ladder');
 }
 
-console.log('\n=== THE LESSON IS ALWAYS ON THE CLOCK ===');
+console.log('\n=== NOTHING BEARS DOWN ON THE LESSON ===');
 {
+  /* The first-launch lesson is scripted by the renderer: no attention, and it
+     never ends itself however the street is left. */
   const g = fresh({ practice: true });
-  ok(!C.isNight(g), 'the first-launch lesson ignores the slow night');
+  quiet(g);
+  g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } });
+  run(g, 30, quiet);
+  ok(g.racket === 0, 'the lesson never builds attention');
+  ok(g.scene === 'play', 'and never ends itself, even with the street settled');
+  ok(C.slipAway(g) === false, 'and cannot be slipped away from');
 }
 report();

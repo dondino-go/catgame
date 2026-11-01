@@ -26,8 +26,10 @@ const sitAt = (g, id) => {
   C.tapHouse(g, id);
   for (let i = 0; i < 600 && !g.eat; i++) C.update(g, DT);
 };
-/* jump to a wave properly (the wave changeover resets waveIdx from the clock) */
-const setWave = (g, i) => { g.waveIdx = i; g.timeLeft = 120 - i * 30 - 1; g.dogTimer = 1e9; };
+/* Stand the street at a wave. Waves follow how much of the street has gone,
+   so a test that wants wave 3 without eating its way there locks it; waveIdx
+   is set too, for the tests that read it before the next update. */
+const setWave = (g, i) => { C.lockWave(g, i); g.waveIdx = i; g.dogTimer = 1e9; };
 /* a good bite, deliberately off-centre so it scores the plain 10 */
 const hit = g => { g.eat.t = g.eat.zone + g.eat.zoneW * 0.1; g.eat.cool = 0; C.tapEat(g); };
 const perfect = g => { g.eat.t = g.eat.zone + g.eat.zoneW / 2; g.eat.cool = 0; C.tapEat(g); };
@@ -54,9 +56,14 @@ console.log('\n=== STREET LAYOUT ===');
 console.log('\n=== TIMING & WAVES ===');
 {
   const W = C.WAVES;
-  ok(C.GAME_SECONDS === 120 && W.length === 4 && W.every(w => w.secs === 30), 'four 30s waves, 120s round');
-  const bounds = [[0,0],[29,0],[30,1],[59,1],[60,2],[89,2],[90,3],[119,3]];
-  ok(bounds.every(([s, w]) => C.waveAt(s) === w), 'wave boundaries map correctly');
+  ok(W.length === 4, 'four waves');
+  /* the night has no clock: the street wakes up as it is worked through */
+  {
+    const t = fresh(), homes = t.houses.filter(h => !h.venue);
+    const at = n => { homes.forEach((h, i) => { h.cleared = i < n; }); return C.waveByProgress(t); };
+    const bounds = [[0,0],[1,0],[2,1],[3,1],[4,2],[5,2],[6,3],[7,3],[8,3]];
+    ok(bounds.every(([n, w]) => at(n) === w), 'wave boundaries follow bowls taken');
+  }
   const mono = (k, dir) => { for (let i = 1; i < 4; i++) { const a = W[i-1][k], b = W[i][k]; if (dir > 0 ? !(b > a) : !(b < a)) return false; } return true; };
   ok(mono('warn', -1),  'warning window shrinks every wave');
   ok(mono('watch', 1),  'watch duration grows every wave');
@@ -70,8 +77,9 @@ console.log('\n=== TIMING & WAVES ===');
   ok(C.drainEvents(C.create()).length === 0, 'a fresh game has no events pending');
   const g2 = C.create(); C.start(g2);
   ok(C.drainEvents(g2).some(e => e.type === 'wave' && e.idx === 0), 'starting announces wave 1');
-  g.timeLeft = 120 - 31; C.update(g, DT);
-  ok(g.waveIdx === 1 && C.drainEvents(g).some(e => e.type === 'wave' && e.idx === 1), 'crossing 30s moves to wave 2 and announces it');
+  g.houses.filter(h => !h.venue).forEach((h, i) => { if (i < 2) h.cleared = true; });
+  C.update(g, DT);
+  ok(g.waveIdx === 1 && C.drainEvents(g).some(e => e.type === 'wave' && e.idx === 1), 'two bowls gone moves to wave 2 and announces it');
 }
 
 console.log('\n=== TAP TO MOVE ===');
@@ -159,8 +167,14 @@ console.log('\n=== BITING ===');
   g7.eat.t = g7.eat.zone + g7.eat.zoneW / 2;          // marker has since moved onto the green
   C.tapEat(g7, offGreen);
   ok(g7.score === 0 && g7.eat.cool > 0, '... and a touch off the green still misses even if the marker drifts on');
+  /* One dinner per house: a house you have cleared is done for the night.
+     That is what makes the night finite without a clock. */
   g2.houses[1].respawn = 0.1; quiet(g2); run(g2, 0.5);
-  ok(!!g2.houses[1].bowl, 'the bowl refills after a while');
+  ok(!g2.houses[1].bowl && g2.houses[1].cleared, 'a cleared house puts out no more bowls tonight');
+  const g9 = fresh(); quiet(g9);
+  g9.houses[4].bowl = null; g9.houses[4].respawn = 0.1;    /* as if the fox had taken it */
+  run(g9, 0.5);
+  ok(!!g9.houses[4].bowl, 'but a bowl lost before it was finished does come back');
 }
 
 console.log('\n=== NOISE ===');
@@ -203,7 +217,8 @@ console.log('\n=== CORE RULE ===');
   const o2 = g.houses[2], w2 = g.houses[o2.neighbours[0]];
   sitAt(g, 2); w2.state = 'watch'; w2.t = 9999;
   run(g, 1.5);
-  ok(g.scene === 'caught' && w2.angry && !o2.angry && !g.caught.grass, 'dithering: the WITNESS withdraws their own bowl');
+  ok(g.scene === 'caught' && !o2.angry && !g.caught.grass, 'dithering: the WITNESS withdraws their own bowl');
+  ok(w2.strikes === 1 && w2.shut > 0 && !w2.angry, '... one fright shuts them, it does not end them');
   ok(w2.bowl === null, '... their bowl is gone');
   ok(!g.eat, '... and you are pulled out of the minigame');
   const ev = C.drainEvents(g).find(e => e.type === 'caught');
@@ -217,7 +232,7 @@ console.log('\n=== CORE RULE ===');
   w3.angry = true; w3.bowl = null;
   sitAt(g, 5); w3.state = 'watch'; w3.t = 9999;
   run(g, 1.5);
-  ok(g.scene === 'caught' && g.caught.grass === true && o3.angry && o3.bowl === null, 'an already-angry witness grasses you up: the OWNER withdraws');
+  ok(g.scene === 'caught' && g.caught.grass === true && o3.strikes === 1 && o3.bowl === null, 'an already-angry witness grasses you up: the OWNER withdraws');
 
   // non-neighbours can't see
   g = fresh(); quiet(g);
@@ -261,10 +276,19 @@ console.log('\n=== CORE RULE ===');
   sitAt(g, 2);
   lw.state = 'watch'; lw.t = 9999;
   run(g, 1.5);
-  ok(g.scene === 'caught' && last.angry && g.caught && g.caught.grass === true,
+  ok(g.scene === 'caught' && g.caught && g.caught.grass === true,
      'losing the last friendly house to a catch shows the caught scene first');
+  ok(!last.angry && last.strikes === 1 && last.shut > 0,
+     '... but one fright only shuts it, so the night is not over yet');
   run(g, C.CAUGHT_SECS + 0.1);
-  ok(g.scene === 'over' && g.caught === null, '... then ends the round, with nothing left dangling');
+  ok(g.scene === 'play', '... play resumes while it cools off');
+  /* the second fright is the one that ends the night */
+  last.shut = 0; C.spawnBowl(g, last);
+  sitAt(g, 2); lw.state = 'watch'; lw.t = 9999;
+  run(g, 1.5);
+  ok(last.angry && g.scene === 'caught', 'a second catch angers it for good');
+  run(g, C.CAUGHT_SECS + 0.1);
+  ok(g.scene === 'over' && g.caught === null, '... and then the round ends, with nothing left dangling');
 
   // everyone gone: round ends early
   g = fresh(); quiet(g);
@@ -276,7 +300,7 @@ console.log('\n=== CORE RULE ===');
 console.log('\n=== THE DOG ===');
 {
   const g = fresh(); quiet(g);
-  g.timeLeft = 120 - 31; run(g, 0.05);
+  setWave(g, 1); run(g, 0.05);
   ok(g.waveIdx === 1, 'in wave 2');
   g.dogTimer = 0.01; quiet(g); run(g, 0.05);
   ok(!!g.dog && g.dog.phase === 'bark', 'dog spawns and barks first');
@@ -289,21 +313,21 @@ console.log('\n=== THE DOG ===');
   let n = 0; while (g.dog && n++ < 600) C.update(g, DT);
   ok(!g.dog, 'it leaves the street');
 
-  const g2 = fresh(); quiet(g2); g2.timeLeft = 120 - 31; run(g2, 0.05); g2.dogTimer = 0.01; quiet(g2);
+  const g2 = fresh(); quiet(g2); setWave(g2, 1); run(g2, 0.05); g2.dogTimer = 0.01; quiet(g2);
   const o = g2.houses[1]; g2.houses[o.neighbours[0]].bowl;
   sitAt(g2, 1); run(g2, 2.5);
-  ok(g2.houses.some(h => h.angry), 'eating while the dog runs gets you caught');
+  ok(g2.timesCaught > 0 && g2.houses.some(h => h.strikes > 0), 'eating while the dog runs gets you caught');
 }
 
 console.log('\n=== THE FOX ===');
 {
   const g = fresh(); quiet(g);
-  g.timeLeft = 120 - 61; run(g, 0.05);
+  setWave(g, 2); run(g, 0.05);
   ok(g.waveIdx === 2 && !!g.fox, 'fox arrives at the wave 3 changeover');
   ok(C.FOX_SPEED < C.CAT_SPEED, 'the fox is slower than the cat');
 
   const g2 = fresh(); quiet(g2);
-  g2.waveIdx = 2; g2.timeLeft = 120 - 61;
+  setWave(g2, 2);
   g2.houses.forEach((h, i) => { if (i !== 6) h.bowl = null; });
   g2.houses.forEach(h => h.respawn = 9999);
   g2.fox = { x: 0.5, y: 3.5, patrol: 1, target: null, eatT: 0, rest: 0 };
@@ -315,27 +339,30 @@ console.log('\n=== THE FOX ===');
 
   // beat the fox to a bowl
   const g3 = fresh(); quiet(g3);
-  g3.waveIdx = 2; g3.timeLeft = 120 - 61;
+  setWave(g3, 2);
   g3.houses.forEach((h, i) => { if (i !== 0) h.bowl = null; h.respawn = 9999; });
   g3.fox = { x: 0.5, y: 2.8, patrol: 1, target: null, eatT: 0, rest: 0 };
   C.tapHouse(g3, 0); run(g3, 1.3);
   ok(!!g3.eat && g3.eat.h === g3.houses[0], 'the cat beats the fox to a bowl it is nearer to');
 
-  // fox robbing the bowl you are eating from
+  /* The fox used to eat out of the bowl the cat was at and throw it off when
+     it emptied. With one dinner per house that made the last bowl of the night
+     unwinnable, so a bowl the cat has sat down at is no longer up for grabs. */
   const g4 = fresh(); quiet(g4);
-  g4.waveIdx = 2; g4.timeLeft = 120 - 61;
+  setWave(g4, 2);
   sitAt(g4, 3); g4.houses[3].bowl.food = 1;
   g4.fox = { x: BOWL_X[0], y: 3.5, patrol: 1, target: g4.houses[3], eatT: 0.99, rest: 0 };
-  quiet(g4); run(g4, 0.1);
-  ok(!g4.eat && !g4.houses[3].bowl, 'if the fox takes the bowl you are eating, you are kicked out of the minigame');
+  quiet(g4); run(g4, 2);
+  ok(!!g4.eat && !!g4.houses[3].bowl, 'the fox cannot rob the bowl the cat is sitting at');
+  ok(g4.foxLosses === 0 && g4.fox.target !== g4.houses[3], 'it gives that bowl up and looks elsewhere');
 }
 
 console.log('\n=== THE OWNER & SCORING ===');
 {
   const g = fresh(); quiet(g);
   g.houses[0].angry = true; g.houses[0].bowl = null; g.houses[1].angry = true; g.houses[1].bowl = null;
-  g.timeLeft = 0.01; run(g, 0.1);
-  ok(g.scene === 'pickup', 'when the clock runs out your owner comes');
+  g.racket = 1; run(g, 0.1);
+  ok(g.scene === 'pickup', 'when the attention meter fills your owner comes');
   ok(C.drainEvents(g).some(e => e.type === 'call'), '... announced by an event');
   run(g, C.PICKUP_SECS + 0.2);
   ok(g.scene === 'over', 'the owner carries you home and the round ends');
@@ -555,7 +582,7 @@ console.log('\n=== PRACTICE NIGHT ===');
   const mk = seed => { const g = C.create({ rng: seeded(seed || 1), practice: true }); C.start(g); C.drainEvents(g); return g; };
   let g = mk();
   run(g, 60);
-  ok(g.timeLeft === C.GAME_SECONDS && g.scene === 'play' && g.waveIdx === 0, 'no clock in practice: a minute passes and the round is untouched');
+  ok(g.racket === 0 && g.scene === 'play' && g.waveIdx === 0, 'nothing bears down on the lesson: a minute passes and it is untouched');
   ok(g.houses.every(h => h.state === 'idle'), 'nobody stirs on their own in practice');
 
   g = mk(); sitAt(g, 0);

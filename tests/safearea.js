@@ -93,14 +93,17 @@ async function check(browser, phone) {
   out.push(['the build stamp is drawn on screen', stamp && stamp.bottom <= safeBot,
             stamp ? stamp.bottom.toFixed(1) + ' <= ' + safeBot : 'never drawn']);
 
-  /* into a round, where the timer is drawn */
+  /* Into a round, where the HUD's topmost text is drawn. That used to be the
+     clock; the night replaced it with the ATTENTION meter, whose label sits
+     higher still (y 20 against the clock's 50), so this is now the strictest
+     check of the two. */
   const DH = 720 * (box.h / box.w);
   await p.evaluate(() => { window.__drawn.length = 0; });
   await p.mouse.click(box.w / 2, box.top + (DH * 0.6 + 54) * (box.h / DH));   /* PLAY */
   await p.evaluate(() => window.__bb.advance(2));
-  const clock = await findText(p, /^\d+:\d\d$/);
-  out.push(['the timer is drawn clear of the island', clock && clock.top >= phone.top,
-            clock ? clock.top.toFixed(1) + ' >= ' + phone.top : 'never drawn']);
+  const meter = await findText(p, /^ATTENTION$/);
+  out.push(['the attention meter is drawn clear of the island', meter && meter.top >= phone.top,
+            meter ? meter.top.toFixed(1) + ' >= ' + phone.top : 'never drawn']);
 
   await p.close();
   return out;
