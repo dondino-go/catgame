@@ -35,10 +35,15 @@ function playthrough(skill, style, seed, street) {
   const g = C.create({ rng, street }); C.start(g);
   const DT = 1 / 60, log = [];
   let react = 0, aim = null, cool = 0;
-  /* A night has no fixed length -- it ends when the street is done, when the
-     bot slips away or when the owner comes -- so this cap is a backstop for a
-     bot that has wedged, not the length of a round. */
-  for (let f = 0; f < 60 * 400 && g.scene !== 'over'; f++) {
+  /* A night has no fixed length -- it ends when the street is done or when the
+     owner comes -- so this cap is a backstop for a bot that has wedged, not
+     the length of a round. It must sit above the loop's own backstop or it
+     becomes the thing that ends the night: the attention drift takes about
+     1/RACKET_DRIFT seconds (600) and the owner then takes PICKUP_SECS on top.
+     A 400s cap truncated a 414s night, which under --update would have
+     recorded a log ending mid-play with no kept bonus. */
+  const CAP = 60 * (1 / C.NIGHT.RACKET_DRIFT + C.PICKUP_SECS + 60);
+  for (let f = 0; f < CAP && g.scene !== 'over'; f++) {
     if (g.scene === 'play') {
       const e = g.eat;
       if (e) {

@@ -108,25 +108,7 @@
 2794 eatStart house=3
 2794 streakLost by=2 streak=3
 2820 @ play cat=0.329,3.5 score=258 streak=0 st=w-.w-.w-.w6.w-.w-
-2822 caught grass=false loser=2 owner=3 shut=true witness=2
-2880 @ caught cat=0.329,3.5 score=258 streak=0 st=i-.i-.i-.i6.i-.i-
-2920 eatStart house=3
-2940 @ play cat=0.453333,3.5 score=258 streak=0 st=w-.w-.w-.w6.w-.w-
-2946 eatStart house=3
-2974 caught grass=false loser=2 owner=3 shut=false witness=2
-3000 @ caught cat=0.329,3.5 score=258 streak=0 st=w-.w-.Xi-.w6.w-.w-
-3060 @ caught cat=0.329,3.5 score=258 streak=0 st=i-.i-.Xi-.i6.i-.i-
-3072 eatStart house=3
-3115 miss house=3 streak=0 streakBefore=0
-3120 @ play cat=0.329,3.5 score=258 streak=0 st=i-.i-.Xi-.i6.i-.i-
-3126 stir house=2
-3150 stir house=1
-3151 miss house=3 streak=0 streakBefore=0
-3153 stir house=4
-3157 stir house=5
-3180 @ play cat=0.329,3.5 score=258 streak=0 st=i-.s-.Xw-.i6.s-.s-
-3198 caught grass=true loser=3 owner=3 shut=false witness=2
-3212 stir house=3
-3240 @ caught cat=0.329,3.5 score=258 streak=0 st=i-.w-.Xi-.Xs-.w-.w-
-3295 over score=378
-end over score=378 kept=3 cleared=4 bites=12 perfects=5 misses=6 caught=4 fox=0 bestMult=1.5 ending=done got=4/5
+2822 caught grass=true loser=3 owner=3 shut=false witness=2
+2880 @ caught cat=0.329,3.5 score=258 streak=0 st=i-.i-.i-.Xi-.i-.i-
+2919 over score=418
+end over score=418 kept=4 cleared=4 bites=12 perfects=5 misses=4 caught=2 fox=0 bestMult=1.5 ending=done got=4/5

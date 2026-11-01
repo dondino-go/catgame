@@ -364,7 +364,7 @@ function handleEvents() {
       case 'caught': {
         Sfx.caught(); shake = 0.5; flash = 0.6;
         const l = g.houses[e.loser];
-        floater(bowlX(l), rowY(l) - 70, 'NO MORE BOWLS', ALARM);
+        floater(bowlX(l), rowY(l) - 70, e.shut ? 'BOWL TAKEN IN' : 'NO MORE BOWLS', ALARM);
         break;
       }
       case 'wave':
@@ -1693,7 +1693,16 @@ function drawCaught() {
   const who = g.houses[c.witness].name;
   text(c.grass ? who + ' told ' + loser.name : who + ' saw you at a neighbour’s bowl',
        DW / 2, y + 2, 24, CREAM, 'center', 500);
-  outlined(loser.name.toUpperCase() + ' STOPS FEEDING YOU', DW / 2, y + 52, 25, '#ffd0d0');
+  /* A fright is not a falling-out. The first catch shuts a house for SHUT_SECS
+     and it puts a bowl back out; only the second ends it. Saying "stops
+     feeding you" for both had players writing off houses that were coming
+     back, which makes the end of a night look far more hopeless than it is. */
+  if (c.shut) {
+    outlined(loser.name.toUpperCase() + ' TAKES THE BOWL IN', DW / 2, y + 50, 25, '#ffd0d0');
+    text('they’ll put it back out shortly', DW / 2, y + 78, 18, 'rgba(255,233,201,.6)', 'center', 500);
+  } else {
+    outlined(loser.name.toUpperCase() + ' STOPS FEEDING YOU', DW / 2, y + 52, 25, '#ffd0d0');
+  }
 }
 
 /* ---------- install ---------- *
@@ -1865,8 +1874,8 @@ function tutCoach() {
     case 'seen': return { lines: ['They can see you!'], swipe: true };
     case 'safe': return { lines: ['Phew!', 'Neighbours hate you eating', 'someone else’s food'] };
     case 'early': return { lines: ['Good instinct!', 'Neighbours hate you eating', 'someone else’s food'] };
-    case 'caughtLesson': return { lines: ['Caught!', 'Now they won’t feed you'] };
-    case 'ready': return { lines: ['Keep the whole street', 'feeding you', '2 minutes. Tap to start!'], big: true };
+    case 'caughtLesson': return { lines: ['Caught!', 'They’ll shut the curtains', 'for a while'] };
+    case 'ready': return { lines: ['Get a bowl from', 'every house', 'Tap to start!'], big: true };
   }
   return null;
 }
@@ -2265,15 +2274,22 @@ function drawStreetMap(cx, top, rowH) {
     ctx.save();
     ctx.translate(x + hw / 2, y + hh / 2);
     ctx.scale(t, t);
+    /* Three states, not two: the headline counts what you GOT, so a map that
+       ticked every house that merely wasn't angry put "FOUR OF EIGHT" over
+       eight ticks. Ticked = eaten, crossed = lost for good, dimmed = never
+       got to. */
     rr(-hw / 2, -hh / 2, hw, hh, 9);
     fillStroke(h.angry ? '#4a4065' : tintOf(h.id).wall, INK, 3.5);
     if (h.angry) {
       ctx.strokeStyle = '#7a6442'; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.moveTo(-hw / 2 + 10, -6); ctx.lineTo(hw / 2 - 10, 2); ctx.stroke();
       text('✕', 0, 0, 22, ALARM, 'center', 800);
-    } else {
+    } else if (h.cleared) {
       circle(0, 0, 13); fillStroke('rgba(42,27,61,.25)', null);
       text('✓', 0, 1, 22, INK, 'center', 800);
+    } else {
+      rr(-hw / 2, -hh / 2, hw, hh, 9); fillStroke('rgba(16,10,32,.62)', null);
+      text('·', 0, -2, 30, 'rgba(255,233,201,.45)', 'center', 800);
     }
     ctx.restore();
   }
@@ -2335,8 +2351,9 @@ function drawOver() {
 
   let y = gap(112);
 
-  /* The slow night has four ways to end and the headline is where they land,
-     so saying which one costs no height on a screen that has none to spare. */
+  /* The headline is how much of the street you got, because that is what the
+     night was for; how it ended goes under the map, where it costs no height
+     on a screen that has none to spare. */
   /* The headline is how much of the street you got, because that is what the
      night was for. How it ended is flavour and goes under the map: a player
      who got seven of eight and was carried home should read that as a good

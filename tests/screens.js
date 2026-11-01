@@ -77,7 +77,13 @@ async function scene(browser, name, { onboarded = true, street, bests, setup }) 
 
 const CHECKS = [];
 const TEST_LANE = require('./streets');
-const TERRACE = require('../src/core.js').TERRACE_STREET;      // JSON-clean, so the page can be handed it as data
+const CORE = require('../src/core.js');
+const TERRACE = CORE.TERRACE_STREET;      // JSON-clean, so the page can be handed it as data
+/* Read off the ladder, not restated: a best one point under the rung Terrace
+   Row unlocks at. Hard-coding 699 silently stopped testing a locked street
+   the moment the ladder was re-derived for the night. */
+const UNLOCK_AT = CORE.RANKS[TERRACE.unlock.rank][0];
+const LOCKED_BEST = UNLOCK_AT - 1;
 const QUIET = () => { const g = window.__bb.g; g.houses.forEach(h => { h.state = 'idle'; h.t = 9999; }); };
 const SCENES = {
   'title': {},
@@ -158,14 +164,14 @@ const SCENES = {
     await a.run(9000);
   } },
   /* the title once Terrace Row is open: pick it, and the game is on it */
-  'title-streets': { bests: { marrow: 1500, terrace: 640 }, setup: async a => {
+  'title-streets': { bests: { marrow: UNLOCK_AT * 2, terrace: Math.round(TERRACE.ranks[1][0] * 1.2) }, setup: async a => {
     await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('tapping Terrace Row selects it', await a.game(() => window.__bb.g.street.id === 'terrace' && window.__bb.g.houses.length === 6));
     await a.tap(360, await a.streetRow(0)); await a.run(100);
     a.check('and tapping Marrow Street goes back', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.houses.length === 8));
     await a.tap(360, await a.streetRow(1)); await a.run(300);
   } },
-  'title-locked': { bests: { marrow: 699 }, setup: async a => {
+  'title-locked': { bests: { marrow: LOCKED_BEST }, setup: async a => {
     await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
   } },
@@ -194,8 +200,13 @@ const SCENES = {
   } },
   'results': { setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
-    await a.game(() => { const g = window.__bb.g; g.score = 2480; g.bowlsCleared = 12; g.bites = 51; g.perfects = 20;
-      g.misses = 3; g.timesCaught = 1; g.foxLosses = 2; g.bestMult = 2.5; g.houses[5].angry = true; g.houses[5].bowl = null; g.racket = 1; });
+    /* Every kind of trouble a round can have, on a street state that could
+       actually happen: five got, one lost, two never reached. A faked score
+       with nothing cleared made the reference read "NONE OF EIGHT / 2760". */
+    await a.game(() => { const g = window.__bb.g; g.score = 1540; g.bowlsCleared = 5; g.bites = 51; g.perfects = 20;
+      g.misses = 3; g.timesCaught = 1; g.foxLosses = 2; g.bestMult = 2.5;
+      g.houses.forEach((h, i) => { if (i < 5) { h.cleared = true; h.bowl = null; } });
+      g.houses[5].angry = true; g.houses[5].bowl = null; g.racket = 1; });
     await a.run(9000);
   } },
 };

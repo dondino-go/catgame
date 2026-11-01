@@ -119,15 +119,17 @@ const TERRACE_STREET = {
       { wall: '#9c4a3c', roof: '#463844', trim: '#f1e2c6', door: '#3d6b4a' },
     ],
   },
-  /* Five bowls to Marrow Street's eight: bots on this street score about 0.73
-     of what they do there (tools/simulate.js --street terrace), so the ladder
-     is Marrow's scaled down and rounded. */
+  /* Five bowls to Marrow Street's eight. Under the night, bots here score
+     about 0.57 of what they do there (`tools/simulate.js --street terrace
+     --rounds 150`) -- lower than the clock era's 0.73, because a shorter
+     street cannot be farmed to make the difference up. The ladder is derived
+     from this street's own medians, not scaled from Marrow's. */
   ranks: [
     [0,    'Alley Amateur'],
-    [500,  'Bin Lid Regular'],
-    [1000, 'Terrace Sweetheart'],
-    [1600, 'Bowl Bandit'],
-    [2200, 'Ghost of Terrace Row'],
+    [350,  'Bin Lid Regular'],
+    [620,  'Terrace Sweetheart'],
+    [780,  'Bowl Bandit'],
+    [1080, 'Ghost of Terrace Row'],
   ],
   waveBlurbs: {
     2: 'closing time: the STAG\'S HEAD is watching every bowl, and a FOX is about',
@@ -283,7 +285,7 @@ const CAUGHT_SECS  = 1.6;
  * playtest and lost; the attention meter was the clear winner. */
 const SHUT_SECS     = 22;       // a frightened house takes its bowl in for this long
 const STRIKES       = 2;        // ...and stops feeding you for good on this catch
-/* Tuned by tools/simulate.js --loop night. The first pass put the drift at
+/* Tuned by tools/simulate.js. The first pass put the drift at
    1/260 and fed the meter from misses and catches only, which punished
    exactly the play this loop is for: a careful cat spends longer on the
    street, so the drift fetched the owner on 20% of expert careful nights and
@@ -314,17 +316,20 @@ function multFor(streak) {
 }
 const PICKUP_SECS  = 4.8;     // walk up, scoop the cat, carry it home
 
-/* What a final score makes you. Calibrated by simulating bots with timing
-   error and reaction delay, with the streak in play: a greedy novice lands
-   near 900, a careful novice 1600, careful decent play 2600, and careful
-   expert play 3200. Real players spot windows slower than bots, so the top
-   rank stays rare. */
+/* What a final score makes you. Re-derived for the night: without a clock to
+   farm against, one dinner per house caps what a street can pay, and scores
+   fell by roughly a third. Against the clock-era ladder every skill level
+   piled up on the middle rungs and the top one came up on 1% of nights, so
+   the thresholds now sit at the night medians measured by
+   `node tools/simulate.js --rounds 150`: a greedy novice lands near 690, a
+   careful novice 1130, careful decent play 1550, careful expert play 1950.
+   Real players spot windows slower than bots, so the top rank stays rare. */
 const RANKS = [
   [0,    'Alley Amateur'],
-  [700,  'Bin Lid Regular'],
-  [1400, 'Street Sweetheart'],
-  [2200, 'Bowl Bandit'],
-  [3000, 'Ghost of Marrow Street'],
+  [600,  'Bin Lid Regular'],
+  [1000, 'Street Sweetheart'],
+  [1350, 'Bowl Bandit'],
+  [1900, 'Ghost of Marrow Street'],
 ];
 /* A street may carry its own ladder (street.ranks, same shape as RANKS) and
    word the waves its own way (street.waveBlurbs, by wave number): a street with
@@ -408,7 +413,9 @@ function progress(g) {
   const hs = g.houses.filter(h => !h.venue);
   return {
     total: hs.length,
-    cleared: hs.filter(h => h.cleared).length,
+    /* disjoint by the grass rule, and counted that way so the headline and
+       the line under the map can never contradict each other */
+    cleared: hs.filter(h => h.cleared && !h.angry).length,
     lost: hs.filter(h => h.angry).length,
     shut: hs.filter(h => !h.angry && !h.cleared && h.shut > 0).length,
   };
@@ -751,9 +758,15 @@ function checkSpotted(g, dt) {
 }
 
 function getCaught(g, witness, owner) {
-  /* a house that is already angry, or the pub (it has no bowl to withhold),
-     tells on the owner instead */
-  const grass = witness.angry || !!witness.venue;
+  /* A witness with no bowl left to withhold tells on the owner instead: one
+     that is already angry, the pub, and -- since the night gives each house a
+     single dinner -- one that has already been cleared. Without that last
+     case a cleared house could take strikes and turn angry, so it counted as
+     both got and lost, and a night with a sulking neighbour in it still
+     reported itself cleared. (Seen in 193 of 960 replayed bot nights, and in
+     the golden log terrace-novice-greedy-11.) The owner always has something
+     to lose: the cat is eating out of its bowl. */
+  const grass = witness.angry || witness.cleared || !!witness.venue;
   const loser = grass ? owner : witness;
   /* Cooling off. One fright shuts a house for a while; the second stops it
      feeding you for good. The clock loop angered a house permanently on a
@@ -767,7 +780,11 @@ function getCaught(g, witness, owner) {
   if (!g.practice) g.racket = Math.min(1, g.racket + RACKET_CAUGHT);
   g.timesCaught++;
   witness.state = 'idle'; witness.t = rand(g, 2.2, 3.6);
-  g.caught = { witness: witness.id, owner: owner.id, loser: loser.id, grass, t: CAUGHT_SECS };
+  /* `shut` so the renderer can tell a fright from a falling-out: the card used
+     to say "STOPS FEEDING YOU" for both, which made a house that is back in
+     22 seconds look written off for the night. */
+  g.caught = { witness: witness.id, owner: owner.id, loser: loser.id, grass,
+               shut: !loser.angry && loser.shut > 0, t: CAUGHT_SECS };
   stopEating(g);
   g.cat.target = null;
   emit(g, 'caught', { witness: witness.id, owner: owner.id, loser: loser.id, grass,
@@ -904,8 +921,10 @@ function beginPickup(g) {
 function endRound(g) {
   if (g.scene === 'over') return;
   /* 'cleared' only when nobody shut you out -- the difference between a clean
-     night and merely running out of street. Set already if the owner came. */
-  if (!g.ending) g.ending = g.houses.every(h => h.venue || h.cleared) ? 'cleared' : 'done';
+     night and merely running out of street. Set already if the owner came.
+     The `!h.angry` is belt and braces: the grass rule in getCaught should keep
+     a cleared house from ever turning angry, and a test holds it to that. */
+  if (!g.ending) g.ending = g.houses.every(h => h.venue || (h.cleared && !h.angry)) ? 'cleared' : 'done';
   g.keptBonus = g.houses.filter(h => !h.venue && !h.angry).length * KEPT_BONUS;
   g.score += g.keptBonus;
   stopEating(g);

@@ -42,9 +42,10 @@ function play(skill, style, seed) {
   const g = C.create({ rng, street: STREET }); C.start(g);
   const DT = 1 / 60;
   let react = 0, aim = null, cool = 0;
-  /* No clock, so this needs its own stop: the racket drift ends a night by
-     itself, and this only catches a bot that has wedged. */
-  let guard = 60 * 600;
+  /* No clock, so this needs its own stop. It has to sit above the loop's own
+     backstop -- the drift takes about 1/RACKET_DRIFT seconds and the owner
+     then takes PICKUP_SECS -- or the guard becomes what ends the night. */
+  let guard = 60 * (1 / C.NIGHT.RACKET_DRIFT + C.PICKUP_SECS + 60);
   while (g.scene !== 'over' && guard-- > 0) {
     if (g.scene === 'play') {
       const e = g.eat;
@@ -77,9 +78,11 @@ function play(skill, style, seed) {
 }
 
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+const short = name => name.split(' ').map(w => w[0]).join('');      /* "Bowl Bandit" -> "BB" */
 console.log('Balance simulation, ' + ROUNDS + ' rounds per row\n');
 console.log('Street: ' + STREET.name + '\n');
 console.log('skill   style     score p10 / p50 / p90   got     night p50   how it ended');
+console.log('        ranks (' + C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
 for (const [k, s] of Object.entries(SKILLS)) {
   for (const style of ['cautious', 'greedy']) {
     const r = [];
@@ -87,14 +90,21 @@ for (const [k, s] of Object.entries(SKILLS)) {
     const sc = r.map(x => x.score).sort((x, y) => x - y);
     const avg = f => (r.reduce((n, x) => n + x[f], 0) / r.length).toFixed(1);
     const secs = r.map(x => x.secs).sort((x, y) => x - y);
-    const endings = ['cleared', 'done', 'slipped', 'owner'].map(e => {
+    const endings = ['cleared', 'done', 'owner'].map(e => {
       const n = r.filter(x => x.ending === e).length;
       return n ? e + ' ' + Math.round(100 * n / r.length) + '%' : null;
+    }).filter(Boolean).join(', ');
+    /* CLAUDE.md says to scale a new street's ladder from this, so the rank
+       spread has to be in the output, not just the raw scores. */
+    const ranks = C.ranksOf(STREET).map(([, name]) => {
+      const n = r.filter(x => x.rank === name).length;
+      return n ? short(name) + ' ' + Math.round(100 * n / r.length) + '%' : null;
     }).filter(Boolean).join(', ');
     console.log(k.padEnd(8) + style.padEnd(10) +
                 [pct(sc, 0.1), pct(sc, 0.5), pct(sc, 0.9)].join(' / ').padEnd(24) +
                 (avg('cleared') + '/' + r[0].total).padEnd(8) +
                 (pct(secs, 0.5).toFixed(0) + 's').padEnd(12) + endings);
+    console.log(' '.repeat(18) + 'ranks: ' + ranks);
   }
 }
 console.log('\nWhat good looks like: cautious beats greedy at every skill level, on what it');

@@ -42,7 +42,6 @@ const overlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h 
 /* Everything on the title screen that a tap or an eye could collide with. */
 function boxes(r) {
   const out = [['the tagline', r.tagline], ['PLAY', r.play], ['How to play', r.how], ['the build stamp', r.build]];
-  if (r.loop) out.push(['the loop switch', r.loop]);
   r.picker.forEach((p, i) => out.push(['street row ' + (i + 1), p]));
   return out;
 }

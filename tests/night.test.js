@@ -126,6 +126,70 @@ console.log('\n=== WAVES FOLLOW PROGRESS, NOT A CLOCK ===');
   ok(C.progress(g).cleared === Math.floor(hs.length / 2), 'progress() counts the houses you got');
 }
 
+console.log('\n=== GOT AND LOST NEVER OVERLAP ===');
+{
+  /* A cleared house still watches, so it can catch the cat at a neighbour's
+     bowl. If it took the strike it would be counted as both got and lost, and
+     a night with a sulking neighbour would still report itself cleared. */
+  const g = fresh(); quiet(g);
+  const owner = g.houses[1], witness = g.houses[owner.neighbours.find(i => !g.houses[i].venue)];
+  witness.cleared = true; witness.bowl = null;
+  C.tapHouse(g, owner.id);
+  for (let i = 0; i < 60 * 20 && !g.eat; i++) { quiet(g); C.update(g, DT); C.drainEvents(g); }
+  for (let i = 0; i < 60 * 20 && g.scene === 'play'; i++) {
+    g.houses.forEach(x => { if (x !== witness) { x.state = 'idle'; x.t = 9999; } });
+    witness.state = 'watch'; witness.t = 9999;
+    C.update(g, DT); C.drainEvents(g);
+  }
+  ok(g.scene === 'caught', 'a cleared house can still catch the cat next door');
+  ok(g.caught.grass === true && g.caught.loser === owner.id, 'it grasses the owner up, having nothing left to withhold');
+  ok(witness.strikes === 0 && !witness.angry, 'and takes no strike itself');
+}
+{
+  /* A sweep of whole bot nights, holding the invariant across play rather
+     than at one contrived catch. Note what it is and is not: putting the bug
+     back does NOT fail this -- a bot has to be caught twice by the same
+     cleared house in one night, which is rare -- so the case above is the
+     guard for the grass rule. This is here to catch some *other* path turning
+     a cleared house angry in future. The bug's real signature was in a
+     recorded log: terrace-novice-greedy-11 had kept=3 (two angry) with
+     cleared=4 on a five-house street. */
+  const night = seed => {
+    let a = seed >>> 0; const rng = () => (a = (a * 1664525 + 1013904223) >>> 0) / 4294967296;
+    const g = C.create({ rng }); C.start(g); C.drainEvents(g);
+    for (let i = 0; i < 60 * 400 && g.scene !== 'over'; i++) {
+      if (g.scene === 'play' && !g.eat && !g.cat.target) {
+        /* greedy and careless: go for the nearest bowl whatever the windows say */
+        let best = null, bd = Infinity;
+        for (const h of g.houses) {
+          if (!h.bowl) continue;
+          const sp = C.bowlSpot(h), d = Math.abs(sp.y - g.cat.y);
+          if (d < bd) { bd = d; best = h; }
+        }
+        if (best) C.tapHouse(g, best.id);
+      }
+      if (g.eat) C.tapEat(g, g.eat.t);        /* bite wherever the marker is: plenty of misses */
+      C.update(g, DT); C.drainEvents(g);
+    }
+    return g;
+  };
+  let played = 0, both = 0, overcount = 0, liedCleared = 0, caught = 0;
+  for (let seed = 1; seed <= 24; seed++) {
+    const g = night(seed * 7919 + 13);
+    if (g.scene !== 'over') continue;
+    played++; caught += g.timesCaught;
+    const pr = C.progress(g);
+    if (g.houses.some(h => h.cleared && h.angry)) both++;
+    if (pr.cleared + pr.lost > pr.total) overcount++;
+    if (g.ending === 'cleared' && pr.lost > 0) liedCleared++;
+  }
+  ok(played >= 20, played + ' of 24 bot nights played out');
+  ok(caught > 0, 'and were caught along the way (' + caught + ' times), so houses did take strikes');
+  ok(both === 0, 'no house is ever both cleared and angry (' + both + ' nights)');
+  ok(overcount === 0, 'got and lost never add up to more than the street (' + overcount + ' nights)');
+  ok(liedCleared === 0, 'no night reports itself cleared with a neighbour lost (' + liedCleared + ' nights)');
+}
+
 console.log('\n=== THE FOX RACES YOU FOR A BOWL, IT DOES NOT SHARE IT ===');
 {
   /* The endgame leaves one bowl on the street. The fox used to camp it, eat a

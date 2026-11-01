@@ -74,7 +74,10 @@ console.log('\n=== TERRACE ROW: RANKS AND WORDING ===');
   const R = ST.ranks;
   ok(R.length === C.RANKS.length && R.every((r, i) => i === 0 || r[0] > R[i - 1][0]), 'the terrace ladder has as many rungs as Marrow\'s, rising');
   ok(C.rankFor(0, ST) === R[0][1] && C.rankFor(R[2][0], ST) === R[2][1] && C.rankFor(99999, ST) === R[R.length - 1][1], 'rankFor reads the street\'s ladder');
-  ok(C.rankFor(1400) === C.RANKS[2][1] && C.rankFor(1400, C.MARROW_STREET) === C.RANKS[2][1], 'Marrow Street and no street at all use RANKS');
+  /* read the rung off the ladder rather than restating a threshold: they move
+     when the loop changes what a street can pay */
+  const rung2 = C.RANKS[2][0];
+  ok(C.rankFor(rung2) === C.RANKS[2][1] && C.rankFor(rung2, C.MARROW_STREET) === C.RANKS[2][1], 'Marrow Street and no street at all use RANKS');
   ok(C.rankFor(R[2][0], ST) !== C.rankFor(R[2][0]), 'the same score ranks higher here, where bowls are fewer');
   ok(!/Marrow/.test(JSON.stringify(R)) && !/Marrow/.test(JSON.stringify(ST.waveBlurbs)), 'no Marrow Street wording on Terrace Row');
   ok([0, 1, 2, 3].every(i => !/Marrow/.test(C.blurbFor(ST, i))), 'no wave blurb names Marrow Street');

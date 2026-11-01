@@ -56,6 +56,18 @@ rather than a near miss. Thresholds are fractions (0.35, 0.6, 0.8, 1) so a
 five-bowl street grades like an eight-bowl one, and the names come from the
 street's own `ranks`.
 
+The **score ladders were re-derived for the night** and now agree with that
+grade instead of fighting it. Without a clock to farm against, one dinner per
+house caps what a street pays and scores fell by about a third: against the
+clock-era thresholds every skill level piled onto the middle rungs and the top
+one came up on 1% of nights, so the results screen could say "GHOST OF MARROW
+STREET" over "BEST 1946 · Street Sweetheart". Both ladders now sit at their own
+street's night medians, so the same play earns the same rung on either street
+(expert careful bots reach the top rung on 57% of Marrow nights and 49% of
+Terrace ones). **Re-derive them from `node tools/simulate.js --rounds 150`
+whenever the loop changes what a street can pay**, and remember the unlock in
+a street's `unlock` moves with them.
+
 Nothing is announced. A wave is the street getting nosier and that is already
 on screen -- more windows lit, the dog's bark, the fox walking on. **Don't add
 a card back.**
@@ -78,8 +90,9 @@ then the button earns itself.
   narrow road at a warm evening, and a pub opposite that watches every bowl
   from wave 3 (a `venue` house: no bowl, watch only) with a bus stop and a beer
   garden beside it (`scenery`). It has its own ranks, wave wording, picker row,
-  best score and unlock (Bin Lid Regular, 700, on Marrow Street: eased for
-  playtesting, the first bar was Street Sweetheart, 1400). Its owed
+  best score and unlock (Bin Lid Regular on Marrow Street: eased for
+  playtesting from the second rung to the first, and now 600 rather than 700
+  since the ladders were re-derived for the night). Its owed
   `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 stays open
   until it is playtested.
   Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
@@ -256,7 +269,10 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `c69e469` (Terrace Row, `6b88173..c69e469`, high, 6 findings;
+last reviewed: `e0b35c6` (the night, `origin/claude/mobile-redesign..claude/slow-loop`,
+high, 7 findings; all 7 addressed -- the score ladders were re-derived rather
+than dropped).
+before that: `c69e469` (Terrace Row, `6b88173..c69e469`, high, 6 findings;
 1-4 fixed in `7584741`, 5-6 filed as #28 and #29). The Terrace Row work shipped before its
 review, so this one reached back past the marker below it; both ranges have
 now been reviewed.
@@ -315,6 +331,11 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   two alternating renders rather than random noise -- has the same shape.
 - A new layout number belongs in one place and is asked of the page by the
   tests (`__bb.titleRects()`, `__bb.g.street.rows`), not restated in them.
+  The same goes for thresholds: `tests/screens.js` hard-coded a best of 699 to
+  stand just under Terrace Row's 700 unlock, and when the ladders were
+  re-derived for the night that scene silently stopped testing a locked street
+  -- it still passed its screenshot, and only its own tap check caught it. Read
+  the number off the ladder (`RANKS[street.unlock.rank][0]`).
 - **The results screen is the one that runs out of room.** It grows a card
   line for every kind of trouble in the round and two banners after a good
   one, so it is laid out from a fit factor measured against its own content,
