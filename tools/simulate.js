@@ -10,6 +10,9 @@
  *   node tools/simulate.js --rounds 200
  *   node tools/simulate.js --street terrace    (and that street's ladder)
  *
+ * There is no fixed length, so the table reports how long a night actually
+ * ran and how much of the street the bot got, as well as what it scored.
+ *
  * Bots have human-ish limits: they aim at the centre of the green with a
  * timing error (sigma, in bar widths) and react to windows after a delay.
  *   cautious  leaves at the first twitching curtain on its bowl
@@ -39,7 +42,11 @@ function play(skill, style, seed) {
   const g = C.create({ rng, street: STREET }); C.start(g);
   const DT = 1 / 60;
   let react = 0, aim = null, cool = 0;
-  while (g.scene !== 'over') {
+  /* No clock, so this needs its own stop. It has to sit above the loop's own
+     backstop -- the drift takes about 1/RACKET_DRIFT seconds and the owner
+     then takes PICKUP_SECS -- or the guard becomes what ends the night. */
+  let guard = 60 * (1 / C.NIGHT.RACKET_DRIFT + C.PICKUP_SECS + 60);
+  while (g.scene !== 'over' && guard-- > 0) {
     if (g.scene === 'play') {
       const e = g.eat;
       if (e) {
@@ -64,31 +71,45 @@ function play(skill, style, seed) {
     cool -= DT;
     C.update(g, DT); C.drainEvents(g);
   }
-  return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length, mult: g.bestMult, rank: C.rankFor(g.score, STREET) };
+  const pr = C.progress(g);
+  return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length,
+           mult: g.bestMult, rank: C.rankFor(g.score, STREET),
+           cleared: pr.cleared, total: pr.total, ending: g.ending, secs: g.elapsed };
 }
 
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
 const short = name => name.split(' ').map(w => w[0]).join('');      /* "Bowl Bandit" -> "BB" */
-
 console.log('Balance simulation, ' + ROUNDS + ' rounds per row\n');
 console.log('Street: ' + STREET.name + '\n');
-console.log('skill   style     score p10 / p50 / p90   kept   best x   ranks (' +
-            C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
+console.log('skill   style     score p10 / p50 / p90   got     night p50   how it ended');
+console.log('        ranks (' + C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
 for (const [k, s] of Object.entries(SKILLS)) {
   for (const style of ['cautious', 'greedy']) {
     const r = [];
     for (let i = 1; i <= ROUNDS; i++) r.push(play(s, style, i * 7919 + 13));
     const sc = r.map(x => x.score).sort((x, y) => x - y);
     const avg = f => (r.reduce((n, x) => n + x[f], 0) / r.length).toFixed(1);
+    const secs = r.map(x => x.secs).sort((x, y) => x - y);
+    const endings = ['cleared', 'done', 'owner'].map(e => {
+      const n = r.filter(x => x.ending === e).length;
+      return n ? e + ' ' + Math.round(100 * n / r.length) + '%' : null;
+    }).filter(Boolean).join(', ');
+    /* CLAUDE.md says to scale a new street's ladder from this, so the rank
+       spread has to be in the output, not just the raw scores. */
     const ranks = C.ranksOf(STREET).map(([, name]) => {
       const n = r.filter(x => x.rank === name).length;
       return n ? short(name) + ' ' + Math.round(100 * n / r.length) + '%' : null;
     }).filter(Boolean).join(', ');
     console.log(k.padEnd(8) + style.padEnd(10) +
                 [pct(sc, 0.1), pct(sc, 0.5), pct(sc, 0.9)].join(' / ').padEnd(24) +
-                avg('kept').padEnd(7) + avg('mult').padEnd(9) + ranks);
+                (avg('cleared') + '/' + r[0].total).padEnd(8) +
+                (pct(secs, 0.5).toFixed(0) + 's').padEnd(12) + endings);
+    console.log(' '.repeat(18) + 'ranks: ' + ranks);
   }
 }
-console.log('\nWhat good looks like: cautious beats greedy at every skill level and the');
-console.log('median climbs with skill. Bots see every window at once, so they reach the');
-console.log('top ranks far more often than real players should; check real players too.');
+console.log('\nWhat good looks like: cautious beats greedy at every skill level, on what it');
+console.log('gets as well as on what it scores, and a careless night is the one the owner');
+console.log('ends. Night length should follow the street\'s size, not a constant. Bots see');
+console.log('every window at once, so they get far more of the street than a real player');
+console.log('does -- a tester not reaching the last bowl is the sim being optimistic, not');
+console.log('the night being too easy.');

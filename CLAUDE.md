@@ -12,6 +12,7 @@ build step, no dependencies (Playwright is used by one optional test only).
 | `legacy-desktop` | The original desktop game (`index.html`) and its three suites, exactly as `main` held them before the swap. Kept until #10 retires them. |
 | `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
 | `claude/new-streets` | Where new features are built (new streets, minigames), branched from `claude/mobile-redesign`. Merged back after a preview and a `/code-review`. |
+| `claude/slow-loop` | The night: the clock round replaced by an open-ended night with an attention meter. **Merged into `claude/mobile-redesign` and live; don't commit here any more.** |
 | `claude/data-driven-streets` | The refactor that made the street a data description (Phases 1 and 2). **Merged into `claude/mobile-redesign`; don't commit here any more.** |
 
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
@@ -24,6 +25,102 @@ still means pushing to `claude/mobile-redesign`, and `main` follows. Moving
 Pages to `main` is a separate, deliberate step, best taken together with #10
 (making the mobile game `index.html`), since that is what decides what the
 site's root serves.
+## The night: how a round works
+
+There is no countdown. Each house has **one dinner**: eating a bowl to the
+bottom settles that house (`h.cleared`), so the street empties as it is worked
+through and there is no safe bowl to farm. That is what makes a night finite
+without a clock, and what makes its length follow the street's size rather
+than a constant.
+
+Being caught **shuts** a house for `SHUT_SECS` rather than angering it; the
+second catch at the same house (`STRIKES`) ends it for good. A single mistake
+costs tempo, not the night.
+
+A night ends three ways, and the results headline says which:
+
+| Ending | Trigger |
+|---|---|
+| `cleared` | a bowl from every house |
+| `done` | every house settled, but some were lost |
+| `owner` | the attention meter filled |
+
+**Every ending gets a moment.** The owner's arrival has `PICKUP_SECS` of
+animation; clearing the street used to cut to the results on the same frame,
+so the one ending with a beat was the one you are trying to avoid ("the game
+just ended"). `beginLeave` now gives it `LEAVE_SECS`: a turn
+on the spot for `LEAVE_CIRCLE` and then a walk off the end of the road, shot
+the same way the pickup is -- `leaveCamera` pushes in on the cat and follows
+it out, easing off at the end so the street does not whip past. The caption
+is up during the turn and gone before the cat is, so the last beat is the
+street emptying rather than words sitting over it. A good night gets the hearts the cat gives
+its owner when it is carried home; a thin one gets none. A tap skips the lot
+after `LEAVE_SKIP`. Scene order is `play` -> `leaving`/`pickup` -> `over`, so a
+test that settles a street sees `leaving`, not `over`.
+
+**The endgame waits scale down** (`endgameScale`). A bowl comes back 5.5-9s
+after a fox theft and a frightened house reopens after `SHUT_SECS`; those
+pace a street with somewhere else to be, but with one or two houses left
+there is nowhere else and a playtest found it was just standing about waiting
+for the fox. The wait halves with two houses in play and quarters with one.
+It is not a discount on the penalty -- being caught still costs the tempo.
+
+**Attention** replaces the clock: it drifts up slowly (`RACKET_DRIFT`, a
+backstop so a flawless cat cannot prowl for ever), jumps on a clattered bowl
+(`RACKET_MISS`) and on being caught (`RACKET_CAUGHT`), and climbs while a
+neighbour has eyes on you (`RACKET_SEEN`). The first tuning fed it only from
+misses and catches with a faster drift, which punished patience -- careful
+bots got the owner on 20% of nights and reckless ones on none, the same
+inversion #13 found under the clock. Feeding it mainly from **being noticed**
+is what makes careful play win.
+
+**Waves follow progress**, not time (`waveByProgress`): the street wakes up as
+you take its food, so playing slowly no longer means missing the late waves.
+`lockWave(g, i)` stands the street at a wave for tests and `?debug`.
+
+A night is **graded on how much of the street you got** (`nightGrade`), not on
+what you scored: eight of eight is rare, so seven has to read as a good night
+rather than a near miss. The results headline is that grade **as a verdict in
+plain words** -- A GOOD NIGHT, A FAIR NIGHT, BETTER LUCK TOMORROW -- because a
+playtest showed a tally ("SIX OF EIGHT") is a fact rather than an answer to
+"did I do well?". The count stays on the map and in the card. The line under
+the map says **why the night stopped**, and when houses were lost that is the
+reason, so it leads. Two scares end a house, which nothing used to say: the
+caught card names it the second time, and the spotted line counts what it
+cost. Thresholds are fractions (0.35, 0.6, 0.8, 1) so a
+five-bowl street grades like an eight-bowl one.
+
+The grade is a **rung, not a name**: it drives the verdict wording and the
+send-off's hearts, and nothing else. **The rank the player is shown comes from
+the score** (`rankFor`), so it agrees with their best and with what unlocks a
+street. The two used to come from different measures, and a greedy night that
+cleared the whole street for few points read "GHOST OF MARROW STREET" over
+"BEST 1400 · Bowl Bandit". Re-deriving the ladders narrowed that but could not
+close it: completion and points are different axes, so each is said once --
+the headline says how much you took, the rank says how well you played it.
+
+The **score ladders were re-derived for the night** and now agree with that
+grade instead of fighting it. Without a clock to farm against, one dinner per
+house caps what a street pays and scores fell by about a third: against the
+clock-era thresholds every skill level piled onto the middle rungs and the top
+one came up on 1% of nights, so the results screen could say "GHOST OF MARROW
+STREET" over "BEST 1946 · Street Sweetheart". Both ladders now sit at their own
+street's night medians, so the same play earns the same rung on either street
+(expert careful bots reach the top rung on 57% of Marrow nights and 49% of
+Terrace ones). **Re-derive them from `node tools/simulate.js --rounds 150`
+whenever the loop changes what a street can pay**, and remember the unlock in
+a street's `unlock` moves with them.
+
+Nothing is announced. A wave is the street getting nosier and that is already
+on screen -- more windows lit, the dog's bark, the fox walking on. **Don't add
+a card back.**
+
+There was a SLIP AWAY button for leaving while you were ahead. Nobody used it,
+and the reason was structural, not presentational: **every ending pays the same
+kept bonus and the same points**, and the score is banked as you eat, so
+leaving early protects nothing. A cash-out needs something at stake. If the
+night ever wants a final decision, give the endings different outcomes first --
+then the button earns itself.
 
 ## Where things stand
 
@@ -36,8 +133,9 @@ site's root serves.
   narrow road at a warm evening, and a pub opposite that watches every bowl
   from wave 3 (a `venue` house: no bowl, watch only) with a bus stop and a beer
   garden beside it (`scenery`). It has its own ranks, wave wording, picker row,
-  best score and unlock (Bin Lid Regular, 700, on Marrow Street: eased for
-  playtesting, the first bar was Street Sweetheart, 1400). Its owed
+  best score and unlock (Bin Lid Regular on Marrow Street: eased for
+  playtesting from the second rung to the first, and now 600 rather than 700
+  since the ladders were re-derived for the night). Its owed
   `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 stays open
   until it is playtested.
   Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
@@ -46,6 +144,16 @@ site's root serves.
   mitigated by a retry, cause unknown -- but see the resize lesson below for a
   lead), art style feedback being collected (#22), and the playtest checklist
   (#13).
+- **The night is live.** The clock loop was kept beside it for a playtest and
+  lost; the attention meter was the clear winner. Shipped to testers on 1 Nov
+  after two `/code-review` passes (7 findings then 4, all addressed). All
+  twelve golden logs are night playthroughs now, and the wave cards, the HUD's
+  wave row, `timeLeft`, `GAME_SECONDS` and `waveAt` are gone. Testers had only
+  ever played the clock version, so the first round of feedback is a reaction
+  to a different game, not an update to the old one.
+- Open on the night: fighting the fox off at a bowl (#30) -- the fox now races
+  you for a bowl rather than eating out of it, which cost it most of its teeth
+  -- and whether a dog pass in the endgame is unfair (#31).
 - **New streets are on hold** until the art style feedback (#22) lands: each
   street is drawn by hand, so a restyle would mean redrawing them. The work
   that isn't art carries on -- per-street events (#27), walking routes (#7),
@@ -104,6 +212,10 @@ steps frames itself with `__bb.advance(seconds)`.
 - `tests/terrace.test.js`: Terrace Row's sight lines (every window sees exactly
   the bowls it should, pub included), the pub's rules, its ranks and wording,
   and street unlocks and switching. A new street gets its own file like this.
+- `tests/night.test.js`: what the night added -- cooling off, one dinner per
+  house, the four endings, the attention meter, waves following progress, the
+  fox racing rather than sharing, and that the lesson is left alone by all of
+  it. `tests/core.test.js` covers the rules the night inherited.
 - `tests/golden.test.js`: eight seeded Marrow rounds and four Terrace Row ones
   must replay **identically**.
   Any change that alters play fails it. If the change is intended, re-record
@@ -152,9 +264,13 @@ steps frames itself with `__bb.advance(seconds)`.
   rung of its ladder (`unlock`); bests are stored per street id
   (`bowlbandit.bests`).
 - **Difficulty and scoring are tuned by simulation.** After any change to
-  scoring, the streak, the waves or the reaction windows, run
-  `node tools/simulate.js` and re-check the `RANKS` thresholds in
-  `src/core.js` against its output.
+  scoring, the streak, the waves, the reaction windows or the attention
+  constants, run `node tools/simulate.js` (and `--street terrace`) and check
+  its output: careful play must beat greedy on what it *gets* as well as what
+  it scores, and night length must follow the street's size. Bots see every
+  window at once, so they get far more of the street than a real player --
+  a tester not reaching the last bowl is the simulator being optimistic, not
+  the night being too easy. Do not retune against bot numbers alone.
 - **Comments explain why**, especially for anything learnt from a playtest.
   Match that density and tone.
 - **Commits**: one clear subject line, then a body that says what was wrong or
@@ -199,7 +315,14 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `c69e469` (Terrace Row, `6b88173..c69e469`, high, 6 findings;
+last reviewed: `b5ed7b3` (the night's second pass, `e0b35c6..b5ed7b3`, high,
+4 findings; all 4 fixed in `0954268` -- a results line that clipped at 719 of
+720 units, the two ranks disagreeing, a frozen RUN bar through the send-off,
+and a stale threshold in a comment).
+before that: `e0b35c6` (the night, `origin/claude/mobile-redesign..claude/slow-loop`,
+high, 7 findings; all 7 addressed -- the score ladders were re-derived rather
+than dropped).
+before that: `c69e469` (Terrace Row, `6b88173..c69e469`, high, 6 findings;
 1-4 fixed in `7584741`, 5-6 filed as #28 and #29). The Terrace Row work shipped before its
 review, so this one reached back past the marker below it; both ranges have
 now been reviewed.
@@ -230,8 +353,14 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
 - For visual changes, render options side by side and let the user pick,
   rather than guessing in successive pushes.
 - `node tests/screens.js --update` re-records **every** screen, Marrow ones
-  included. To change one reference, delete just that PNG and rerun (or
-  `git checkout` the others afterwards).
+  included. **To change one reference, delete just that PNG and rerun without
+  `--update`**: a missing reference is recorded (`REC`) and nothing else is
+  touched. Do not reach for `--update` and tidy up afterwards with
+  `git checkout` -- that reverts to the last *commit*, so a reference that
+  legitimately changed earlier in the same session, but is not on the list you
+  are tidying around, is silently restored to a stale version. It happened to
+  `results-partial`: re-recorded correctly for a shortened line, reverted by
+  the next clean-up, and it sat wrong until the final check before shipping.
 - The screenshot tests used to flake about one run in three (#21), on screens
   that hadn't changed (`results` 53 pixels, `eating-seen` 8, `title` 28); the
   cause was never found and it stopped reproducing (about 80 clean runs). A
@@ -256,8 +385,21 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   fail about one run in five until it waited for the canvas to match the
   window. Worth trying against the screenshot flake (#21), whose symptom --
   two alternating renders rather than random noise -- has the same shape.
+- **The canvas is cleared in screen space, before the camera.** `drawStreet`
+  has a full-canvas fill of its own, but it is inside the transform: as soon
+  as a camera move followed the cat past the end of the road it stopped
+  covering the screen and the previous frame showed through, so the cat was
+  smeared across the road as it walked off. For the same reason `leaveCamera`
+  clamps to the painted street -- following the cat out showed the void below
+  the pavement. `tests/screens/leaving-thin.png` is taken late in the walk,
+  where both would show.
 - A new layout number belongs in one place and is asked of the page by the
   tests (`__bb.titleRects()`, `__bb.g.street.rows`), not restated in them.
+  The same goes for thresholds: `tests/screens.js` hard-coded a best of 699 to
+  stand just under Terrace Row's 700 unlock, and when the ladders were
+  re-derived for the night that scene silently stopped testing a locked street
+  -- it still passed its screenshot, and only its own tap check caught it. Read
+  the number off the ladder (`RANKS[street.unlock.rank][0]`).
 - **The results screen is the one that runs out of room.** It grows a card
   line for every kind of trouble in the round and two banners after a good
   one, so it is laid out from a fit factor measured against its own content,

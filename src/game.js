@@ -141,6 +141,9 @@ const Sfx = {
   steal()  { this.tone(520, 0.22, 'sawtooth', 0.10, 180); },
   call()   { [523, 392].forEach((f, i) => this.tone(f, 0.4, 'sine', 0.13, null, i * 0.34)); },
   over()   { [520, 440, 330, 262].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.14, null, i * 0.15)); },
+  /* walking off: pleased with yourself, or not */
+  sweep()  { [660, 880, 1100, 1320].forEach((f, i) => this.tone(f, 0.17, 'triangle', 0.15, null, i * 0.1)); },
+  slink()  { [330, 262].forEach((f, i) => this.tone(f, 0.34, 'sine', 0.11, null, i * 0.24)); },
   tap()    { this.tone(340, 0.05, 'sine', 0.05, 420); },
 };
 
@@ -236,7 +239,6 @@ for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake:
 
 let floaters = [];
 let shake = 0, flash = 0, elapsed = 0;
-let banner = null;                  /* wave announcement */
 /* Best score per street, by street id. `best` is the one for the street on
    screen. Before streets there was one score, 'bowlbandit.best': it was
    earned on Marrow Street, so that is where it goes. */
@@ -362,16 +364,21 @@ function handleEvents() {
         break;
       case 'bark': Sfx.bark(); hintOnce('dog'); break;
       case 'call': Sfx.call(); break;
+      case 'leave': (e.ending === 'cleared' ? Sfx.sweep() : Sfx.slink()); break;
       case 'caught': {
         Sfx.caught(); shake = 0.5; flash = 0.6;
         const l = g.houses[e.loser];
-        floater(bowlX(l), rowY(l) - 70, 'NO MORE BOWLS', ALARM);
+        floater(bowlX(l), rowY(l) - 70, e.shut ? 'BOWL TAKEN IN' : 'NO MORE BOWLS', ALARM);
         break;
       }
       case 'wave':
         if (tut) break;
+        /* Nothing is announced. A wave is the street getting nosier, and that
+           is already on screen: more windows lit at once, the dog's bark with
+           every curtain twitching, the fox walking on. A card over the top
+           only says in words what the player can see, and covers the street
+           while it says it. The sound is cue enough. */
         if (e.idx > 0) Sfx.waveUp();
-        banner = { t: 2.8, idx: e.idx };
         break;
       case 'over':
         Sfx.over();
@@ -403,9 +410,8 @@ function updateVisuals(dt) {
   if (!g.eat && !linger) crumbs = [];
   for (const f of floaters) f.t += dt;
   floaters = floaters.filter(f => f.t < 1.3);
-  if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
   if (streakFx) { streakFx.t -= dt; if (streakFx.t <= 0) streakFx = null; }
-  if (hint && !banner) { hint.t -= dt; if (hint.t <= 0) hint = null; }
+  if (hint) { hint.t -= dt; if (hint.t <= 0) hint = null; }
   if (poke) { poke.t -= dt; if (poke.t <= 0) poke = null; }
   if (g.fox && g.scene === 'play') hintOnce('fox');
 
@@ -1018,6 +1024,27 @@ function pickupPlan() {
            lift: clamp((t - reachT) / (liftT - reachT), 0, 1) };
 }
 
+/* The same push-in for leaving under your own steam, so the two endings are
+   shot the same way: in on the cat for its turn, then following it out. The
+   follow is eased off towards the end so the street does not whip past as the
+   cat clears the road. */
+function leaveCamera() {
+  if (!g.leave || g.scene === 'over') return;
+  const t = g.leave.t;
+  const z = 1 + 0.62 * (1 - Math.pow(1 - clamp(t / 1.3, 0, 1), 3));
+  const ease = clamp(t / 1.3, 0, 1);
+  const anchorY = DH * 0.55;
+  /* Keep the painted street filling the frame. The cat walks on past the end
+     of the road, and following it out there showed the void below the
+     pavement -- a cat strolling into nothing. Clamped like this it walks out
+     of the bottom of the frame instead, which is what was wanted. */
+  const lo = L.top + anchorY / z, hi = L.bot - (DH - anchorY) / z;
+  const fy = clamp(sy(g.cat.y), Math.min(lo, hi), Math.max(lo, hi));
+  ctx.translate(DW / 2, anchorY);
+  ctx.scale(z, z);
+  ctx.translate(-lerp(DW / 2, sx(g.cat.x), ease), -lerp(anchorY, fy, ease));
+}
+
 /* Gentle push-in on the cat, then follow the owner home. Only the street
    zooms; the HUD stays put. */
 function pickupCamera() {
@@ -1154,30 +1181,46 @@ function drawHud() {
     drawStreak(24 + ctx.measureText(String(g.score)).width + 18, 66, 'left');
   }
 
-  const secs = Math.max(0, Math.ceil(g.timeLeft));
-  const clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
-  const low = g.timeLeft < 15 && g.scene === 'play';
   if (tut) outlined('PRACTICE', DW / 2, 50, 40, MINT);
-  else outlined(clock, DW / 2, 50, 50, low && Math.sin(elapsed * 9) > 0 ? ALARM : CREAM);
+  else drawAttention();
 
-  const homes = g.houses.filter(h => !h.venue), kept = homes.filter(h => !h.angry).length;
-  text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
-  outlined(kept + '/' + homes.length, DW - 24, 64, 42, kept <= homes.length / 4 ? ALARM : MINT, 'right');
+  /* How much of the street you have got: the night's whole purpose, and what
+     the results screen grades. */
+  const pr = C.progress(g);
+  text('GOT', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
+  outlined(pr.cleared + '/' + pr.total, DW - 24, 64, 42,
+           pr.cleared === pr.total ? MINT : CREAM, 'right');
 
   /* while eating, the second row goes: less to look at above the windows */
   if (g.eat) return;
-  /* second row: which wave we're in, and the sound toggle */
-  if (!tut) text('WAVE ' + (g.waveIdx + 1) + ' · ' + C.WAVES[g.waveIdx].name,
-       24, 109, 20, 'rgba(255,233,201,.55)', 'left', 600);
-  for (let i = 0; i < C.WAVES.length; i++) {
-    circle(DW / 2 - 36 + i * 24, 109, 6);
-    fillStroke(i <= g.waveIdx ? WARM : 'rgba(255,233,201,.22)', INK, 2.5);
-  }
+  /* Second row: just the sound toggle. The wave is neither named nor counted
+     -- the dots would only repeat GOT, since the waves follow how far you have
+     got. */
   const m = muteRect();
   rr(m.x, m.y, m.w, m.h, 17);
   fillStroke('rgba(255,233,201,.08)', 'rgba(255,233,201,.2)', 2);
   text(Sfx.muted ? 'SOUND OFF' : 'SOUND ON', m.x + m.w / 2, m.y + m.h / 2 + 1, 19,
        Sfx.muted ? 'rgba(255,233,201,.45)' : WARM, 'center', 600);
+}
+
+/* How close the owner is to working out where you are. It replaces the clock
+   in the slow night: it creeps up on its own, jumps when you clatter a bowl or
+   get shouted at, and climbs steadily while a neighbour has eyes on you. */
+function drawAttention() {
+  /* Sat level with the SCORE and GOT labels rather than above them: at y 20
+     the label cleared an iPhone 15's Dynamic Island by about 6px, which is the
+     margin #25 was filed over. The row the waves used to occupy is free now,
+     so there is no reason to crowd the top. */
+  const w = 236, h = 22, x = DW / 2 - w / 2, y = 46, r = clamp(g.racket, 0, 1);
+  text('ATTENTION', DW / 2, 28, 18, 'rgba(255,233,201,.5)', 'center', 600);
+  rr(x, y, w, h, h / 2);
+  fillStroke('rgba(10,6,20,.5)', 'rgba(255,233,201,.25)', 2);
+  if (r > 0.005) {
+    const fw = Math.max(h - 6, (w - 6) * r);
+    const hot = r > 0.78 && Math.sin(elapsed * 9) > 0;
+    rr(x + 3, y + 3, fw, h - 6, (h - 6) / 2);
+    fillStroke(hot ? ALARM : r > 0.55 ? '#ffb38f' : MINT, null, 0);
+  }
 }
 
 function drawFloaters(layer) {
@@ -1659,34 +1702,43 @@ function drawCloseUp() {
   else if (warned()) edgeGlow('255,190,70', 0.3 + (0.5 + 0.5 * Math.sin(elapsed * 6)) * 0.2);
 }
 
-/* ---------- banners and screens ---------- */
-function drawWaveBanner() {
-  if (!banner) return;
-  const w = C.WAVES[banner.idx];
-  const a = clamp(banner.t > 2.3 ? (2.8 - banner.t) / 0.5 : Math.min(1, banner.t / 0.5), 0, 1);
-  ctx.globalAlpha = a;
-  if (g.eat || linger) {
-    /* Eating: the bar and the windows must stay in sight, so the news goes
-       below them, over the cat, as a compact strip. */
-    const c = closeLayout(), y = c.rowY2 + 70;
-    rr(36, y, DW - 72, 104, 24);
-    fillStroke('rgba(18,12,36,.94)', WARM, 3);
-    outlined('WAVE ' + (banner.idx + 1) + ' \u00b7 ' + w.name, DW / 2, y + 34, 28, WARM);
-    text(C.blurbFor(g.street, banner.idx), DW / 2, y + 72, 20, CREAM, 'center', 500);
+/* A good night gets the same hearts the cat gives its owner when it is
+   carried home; a thin one gets none. A send-off should not congratulate a
+   player who has just been chased off the street. Drawn inside the street's
+   transform, with the cat, so the camera carries them. */
+function drawLeaveHearts(x, y, face) {
+  if (!g.leave || tut || C.nightGrade(g).idx < 3) return;
+  const t = g.leave.t, until = C.LEAVE_CIRCLE + 0.8;
+  if (t < 0.3 || t > until) return;
+  const fade = clamp((until - t) / 0.5, 0, 1);
+  for (let i = 0; i < 3; i++) {
+    if (t - 0.3 < i * 0.3) continue;
+    const ht = ((t - 0.3) * 0.8 + i * 0.33) % 1;
+    ctx.globalAlpha = (1 - ht) * fade;
+    text('\u2665', x + face * 12 + Math.sin(ht * 6 + i) * 11, y - 30 - ht * 62,
+         22 + i * 3, '#ff9ecd', 'center', 800);
     ctx.globalAlpha = 1;
-    return;
   }
-  const y = DH * 0.34;
-  ctx.fillStyle = 'rgba(18,12,36,.94)';
-  rr(30, y - 76, DW - 60, 152, 26); ctx.fill();
-  ctx.strokeStyle = WARM; ctx.lineWidth = 3;
-  rr(30, y - 76, DW - 60, 152, 26); ctx.stroke();
-  text('WAVE ' + (banner.idx + 1), DW / 2, y - 42, 23, 'rgba(255,233,201,.6)', 'center', 600);
-  outlined(w.name, DW / 2, y - 2, 38, WARM);
-  text(C.blurbFor(g.street, banner.idx), DW / 2, y + 44, 22, CREAM, 'center', 500);
+}
+
+/* The send-off. The street stays on screen and the cat walks itself off the
+   end of the road (the core moves it); this is just the line over the top,
+   fading in and out so it never sits there squarely. */
+function drawLeaving() {
+  if (!g.leave || tut) return;
+  /* up during the turn, gone before the cat is: the last beat is the street
+     emptying, not a caption sitting over it */
+  const t = g.leave.t, hold = C.LEAVE_CIRCLE + 0.9;
+  const a = clamp(Math.min((t - 0.35) / 0.45, (hold - t) / 0.5), 0, 1);
+  if (a <= 0) return;
+  const cleared = g.ending === 'cleared';
+  ctx.globalAlpha = a;
+  outlined(cleared ? 'NOT A CRUMB LEFT' : 'NOTHING MORE TO BE HAD',
+           DW / 2, DH * 0.33, cleared ? 46 : 38, cleared ? MINT : CREAM);
   ctx.globalAlpha = 1;
 }
 
+/* ---------- screens ---------- */
 function drawCaught() {
   if (!g.caught) return;
   const c = g.caught;
@@ -1702,7 +1754,18 @@ function drawCaught() {
   const who = g.houses[c.witness].name;
   text(c.grass ? who + ' told ' + loser.name : who + ' saw you at a neighbour’s bowl',
        DW / 2, y + 2, 24, CREAM, 'center', 500);
-  outlined(loser.name.toUpperCase() + ' STOPS FEEDING YOU', DW / 2, y + 52, 25, '#ffd0d0');
+  /* A fright is not a falling-out. The first catch shuts a house for SHUT_SECS
+     and it puts a bowl back out; only the second ends it. Saying "stops
+     feeding you" for both had players writing off houses that were coming
+     back, which makes the end of a night look far more hopeless than it is. */
+  if (c.shut) {
+    outlined(loser.name.toUpperCase() + ' TAKES THE BOWL IN', DW / 2, y + 50, 25, '#ffd0d0');
+    text('they’ll put it back out shortly', DW / 2, y + 78, 18, 'rgba(255,233,201,.6)', 'center', 500);
+  } else {
+    outlined(loser.name.toUpperCase() + ' STOPS FEEDING YOU', DW / 2, y + 50, 25, '#ffd0d0');
+    text('that\u2019s twice \u2014 no more bowls there tonight', DW / 2, y + 78, 18,
+         'rgba(255,233,201,.6)', 'center', 500);
+  }
 }
 
 /* ---------- install ---------- *
@@ -1775,7 +1838,6 @@ function startTutorial() {
   C.setPractice(g, true);
   C.start(g);
   C.drainEvents(g);
-  banner = null;
   tut = { step: 'tap', t: 0, first: null, watcher: null };
 }
 function finishTutorial() {
@@ -1875,8 +1937,8 @@ function tutCoach() {
     case 'seen': return { lines: ['They can see you!'], swipe: true };
     case 'safe': return { lines: ['Phew!', 'Neighbours hate you eating', 'someone else’s food'] };
     case 'early': return { lines: ['Good instinct!', 'Neighbours hate you eating', 'someone else’s food'] };
-    case 'caughtLesson': return { lines: ['Caught!', 'Now they won’t feed you'] };
-    case 'ready': return { lines: ['Keep the whole street', 'feeding you', '2 minutes. Tap to start!'], big: true };
+    case 'caughtLesson': return { lines: ['Caught!', 'They’ll shut the curtains', 'for a while'] };
+    case 'ready': return { lines: ['Get a bowl from', 'every house', 'Tap to start!'], big: true };
   }
   return null;
 }
@@ -1952,7 +2014,7 @@ function drawTutorial() {
 function skipRect() { return { x: 16, y: 90, w: 116, h: 36 }; }
 
 function drawHint() {
-  if (!hint || tut || banner || g.scene !== 'play') return;
+  if (!hint || tut || g.scene !== 'play') return;
   const a = clamp(Math.min(hint.t / 0.4, (3.2 - hint.t) / 0.25), 0, 1);
   const y = g.eat ? closeLayout().rowY2 + 70 : L.hud + 26;
   drawCoach(hint.lines, y, a);
@@ -2207,7 +2269,6 @@ function selectStreet(st) {
   for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake: 0, pop: 0 });
   layout();
   best = bests[streetKey()] || 0;
-  banner = null;
   if (st.id) saveJSON('bowlbandit.street', st.id);
 }
 
@@ -2276,15 +2337,22 @@ function drawStreetMap(cx, top, rowH) {
     ctx.save();
     ctx.translate(x + hw / 2, y + hh / 2);
     ctx.scale(t, t);
+    /* Three states, not two: the headline counts what you GOT, so a map that
+       ticked every house that merely wasn't angry put "FOUR OF EIGHT" over
+       eight ticks. Ticked = eaten, crossed = lost for good, dimmed = never
+       got to. */
     rr(-hw / 2, -hh / 2, hw, hh, 9);
     fillStroke(h.angry ? '#4a4065' : tintOf(h.id).wall, INK, 3.5);
     if (h.angry) {
       ctx.strokeStyle = '#7a6442'; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.moveTo(-hw / 2 + 10, -6); ctx.lineTo(hw / 2 - 10, 2); ctx.stroke();
       text('✕', 0, 0, 22, ALARM, 'center', 800);
-    } else {
+    } else if (h.cleared) {
       circle(0, 0, 13); fillStroke('rgba(42,27,61,.25)', null);
       text('✓', 0, 1, 22, INK, 'center', 800);
+    } else {
+      rr(-hw / 2, -hh / 2, hw, hh, 9); fillStroke('rgba(16,10,32,.62)', null);
+      text('·', 0, -2, 30, 'rgba(255,233,201,.45)', 'center', 800);
     }
     ctx.restore();
   }
@@ -2307,13 +2375,17 @@ function drawOver() {
   const food = g.score - g.keptBonus;
 
   /* the working, built first because how tall it is decides everything below */
+  const pr = C.progress(g);
   const lines = [
-    ['Bowls licked clean', String(g.bowlsCleared)],
+    ['Street cleared', pr.cleared + ' of ' + pr.total, pr.cleared === pr.total ? MINT : CREAM],
     ['Bites', g.bites + (g.perfects ? '  (' + g.perfects + ' perfect)' : '')],
     ['Best streak', '\u00d7' + g.bestMult, g.bestMult > 1 ? WARM : CREAM],
   ];
   if (g.misses)      lines.push(['Clatters', String(g.misses), '#ffb38f']);
-  if (g.timesCaught) lines.push(['Times spotted', String(g.timesCaught), ALARM]);
+  /* Two scares at one house ends it, and nothing said so: a playtest read
+     four spots and two lost houses as unrelated facts. */
+  if (g.timesCaught) lines.push(['Times spotted', g.timesCaught +
+    (pr.lost ? '  (' + pr.lost + ' shut for good)' : ''), ALARM]);
   if (g.foxLosses)   lines.push(['Lost to the fox', String(g.foxLosses), '#ff9d6b']);
   lines.push(['Points from food', String(food)]);
   lines.push(['Still feeding you', kept + ' × ' + C.KEPT_BONUS + ' = ' + g.keptBonus, kept ? MINT : ALARM]);
@@ -2345,8 +2417,23 @@ function drawOver() {
 
   let y = gap(112);
 
-  outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
-           kept === 0 ? ALARM : WARM);
+  /* The headline is how much of the street you got, because that is what the
+     night was for; how it ended goes under the map, where it costs no height
+     on a screen that has none to spare. */
+  /* The headline is how much of the street you got, because that is what the
+     night was for. How it ended is flavour and goes under the map: a player
+     who got seven of eight and was carried home should read that as a good
+     night, not as the same failure as being carried home with two. */
+  /* A verdict in plain words. The tally was an improvement on naming the
+     ending, but a playtest still could not tell a good night from a bad one:
+     "SIX OF EIGHT" is a fact, not an answer. The count is on the map and in
+     the card below, so the headline is free to say what it was worth. */
+  const VERDICT = [['BETTER LUCK TOMORROW', ALARM, 38], ['A THIN NIGHT', CREAM, 44],
+                   ['A FAIR NIGHT', WARM, 44],          ['A GOOD NIGHT', MINT, 44],
+                   ['THE WHOLE STREET', MINT, 44]];
+  const grade = C.nightGrade(g);
+  const v = VERDICT[clamp(grade.idx, 0, VERDICT.length - 1)];
+  outlined(v[0], DW / 2, y, v[2], v[1]);
 
   /* score counts up */
   const k = clamp((t - 0.25) / 1.0, 0, 1);
@@ -2364,6 +2451,11 @@ function drawOver() {
     const sc = 1 + (1 - pop) * 0.6;
     ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
     ctx.globalAlpha = pop;
+    /* The rank goes by the score, so it agrees with the BEST line below it and
+       with what unlocks a street. The headline above already says how much of
+       the street you got; this says how well you played it. They used to come
+       from different measures, so a greedy night that cleared everything for
+       few points read "GHOST OF MARROW STREET" over "BEST 1400 · Bowl Bandit". */
     outlined('— ' + C.rankFor(g.score, g.street).toUpperCase() + ' —', 0, 0, 38, WARM);
     ctx.restore();
   }
@@ -2375,8 +2467,24 @@ function drawOver() {
   drawStreetMap(DW / 2, y, rowH);
   y += rowH * g.street.rows + gap(40);
   const total = homes.length;
-  text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
-       kept ? MINT : ALARM, 'center', 800);
+  /* Why the night stopped, not just that it did. A playtest ended at six of
+     eight and could not tell what had gone wrong: for `done` the reason IS
+     the houses that shut you out, so that leads rather than trailing after
+     "NOTHING LEFT TO TAKE". */
+  const word = n => (NUMBER_WORDS[n] || n).toUpperCase();
+  const shutOut = grade.lost === 1 ? 'ONE HOUSE HAS HAD ENOUGH OF YOU'
+                                   : word(grade.lost) + ' HOUSES HAVE HAD ENOUGH OF YOU';
+  const ENDED = {
+    cleared: ['YOU CLEARED THE STREET', MINT],
+    done:    [shutOut, ALARM],
+    /* No suffix here: with three or more houses lost the combined line measured
+       719 of the 720 units the canvas has, touching both edges, and clipped
+       outright in the fallback face. What was lost is on the map and in the
+       spotted line; this one only has to say how the night ended. */
+    owner:   ['THE OWNER CAME FOR YOU', WARM],
+  };
+  const ended = ENDED[g.ending] || ENDED.done;
+  text(ended[0], DW / 2, y, 22, ended[1], 'center', 800);
 
   y += gap(44);
   const lh = gap(44);
@@ -2423,8 +2531,17 @@ function draw() {
   ctx.save();
   if (shake > 0) ctx.translate(rand(-1, 1) * shake * 14, rand(-1, 1) * shake * 14);
 
+  /* Clear the canvas in screen space, before the camera. drawStreet's own
+     full-canvas fill is inside the transform, so as soon as a camera move
+     follows the cat past the end of the road that fill stops covering the
+     screen and the previous frame shows through -- the cat smeared across the
+     road, drawn again at every step, as it walked off. */
+  ctx.fillStyle = NIGHT;
+  ctx.fillRect(0, 0, DW, DH);
+
   ctx.save();
   pickupCamera();
+  leaveCamera();
   drawStreet();
   /* lamps stand on row boundaries (bowls are mid-row), a quarter and three
      quarters of the way down, so they never sit on a bowl */
@@ -2442,6 +2559,7 @@ function draw() {
   if (!held) {
     const face = g.pickup ? (pickupPlan().ox > sx(g.cat.x) ? 1 : -1) : g.cat.face;
     drawCat(sx(g.cat.x), sy(g.cat.y), face, !!g.eat);
+    drawLeaveHearts(sx(g.cat.x), sy(g.cat.y), face);
   }
   drawDog();
   drawOwner();
@@ -2467,9 +2585,9 @@ function draw() {
   if (g.eat || linger) drawFloaters('close');
   drawPoke();
   drawHud();
-  drawWaveBanner();
   drawHint();
   drawTutorial();
+  if (g.scene === 'leaving') drawLeaving();
   if (g.scene === 'caught' && !tut) drawCaught();
   if (g.scene === 'title')  drawTitle();
   if (g.scene === 'over')   drawOver();
@@ -2528,6 +2646,9 @@ function onDown(ev) {
   const p = toDesign(ev);
 
   if (!g.eat && inside(p, muteRect())) { Sfx.muted = !Sfx.muted; return; }
+
+  /* the send-off is skippable, but only once it has had a moment to register */
+  if (g.scene === 'leaving') { if (C.skipLeave(g)) handleEvents(); return; }
 
   if (g.scene === 'over' && elapsed - overAt < OVER_LOCK) return;
   if (g.scene === 'title' && installMode() === 'prompt' && inside(p, installRect())) {

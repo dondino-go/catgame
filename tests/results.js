@@ -137,7 +137,12 @@ function overlaps(B) {
   await p.evaluate(() => {
     const g = window.__bb.g;
     g.score = 760; g.bites = 26; g.perfects = 9; g.misses = 3;
-    g.timesCaught = 2; g.foxLosses = 1; g.bestMult = 4; g.timeLeft = 0.02;
+    g.timesCaught = 2; g.foxLosses = 1; g.bestMult = 4;
+    /* Houses lost as well: the line under the map is worded from how many,
+       and the longest wording only appears when some are. */
+    g.houses.forEach((h, i) => { if (h.venue) return;
+      if (i < 3) { h.angry = true; h.bowl = null; } else { h.cleared = true; h.bowl = null; } });
+    g.racket = 1;   /* fetch the owner */
   });
   for (let i = 0; i < 400 && !(await p.evaluate(() => window.__bb.g.scene === 'over')); i++) {
     await p.evaluate(() => window.__bb.advance(0.1));
@@ -163,6 +168,13 @@ function overlaps(B) {
     const clash = overlaps(B);
     const off = B.filter(b => b.bot > DH + 1 || b.top < -1).map(b => '"' + b.str + '"')
       .concat(S.filter(s => s.b + s.lw / 2 > DH + 1 || s.t - s.lw / 2 < -1).map(s => 'a box'));
+    /* Sideways too. The canvas is always 720 units wide, and a line worded
+       from a count can grow with it: the owner ending with three houses lost
+       measured 719 of 720, touching both edges, and clipped in the fallback
+       face. A margin of 8 is the least that reads as deliberate. */
+    const MARGIN = 8;
+    const wide = B.filter(b => b.l < MARGIN || b.r > 720 - MARGIN)
+                  .map(b => '"' + b.str + '" (' + (b.r - b.l).toFixed(0) + ' wide)');
     /* Text must not sit on a box's outline: inside it or properly clear of it,
        never on the line. The band is the stroke plus 5 either side, because
        the fit makes the clamp bind exactly, so whatever the footer reserves
@@ -178,11 +190,12 @@ function overlaps(B) {
         onEdge.push('"' + b.str + '"');
       }
     }
-    if (clash.length || off.length || onEdge.length || B.length < 10 || S.length < 2) {
+    if (clash.length || off.length || wide.length || onEdge.length || B.length < 10 || S.length < 2) {
       bad++;
       console.log('  FAIL DH=' + DH.toFixed(0) +
         (clash.length ? '  overlapping: ' + clash.join(', ') : '') +
         (off.length ? '  off screen: ' + off.join(', ') : '') +
+        (wide.length ? '  too wide: ' + wide.join(', ') : '') +
         (onEdge.length ? '  on a box outline: ' + onEdge.join(', ') : '') +
         (B.length < 10 ? '  only ' + B.length + ' lines drawn' : '') +
         (S.length < 2 ? '  only ' + S.length + ' boxes drawn' : ''));
