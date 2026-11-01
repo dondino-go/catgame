@@ -52,7 +52,14 @@ you take its food, so playing slowly no longer means missing the late waves.
 
 A night is **graded on how much of the street you got** (`nightGrade`), not on
 what you scored: eight of eight is rare, so seven has to read as a good night
-rather than a near miss. Thresholds are fractions (0.35, 0.6, 0.8, 1) so a
+rather than a near miss. The results headline is that grade **as a verdict in
+plain words** -- A GOOD NIGHT, A FAIR NIGHT, BETTER LUCK TOMORROW -- because a
+playtest showed a tally ("SIX OF EIGHT") is a fact rather than an answer to
+"did I do well?". The count stays on the map and in the card. The line under
+the map says **why the night stopped**, and when houses were lost that is the
+reason, so it leads. Two scares end a house, which nothing used to say: the
+caught card names it the second time, and the spotted line counts what it
+cost. Thresholds are fractions (0.35, 0.6, 0.8, 1) so a
 five-bowl street grades like an eight-bowl one, and the names come from the
 street's own `ranks`.
 

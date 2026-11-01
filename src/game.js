@@ -1701,7 +1701,9 @@ function drawCaught() {
     outlined(loser.name.toUpperCase() + ' TAKES THE BOWL IN', DW / 2, y + 50, 25, '#ffd0d0');
     text('they’ll put it back out shortly', DW / 2, y + 78, 18, 'rgba(255,233,201,.6)', 'center', 500);
   } else {
-    outlined(loser.name.toUpperCase() + ' STOPS FEEDING YOU', DW / 2, y + 52, 25, '#ffd0d0');
+    outlined(loser.name.toUpperCase() + ' STOPS FEEDING YOU', DW / 2, y + 50, 25, '#ffd0d0');
+    text('that\u2019s twice \u2014 no more bowls there tonight', DW / 2, y + 78, 18,
+         'rgba(255,233,201,.6)', 'center', 500);
   }
 }
 
@@ -2319,7 +2321,10 @@ function drawOver() {
     ['Best streak', '\u00d7' + g.bestMult, g.bestMult > 1 ? WARM : CREAM],
   ];
   if (g.misses)      lines.push(['Clatters', String(g.misses), '#ffb38f']);
-  if (g.timesCaught) lines.push(['Times spotted', String(g.timesCaught), ALARM]);
+  /* Two scares at one house ends it, and nothing said so: a playtest read
+     four spots and two lost houses as unrelated facts. */
+  if (g.timesCaught) lines.push(['Times spotted', g.timesCaught +
+    (pr.lost ? '  (' + pr.lost + ' shut for good)' : ''), ALARM]);
   if (g.foxLosses)   lines.push(['Lost to the fox', String(g.foxLosses), '#ff9d6b']);
   lines.push(['Points from food', String(food)]);
   lines.push(['Still feeding you', kept + ' × ' + C.KEPT_BONUS + ' = ' + g.keptBonus, kept ? MINT : ALARM]);
@@ -2358,13 +2363,16 @@ function drawOver() {
      night was for. How it ended is flavour and goes under the map: a player
      who got seven of eight and was carried home should read that as a good
      night, not as the same failure as being carried home with two. */
+  /* A verdict in plain words. The tally was an improvement on naming the
+     ending, but a playtest still could not tell a good night from a bad one:
+     "SIX OF EIGHT" is a fact, not an answer. The count is on the map and in
+     the card below, so the headline is free to say what it was worth. */
+  const VERDICT = [['BETTER LUCK TOMORROW', ALARM, 38], ['A THIN NIGHT', CREAM, 44],
+                   ['A FAIR NIGHT', WARM, 44],          ['A GOOD NIGHT', MINT, 44],
+                   ['THE WHOLE STREET', MINT, 44]];
   const grade = C.nightGrade(g);
-  const whole = grade.cleared === grade.total && grade.total > 0;
-  outlined(whole ? 'THE WHOLE STREET'
-                 : (NUMBER_WORDS[grade.cleared] || grade.cleared).toUpperCase() + ' OF ' +
-                   (NUMBER_WORDS[grade.total] || grade.total).toUpperCase(),
-           DW / 2, y, whole ? 44 : 46,
-           grade.idx >= 3 ? MINT : grade.idx >= 2 ? WARM : grade.idx >= 1 ? CREAM : ALARM);
+  const v = VERDICT[clamp(grade.idx, 0, VERDICT.length - 1)];
+  outlined(v[0], DW / 2, y, v[2], v[1]);
 
   /* score counts up */
   const k = clamp((t - 0.25) / 1.0, 0, 1);
@@ -2393,11 +2401,20 @@ function drawOver() {
   drawStreetMap(DW / 2, y, rowH);
   y += rowH * g.street.rows + gap(40);
   const total = homes.length;
-  const ENDED = { cleared: ['YOU CLEARED THE STREET', MINT], done: ['NOTHING LEFT TO TAKE', WARM],
-                  owner: ['THE OWNER CAME FOR YOU', WARM] };
+  /* Why the night stopped, not just that it did. A playtest ended at six of
+     eight and could not tell what had gone wrong: for `done` the reason IS
+     the houses that shut you out, so that leads rather than trailing after
+     "NOTHING LEFT TO TAKE". */
+  const word = n => (NUMBER_WORDS[n] || n).toUpperCase();
+  const shutOut = grade.lost === 1 ? 'ONE HOUSE HAS HAD ENOUGH OF YOU'
+                                   : word(grade.lost) + ' HOUSES HAVE HAD ENOUGH OF YOU';
+  const ENDED = {
+    cleared: ['YOU CLEARED THE STREET', MINT],
+    done:    [shutOut, ALARM],
+    owner:   ['THE OWNER CAME FOR YOU' + (grade.lost ? '  \u00b7  ' + shutOut : ''), WARM],
+  };
   const ended = ENDED[g.ending] || ENDED.done;
-  text(ended[0] + (grade.lost ? '  \u00b7  ' + grade.lost + ' WON\u2019T FEED YOU AGAIN' : ''),
-       DW / 2, y, 22, ended[1], 'center', 800);
+  text(ended[0], DW / 2, y, 22, ended[1], 'center', 800);
 
   y += gap(44);
   const lh = gap(44);
