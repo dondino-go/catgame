@@ -828,11 +828,22 @@ function spawnFox(g) {
             target: null, eatT: 0, rest: 0 };
 }
 
+/* Night only: a bowl the cat has already sat down at is not up for grabs.
+   The fox robs bowls one ball a second and takes the cat off the bowl when it
+   empties one, which under the clock was a nuisance among eight bowls. In the
+   slow night the last house is the only bowl on the street, so the fox camped
+   it, drained it faster than it could be eaten, and came straight back when it
+   respawned -- the final bowl could not be won at all. So it is a race now:
+   whoever sits down first keeps it. The fox is still faster to a bowl the cat
+   is only walking towards, and still takes anything left unattended, which is
+   what "competition, not a threat" was always meant to mean. */
+const foxBarred = (g, h) => isNight(g) && g.eat && g.eat.h === h;
+
 function foxPickTarget(g) {
   const f = g.fox;
   let best = null, bd = Infinity;
   for (const h of g.houses) {
-    if (!h.bowl) continue;
+    if (!h.bowl || foxBarred(g, h)) continue;
     const s = bowlSpot(h), d = dist(f.x, f.y, s.x, s.y);
     if (d < bd) { bd = d; best = h; }
   }
@@ -849,7 +860,7 @@ function updateFox(g, dt) {
     f.target = null;
     return;
   }
-  if (!f.target || !f.target.bowl) { foxPickTarget(g); f.eatT = 0; }
+  if (!f.target || !f.target.bowl || foxBarred(g, f.target)) { foxPickTarget(g); f.eatT = 0; }
   if (!f.target) {             // nothing to rob -- mooch up and down the road
     const run = g.street.fox;
     f.y += f.patrol * run.patrol.speed * dt;

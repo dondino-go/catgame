@@ -152,6 +152,44 @@ console.log('\n=== WAVES FOLLOW PROGRESS, NOT A CLOCK ===');
   ok(C.progress(g).cleared === Math.floor(hs.length / 2), 'progress() counts the houses you got');
 }
 
+console.log('\n=== THE FOX RACES YOU FOR A BOWL, IT DOES NOT SHARE IT ===');
+{
+  /* The endgame leaves one bowl on the street. The fox used to camp it, eat a
+     ball a second out from under the cat and throw it off when the bowl
+     emptied, so the last house could not be won. */
+  const g = fresh();
+  const hs = g.houses.filter(h => !h.venue);
+  hs.forEach((h, i) => { if (i > 0) { h.cleared = true; h.bowl = null; } });   /* one bowl left */
+  ok(C.waveByProgress(g) === 3 && C.WAVES[3].fox, 'the last house falls in a wave with a fox about');
+
+  const last = hs[0];
+  C.tapHouse(g, last.id);
+  for (let i = 0; i < 60 * 20 && !g.eat; i++) { quiet(g); C.update(g, DT); C.drainEvents(g); }
+  ok(g.eat && g.eat.h === last, 'the cat sits down at the last bowl');
+
+  /* Count only what happens once the cat is down: the fox winning the race to
+     an unattended bowl on the way over is the mechanic working, not a bug. */
+  const food = last.bowl.food, lostBefore = g.foxLosses, caughtBefore = g.timesCaught;
+  /* hold the dog off: it puts every house at its window, which would have the
+     cat caught and off the bowl, and then the bowl is simply unattended */
+  const noDog = x => { quiet(x); x.dogTimer = 1e9; x.dog = null; };
+  run(g, 25, noDog);                       /* long enough for the fox to cross the street twice */
+  ok(g.timesCaught === caughtBefore, 'the cat is left alone to eat');
+  ok(g.fox, 'the fox is on the street');
+  ok(g.foxLosses === lostBefore, 'it does not rob the bowl the cat is sitting at (lost ' +
+     (g.foxLosses - lostBefore) + ' after sitting down)');
+  ok(last.bowl && last.bowl.food === food, 'not a single ball goes missing from it');
+  ok(g.eat && g.eat.h === last, 'and the cat is never thrown off its meal');
+}
+{
+  /* unattended bowls are still fair game, or the fox is not competition */
+  const g = fresh();
+  const hs = g.houses.filter(h => !h.venue);
+  hs.forEach((h, i) => { if (i > 0) { h.cleared = true; h.bowl = null; } });
+  run(g, 40, quiet);                       /* nobody is eating: the fox helps itself */
+  ok(g.foxLosses > 0, 'a bowl nobody is sitting at is still robbed');
+}
+
 console.log('\n=== THE LESSON IS ALWAYS ON THE CLOCK ===');
 {
   const g = fresh({ practice: true });
