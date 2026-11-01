@@ -251,9 +251,8 @@ console.log('\n=== HOW GOOD A NIGHT WAS ===');
   const g = fresh();
   const hs = g.houses.filter(h => !h.venue);
   const got = n => { hs.forEach((h, i) => { h.cleared = i < n; h.angry = false; }); return C.nightGrade(g); };
-  const names = C.ranksOf(g.street).map(r => r[1]);
-  ok(got(8).idx === 4 && got(8).name === names[4], 'eight of eight is the top rung');
-  ok(got(7).idx === 3 && got(7).name === names[3], 'seven of eight is the rung below it, not a failure');
+  ok(got(8).idx === 4, 'eight of eight is the top rung');
+  ok(got(7).idx === 3, 'seven of eight is the rung below it, not a failure');
   ok(got(6).idx === 2, 'six of eight is a fair night');
   ok(got(4).idx === 1, 'four of eight is a poor one');
   ok(got(2).idx === 0 && got(0).idx === 0, 'two or fewer is the bottom rung');
@@ -268,7 +267,9 @@ console.log('\n=== HOW GOOD A NIGHT WAS ===');
   ok(got(5) === 4, 'five of five is the top rung there too');
   ok(got(4) === 3, 'four of five is the rung below');
   ok(got(1) === 0, 'one of five is the bottom');
-  ok(C.nightGrade(g).name === C.ranksOf(C.TERRACE_STREET)[0][1], 'and it is named from that street\'s own ladder');
+  /* the grade is a rung, not a name: what the player is shown comes from the
+     score, so it cannot disagree with their best or with the unlocks */
+  ok(C.nightGrade(g).name === undefined, 'the grade carries no name of its own');
 }
 
 console.log('\n=== NOTHING BEARS DOWN ON THE LESSON ===');

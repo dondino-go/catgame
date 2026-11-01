@@ -2451,7 +2451,12 @@ function drawOver() {
     const sc = 1 + (1 - pop) * 0.6;
     ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
     ctx.globalAlpha = pop;
-    outlined('— ' + grade.name.toUpperCase() + ' —', 0, 0, 38, WARM);
+    /* The rank goes by the score, so it agrees with the BEST line below it and
+       with what unlocks a street. The headline above already says how much of
+       the street you got; this says how well you played it. They used to come
+       from different measures, so a greedy night that cleared everything for
+       few points read "GHOST OF MARROW STREET" over "BEST 1400 · Bowl Bandit". */
+    outlined('— ' + C.rankFor(g.score, g.street).toUpperCase() + ' —', 0, 0, 38, WARM);
     ctx.restore();
   }
 
@@ -2472,7 +2477,11 @@ function drawOver() {
   const ENDED = {
     cleared: ['YOU CLEARED THE STREET', MINT],
     done:    [shutOut, ALARM],
-    owner:   ['THE OWNER CAME FOR YOU' + (grade.lost ? '  \u00b7  ' + shutOut : ''), WARM],
+    /* No suffix here: with three or more houses lost the combined line measured
+       719 of the 720 units the canvas has, touching both edges, and clipped
+       outright in the fallback face. What was lost is on the map and in the
+       spotted line; this one only has to say how the night ended. */
+    owner:   ['THE OWNER CAME FOR YOU', WARM],
   };
   const ended = ENDED[g.ending] || ENDED.done;
   text(ended[0], DW / 2, y, 22, ended[1], 'center', 800);

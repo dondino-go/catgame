@@ -80,8 +80,16 @@ the map says **why the night stopped**, and when houses were lost that is the
 reason, so it leads. Two scares end a house, which nothing used to say: the
 caught card names it the second time, and the spotted line counts what it
 cost. Thresholds are fractions (0.35, 0.6, 0.8, 1) so a
-five-bowl street grades like an eight-bowl one, and the names come from the
-street's own `ranks`.
+five-bowl street grades like an eight-bowl one.
+
+The grade is a **rung, not a name**: it drives the verdict wording and the
+send-off's hearts, and nothing else. **The rank the player is shown comes from
+the score** (`rankFor`), so it agrees with their best and with what unlocks a
+street. The two used to come from different measures, and a greedy night that
+cleared the whole street for few points read "GHOST OF MARROW STREET" over
+"BEST 1400 · Bowl Bandit". Re-deriving the ladders narrowed that but could not
+close it: completion and points are different axes, so each is said once --
+the headline says how much you took, the rank says how well you played it.
 
 The **score ladders were re-derived for the night** and now agree with that
 grade instead of fighting it. Without a clock to farm against, one dinner per

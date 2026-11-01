@@ -85,7 +85,7 @@ const TERRACE_STREET = {
   id: 'terrace',
   name: 'Terrace Row',
   wip: true,                               // the picker says so: still being worked on (renderer only)
-  unlock: { street: 'marrow', rank: 1 },   // reach the second rung (Bin Lid Regular, 700) of Marrow Street's ladder: eased for playtesting
+  unlock: { street: 'marrow', rank: 1 },   // reach Bin Lid Regular on Marrow Street: the rung, not a number -- it moves when the ladder is re-derived
   rows: 5,
   roadX: 0.5,
   roadHalf: 100 / 720,                     // a narrow street: Marrow's road is 128/720
@@ -446,9 +446,10 @@ function nightGrade(g) {
   const frac = pr.total ? pr.cleared / pr.total : 0;
   let idx = 0;
   for (let i = 0; i < NIGHT_GRADE.length; i++) if (frac >= NIGHT_GRADE[i]) idx = i + 1;
-  const names = ranksOf(g.street);
-  return { idx, frac, cleared: pr.cleared, total: pr.total, lost: pr.lost,
-           name: names[Math.min(idx, names.length - 1)][1] };
+  /* No name: the rung drives the verdict wording and the send-off's hearts,
+     while the rank the player is shown comes from the score instead, so that
+     it agrees with their best and with what unlocks a street. */
+  return { idx, frac, cleared: pr.cleared, total: pr.total, lost: pr.lost };
 }
 
 /* Tests and the ?debug page need the street standing at a given wave without
@@ -949,6 +950,10 @@ function beginPickup(g) {
 function beginLeave(g) {
   stopEating(g);
   g.cat.target = null;
+  /* checkSpotted only runs in `play`, so a half-drained RUN bar from the last
+     bite would sit frozen on screen for the whole send-off. It never showed
+     before because the ending cut away on the same frame. */
+  g.spot.heat = 0; g.spot.by = null;
   if (!g.ending) g.ending = g.houses.every(h => h.venue || (h.cleared && !h.angry)) ? 'cleared' : 'done';
   const w = g.street.walk.y;
   /* the anchor the turn is made around, so it starts and finishes on the spot */
