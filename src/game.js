@@ -1168,10 +1168,9 @@ function drawHud() {
 
   /* while eating, the second row goes: less to look at above the windows */
   if (g.eat) return;
-  /* Second row: leaving, and the sound toggle. The wave is neither named nor
-     counted -- the dots would only repeat GOT, since the waves follow how far
-     you have got. */
-  drawSlip();
+  /* Second row: just the sound toggle. The wave is neither named nor counted
+     -- the dots would only repeat GOT, since the waves follow how far you have
+     got. */
   const m = muteRect();
   rr(m.x, m.y, m.w, m.h, 17);
   fillStroke('rgba(255,233,201,.08)', 'rgba(255,233,201,.2)', 2);
@@ -1197,19 +1196,6 @@ function drawAttention() {
     rr(x + 3, y + 3, fw, h - 6, (h - 6) / 2);
     fillStroke(hot ? ALARM : r > 0.55 ? '#ffb38f' : MINT, null, 0);
   }
-}
-
-/* Leave while you are ahead. The slow night's one deliberate decision: wait
-   for a frightened house to put its bowl back out, or go with what you have.
-   Drawn from here because it belongs to the same play-scene furniture as the
-   HUD, though it sits at the foot of the street. */
-function slipRect() { return { x: DW / 2 - 132, y: L.bot - 80, w: 264, h: 60 }; }
-function drawSlip() {
-  if (tut || g.eat || g.scene !== 'play') return;
-  const r = slipRect();
-  rr(r.x, r.y, r.w, r.h, 30);
-  fillStroke('rgba(18,12,36,.72)', 'rgba(255,233,201,.35)', 2.5);
-  text('SLIP AWAY', r.x + r.w / 2, r.y + r.h / 2 + 1, 24, 'rgba(255,233,201,.8)', 'center', 700);
 }
 
 function drawFloaters(layer) {
@@ -2391,7 +2377,7 @@ function drawOver() {
   y += rowH * g.street.rows + gap(40);
   const total = homes.length;
   const ENDED = { cleared: ['YOU CLEARED THE STREET', MINT], done: ['NOTHING LEFT TO TAKE', WARM],
-                  slipped: ['YOU SLIPPED AWAY', CREAM],      owner: ['THE OWNER CAME FOR YOU', WARM] };
+                  owner: ['THE OWNER CAME FOR YOU', WARM] };
   const ended = ENDED[g.ending] || ENDED.done;
   text(ended[0] + (grade.lost ? '  \u00b7  ' + grade.lost + ' WON\u2019T FEED YOU AGAIN' : ''),
        DW / 2, y, 22, ended[1], 'center', 800);
@@ -2576,12 +2562,6 @@ function onDown(ev) {
   }
   if (g.scene !== 'play') return;
   if (linger && !g.eat) return;     /* the close-up is still up: the street isn't on screen */
-
-  /* the slow night: leaving is a tap, and it has to be tested before the
-     street underneath takes that tap as a walk */
-  if (!g.eat && inside(p, slipRect())) {
-    C.slipAway(g); handleEvents(); Sfx.tap(); return;
-  }
 
   if (g.eat) {
     if (press) biteFromPress();      /* a second finger: settle the first */

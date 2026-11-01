@@ -271,8 +271,8 @@ const CAUGHT_SECS  = 1.6;
 /* ---------- the night ---------- *
  * There is no countdown. Each house has one dinner; eating it settles that
  * house for the night, and being caught shuts it for a while rather than for
- * good. The night ends when the street has nothing left to offer, when the
- * player slips away, or when the racket they have made brings the owner out.
+ * good. The night ends when the street has nothing left to offer, or when the
+ * racket the player has made brings the owner out.
  * The point of the attention meter is that the ending you get is one you
  * caused: a quiet cat gets a long night, a clumsy one gets carried home early.
  *
@@ -901,21 +901,10 @@ function beginPickup(g) {
   emit(g, 'call', {});
 }
 
-/* Leave while you are ahead. This is the decision the slow night turns on:
-   wait for a frightened house to put its bowl back out, or go with what you
-   have. Without it, a shut house at the end of a round is dead waiting. */
-function slipAway(g) {
-  if (g.scene !== 'play' || g.practice) return false;
-  g.ending = 'slipped';
-  endRound(g);
-  return true;
-}
-
 function endRound(g) {
   if (g.scene === 'over') return;
   /* 'cleared' only when nobody shut you out -- the difference between a clean
-     night and merely running out of street. Set already if the owner came or
-     the player slipped away. */
+     night and merely running out of street. Set already if the owner came. */
   if (!g.ending) g.ending = g.houses.every(h => h.venue || h.cleared) ? 'cleared' : 'done';
   g.keptBonus = g.houses.filter(h => !h.venue && !h.angry).length * KEPT_BONUS;
   g.score += g.keptBonus;
@@ -977,10 +966,17 @@ function update(g, dt) {
   if (g.scene !== 'play') return;
 
   g.elapsed  += dt;
-  /* No countdown: the night runs until the street is done with you, until you
-     slip away, or until the racket fetches the owner. The drift is what stops
-     a flawless cat prowling for ever -- the night does end, you just get a
-     longer one for being quiet. The lesson has no attention at all. */
+  /* No countdown: the night runs until the street is done with you, or until
+     the racket fetches the owner. The drift is what stops a flawless cat
+     prowling for ever -- the night does end, you just get a longer one for
+     being quiet. The lesson has no attention at all.
+
+     There was a SLIP AWAY button here too, for leaving while you were ahead.
+     Nobody used it, and the reason was structural rather than a matter of
+     presentation: every ending pays the same kept bonus and the same points,
+     and the score is banked as you eat, so leaving early protects nothing.
+     A cash-out needs something at stake to cash out of. If the night ever
+     wants a final decision, give the endings different outcomes first. */
   if (!g.practice) {
     g.racket = Math.min(1, g.racket + RACKET_DRIFT * dt);
     if (g.racket >= 1) { g.ending = 'owner'; beginPickup(g); return; }
@@ -1016,7 +1012,7 @@ return {
   tapHouse, tapRoad, tapEat,
   bowlSpot, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
   /* the slow night */
-  slipAway, progress, waveByProgress, nightGrade, lockWave,
+  progress, waveByProgress, nightGrade, lockWave,
   NIGHT: { SHUT_SECS, STRIKES, RACKET_DRIFT, RACKET_MISS, RACKET_CAUGHT, RACKET_SEEN },
 };
 });

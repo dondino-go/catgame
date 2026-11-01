@@ -29,13 +29,12 @@ Being caught **shuts** a house for `SHUT_SECS` rather than angering it; the
 second catch at the same house (`STRIKES`) ends it for good. A single mistake
 costs tempo, not the night.
 
-A night ends four ways, and the results headline says which:
+A night ends three ways, and the results headline says which:
 
 | Ending | Trigger |
 |---|---|
 | `cleared` | a bowl from every house |
 | `done` | every house settled, but some were lost |
-| `slipped` | the player tapped SLIP AWAY |
 | `owner` | the attention meter filled |
 
 **Attention** replaces the clock: it drifts up slowly (`RACKET_DRIFT`, a
@@ -60,6 +59,13 @@ street's own `ranks`.
 Nothing is announced. A wave is the street getting nosier and that is already
 on screen -- more windows lit, the dog's bark, the fox walking on. **Don't add
 a card back.**
+
+There was a SLIP AWAY button for leaving while you were ahead. Nobody used it,
+and the reason was structural, not presentational: **every ending pays the same
+kept bonus and the same points**, and the score is banked as you eat, so
+leaving early protects nothing. A cash-out needs something at stake. If the
+night ever wants a final decision, give the endings different outcomes first --
+then the button earns itself.
 
 ## Where things stand
 

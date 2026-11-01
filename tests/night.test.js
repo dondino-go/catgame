@@ -4,7 +4,7 @@
 
    Each house has one dinner, being caught shuts a house for a while rather
    than for good, and the night ends when the street has nothing left to
-   offer, when the player slips away, or when the racket fetches the owner. */
+   offer or when the racket fetches the owner. */
 require('./harness');
 const C = require('../src/core.js');
 
@@ -89,13 +89,6 @@ console.log('\n=== HOW THE NIGHT ENDS ===');
   g.houses[0].shut = 10; g.houses[0].bowl = null;
   C.update(g, DT);
   ok(g.scene === 'play', 'a house that is only cooling off does not end the night');
-}
-{
-  /* slipping away is the player's call */
-  const g = fresh(); quiet(g);
-  ok(C.slipAway(g) === true, 'the player can slip away mid-round');
-  ok(g.scene === 'over' && g.ending === 'slipped', 'which ends the night as slipped away');
-  ok(C.slipAway(g) === false, 'and cannot slip away twice');
 }
 {
   /* the racket fetches the owner */
@@ -208,6 +201,5 @@ console.log('\n=== NOTHING BEARS DOWN ON THE LESSON ===');
   run(g, 30, quiet);
   ok(g.racket === 0, 'the lesson never builds attention');
   ok(g.scene === 'play', 'and never ends itself, even with the street settled');
-  ok(C.slipAway(g) === false, 'and cannot be slipped away from');
 }
 report();
