@@ -217,6 +217,16 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   the windows out of curiosity.
 - Android resumes installed apps instead of restarting them. `game.js` checks
   the server's build stamp on resume and reloads on the title screen.
+- **The update path is confirmed end to end on both platforms** (#24, closed):
+  an installed iPhone *and* a Pixel both went from 31 Oct 12:15 to 1 Nov 08:43
+  on their own, with nothing cleared by hand. All a tester does is open the app
+  and wait a second or two on the title screen. Two things look like a failure
+  and are not: resuming straight into a round reloads nothing (deliberately --
+  the title and results screens offer "Update ready, it loads when you tap"
+  instead), and a first attempt that does not take is meant to be followed by a
+  full close and reopen, which is what triggers the self-heal. Try twice before
+  believing it is broken. None of this can reach a phone still on the original
+  cache-first worker; those still need the manual steps in #24.
 - For visual changes, render options side by side and let the user pick,
   rather than guessing in successive pushes.
 - `node tests/screens.js --update` re-records **every** screen, Marrow ones
