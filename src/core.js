@@ -320,8 +320,9 @@ const PICKUP_SECS  = 4.8;     // walk up, scoop the cat, carry it home
    game -- cut to the results on the same frame, so the one ending with a
    moment to it was the one you are trying to avoid. A playtest put it
    plainly: "the game just ended". */
-const LEAVE_SECS   = 2.8;
-const LEAVE_SKIP   = 0.9;     // ...but a player on their tenth night can tap past it
+const LEAVE_SECS   = 4.8;
+const LEAVE_CIRCLE = 1.9;     // a turn on the spot first: the cat is in no hurry
+const LEAVE_SKIP   = 1.2;     // ...but a player on their tenth night can tap past it
 
 /* What a final score makes you. Re-derived for the night: without a clock to
    farm against, one dinner per house caps what a street can pay, and scores
@@ -946,7 +947,9 @@ function beginLeave(g) {
   g.cat.target = null;
   if (!g.ending) g.ending = g.houses.every(h => h.venue || (h.cleared && !h.angry)) ? 'cleared' : 'done';
   const w = g.street.walk.y;
-  g.leave = { t: 0, up: Math.abs(g.cat.y - w[0]) <= Math.abs(g.cat.y - w[1]) };
+  /* the anchor the turn is made around, so it starts and finishes on the spot */
+  g.leave = { t: 0, up: Math.abs(g.cat.y - w[0]) <= Math.abs(g.cat.y - w[1]),
+              ax: g.cat.x, ay: g.cat.y };
   g.scene = 'leaving';
   emit(g, 'leave', { ending: g.ending });
 }
@@ -1012,14 +1015,27 @@ function update(g, dt) {
     return;
   }
   if (g.scene === 'leaving') {
-    g.leave.t += dt;
-    /* out past the end of the road, drifting to the middle of it on the way */
-    const w = g.street.walk.y, endY = g.leave.up ? w[0] - 1.4 : w[1] + 1.4;
-    const dy = endY - g.cat.y, step = CAT_SPEED * 1.1 * dt;
-    g.cat.y += Math.abs(dy) > step ? Math.sign(dy) * step : dy;
-    g.cat.x = lerp(g.cat.x, g.street.roadX, dt * 2.2);
+    const lv = g.leave;
+    lv.t += dt;
+    if (lv.t < LEAVE_CIRCLE) {
+      /* A pleased little turn on the spot before going. Starts and ends at the
+         anchor, so the walk off begins from where the cat was standing. The
+         loop is narrow across the road and long along it, because that is the
+         shape of the space it has. */
+      const k = lv.t / LEAVE_CIRCLE, a = k * Math.PI * 2;
+      lv.x = lv.ax + Math.sin(a) * 0.055;
+      lv.y = lv.ay + (1 - Math.cos(a)) * 0.22;
+      g.cat.face = Math.cos(a) >= 0 ? 1 : -1;
+      g.cat.x = lv.x; g.cat.y = lv.y;
+    } else {
+      /* out past the end of the road, drifting to the middle of it on the way */
+      const w = g.street.walk.y, endY = lv.up ? w[0] - 1.4 : w[1] + 1.4;
+      const dy = endY - g.cat.y, step = CAT_SPEED * 0.95 * dt;
+      g.cat.y += Math.abs(dy) > step ? Math.sign(dy) * step : dy;
+      g.cat.x = lerp(g.cat.x, g.street.roadX, dt * 2.2);
+    }
     updateHouses(g, dt);
-    if (g.leave.t > LEAVE_SECS) endRound(g);
+    if (lv.t > LEAVE_SECS) endRound(g);
     return;
   }
   if (g.scene === 'caught') {
@@ -1081,7 +1097,8 @@ return {
   tapHouse, tapRoad, tapEat,
   bowlSpot, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
   /* the slow night */
-  progress, waveByProgress, nightGrade, lockWave, skipLeave, LEAVE_SECS, LEAVE_SKIP,
+  progress, waveByProgress, nightGrade, lockWave, skipLeave,
+  LEAVE_SECS, LEAVE_CIRCLE, LEAVE_SKIP,
   NIGHT: { SHUT_SECS, STRIKES, RACKET_DRIFT, RACKET_MISS, RACKET_CAUGHT, RACKET_SEEN },
   endgameScale,
 };

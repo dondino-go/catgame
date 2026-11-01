@@ -40,8 +40,12 @@ A night ends three ways, and the results headline says which:
 **Every ending gets a moment.** The owner's arrival has `PICKUP_SECS` of
 animation; clearing the street used to cut to the results on the same frame,
 so the one ending with a beat was the one you are trying to avoid ("the game
-just ended"). `beginLeave` now walks the cat off the end of the road for
-`LEAVE_SECS` first, with a line over the top, skippable by a tap after
+just ended"). `beginLeave` now gives it `LEAVE_SECS`: a turn
+on the spot for `LEAVE_CIRCLE` and then a walk off the end of the road, shot
+the same way the pickup is -- `leaveCamera` pushes in on the cat and follows
+it out, easing off at the end so the street does not whip past. The caption
+is up during the turn and gone before the cat is, so the last beat is the
+street emptying rather than words sitting over it. A tap skips the lot after
 `LEAVE_SKIP`. Scene order is `play` -> `leaving`/`pickup` -> `over`, so a
 test that settles a street sees `leaving`, not `over`.
 

@@ -218,12 +218,14 @@
 4078 bite house=6 mult=1 multUp=null perfect=true points=15 streak=2
 4078 clear house=6 points=25
 4078 leave ending=cleared
-4080 @ leaving cat=0.694882,2.551333 score=1046 streak=2 st=i-.i-.i-.i-.i-.i-.i-.i-
-4140 @ leaving cat=0.520719,4.091333 score=1046 streak=2 st=i-.i-.i-.i-.i-.i-.i-.i-
+4080 @ leaving cat=0.71605,2.501335 score=1046 streak=2 st=i-.i-.i-.i-.i-.i-.i-.i-
+4140 @ leaving cat=0.695034,2.931699 score=1046 streak=2 st=i-.i-.i-.i-.i-.i-.i-.i-
 4175 stir house=6
 4186 stir house=4
-4200 @ leaving cat=0.502203,5.2 score=1046 streak=2 st=i-.i-.i-.i-.s-.i-.s-.i-
+4200 @ leaving cat=0.655751,2.677333 score=1046 streak=2 st=i-.i-.i-.i-.s-.i-.s-.i-
 4202 stir house=3
 4246 stir house=0
-4247 over score=1366
+4260 @ leaving cat=0.516559,4.007333 score=1046 streak=2 st=s-.i-.i-.w-.w-.i-.w-.i-
+4320 @ leaving cat=0.50176,5.2 score=1046 streak=2 st=w-.i-.i-.w-.w-.i-.w-.i-
+4367 over score=1366
 end over score=1366 kept=8 cleared=8 bites=32 perfects=29 misses=0 caught=0 fox=3 bestMult=3 ending=cleared got=8/8

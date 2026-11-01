@@ -1024,6 +1024,23 @@ function pickupPlan() {
            lift: clamp((t - reachT) / (liftT - reachT), 0, 1) };
 }
 
+/* The same push-in for leaving under your own steam, so the two endings are
+   shot the same way: in on the cat for its turn, then following it out. The
+   follow is eased off towards the end so the street does not whip past as the
+   cat clears the road. */
+function leaveCamera() {
+  if (!g.leave || g.scene === 'over') return;
+  const t = g.leave.t;
+  const z = 1 + 0.62 * (1 - Math.pow(1 - clamp(t / 1.3, 0, 1), 3));
+  const ease = clamp(t / 1.3, 0, 1);
+  const out = clamp((t - C.LEAVE_SECS + 1.1) / 1.1, 0, 1);     /* let it walk out of frame */
+  const fx = sx(g.cat.x), fy = sy(g.cat.y);
+  const anchorY = DH * 0.55;
+  ctx.translate(DW / 2, anchorY);
+  ctx.scale(z, z);
+  ctx.translate(-lerp(DW / 2, fx, ease), -lerp(anchorY, fy, ease * (1 - out * 0.55)));
+}
+
 /* Gentle push-in on the cat, then follow the owner home. Only the street
    zooms; the HUD stays put. */
 function pickupCamera() {
@@ -1686,8 +1703,10 @@ function drawCloseUp() {
    fading in and out so it never sits there squarely. */
 function drawLeaving() {
   if (!g.leave || tut) return;
-  const t = g.leave.t, T = C.LEAVE_SECS;
-  const a = clamp(Math.min(t / 0.45, (T - t) / 0.5), 0, 1);
+  /* up during the turn, gone before the cat is: the last beat is the street
+     emptying, not a caption sitting over it */
+  const t = g.leave.t, hold = C.LEAVE_CIRCLE + 0.9;
+  const a = clamp(Math.min((t - 0.35) / 0.45, (hold - t) / 0.5), 0, 1);
   if (a <= 0) return;
   const cleared = g.ending === 'cleared';
   ctx.globalAlpha = a;
@@ -2482,6 +2501,7 @@ function draw() {
 
   ctx.save();
   pickupCamera();
+  leaveCamera();
   drawStreet();
   /* lamps stand on row boundaries (bowls are mid-row), a quarter and three
      quarters of the way down, so they never sit on a bowl */
