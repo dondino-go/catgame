@@ -1158,11 +1158,21 @@ function drawHud() {
   const clock = Math.floor(secs / 60) + ':' + String(secs % 60).padStart(2, '0');
   const low = g.timeLeft < 15 && g.scene === 'play';
   if (tut) outlined('PRACTICE', DW / 2, 50, 40, MINT);
+  else if (C.isNight(g)) drawAttention();
   else outlined(clock, DW / 2, 50, 50, low && Math.sin(elapsed * 9) > 0 ? ALARM : CREAM);
 
   const homes = g.houses.filter(h => !h.venue), kept = homes.filter(h => !h.angry).length;
-  text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
-  outlined(kept + '/' + homes.length, DW - 24, 64, 42, kept <= homes.length / 4 ? ALARM : MINT, 'right');
+  if (C.isNight(g)) {
+    /* under the clock what matters is who still feeds you; in the slow night
+       it is how much of the street you have actually got */
+    const pr = C.progress(g);
+    text('GOT', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
+    outlined(pr.cleared + '/' + pr.total, DW - 24, 64, 42,
+             pr.cleared === pr.total ? MINT : CREAM, 'right');
+  } else {
+    text('FEEDING YOU', DW - 24, 28, 21, 'rgba(255,233,201,.5)', 'right', 600);
+    outlined(kept + '/' + homes.length, DW - 24, 64, 42, kept <= homes.length / 4 ? ALARM : MINT, 'right');
+  }
 
   /* while eating, the second row goes: less to look at above the windows */
   if (g.eat) return;
@@ -1173,11 +1183,41 @@ function drawHud() {
     circle(DW / 2 - 36 + i * 24, 109, 6);
     fillStroke(i <= g.waveIdx ? WARM : 'rgba(255,233,201,.22)', INK, 2.5);
   }
+  drawSlip();
   const m = muteRect();
   rr(m.x, m.y, m.w, m.h, 17);
   fillStroke('rgba(255,233,201,.08)', 'rgba(255,233,201,.2)', 2);
   text(Sfx.muted ? 'SOUND OFF' : 'SOUND ON', m.x + m.w / 2, m.y + m.h / 2 + 1, 19,
        Sfx.muted ? 'rgba(255,233,201,.45)' : WARM, 'center', 600);
+}
+
+/* How close the owner is to working out where you are. It replaces the clock
+   in the slow night: it creeps up on its own, jumps when you clatter a bowl or
+   get shouted at, and climbs steadily while a neighbour has eyes on you. */
+function drawAttention() {
+  const w = 236, h = 22, x = DW / 2 - w / 2, y = 38, r = clamp(g.racket, 0, 1);
+  text('ATTENTION', DW / 2, 20, 18, 'rgba(255,233,201,.5)', 'center', 600);
+  rr(x, y, w, h, h / 2);
+  fillStroke('rgba(10,6,20,.5)', 'rgba(255,233,201,.25)', 2);
+  if (r > 0.005) {
+    const fw = Math.max(h - 6, (w - 6) * r);
+    const hot = r > 0.78 && Math.sin(elapsed * 9) > 0;
+    rr(x + 3, y + 3, fw, h - 6, (h - 6) / 2);
+    fillStroke(hot ? ALARM : r > 0.55 ? '#ffb38f' : MINT, null, 0);
+  }
+}
+
+/* Leave while you are ahead. The slow night's one deliberate decision: wait
+   for a frightened house to put its bowl back out, or go with what you have.
+   Drawn from here because it belongs to the same play-scene furniture as the
+   HUD, though it sits at the foot of the street. */
+function slipRect() { return { x: DW / 2 - 132, y: L.bot - 80, w: 264, h: 60 }; }
+function drawSlip() {
+  if (!C.isNight(g) || tut || g.eat || g.scene !== 'play') return;
+  const r = slipRect();
+  rr(r.x, r.y, r.w, r.h, 30);
+  fillStroke('rgba(18,12,36,.72)', 'rgba(255,233,201,.35)', 2.5);
+  text('SLIP AWAY', r.x + r.w / 2, r.y + r.h / 2 + 1, 24, 'rgba(255,233,201,.8)', 'center', 700);
 }
 
 function drawFloaters(layer) {
@@ -2170,7 +2210,13 @@ const pickerOn = () => onboarded && C.STREETS.length > 1;
 /* the foot of the second tagline line (drawn 'middle', so half its size down),
    plus a little air */
 const taglineBottom = () => DH * 0.25 + 240 + 16 + 8;
-const pickerTop = () => Math.max(DH * 0.45, taglineBottom() + 16);
+/* Experiment only: a switch between the clock loop and the slow night, so the
+   two can be played back to back on one build while we decide. It goes above
+   the street picker, and the picker and PLAY flow down to make room -- which
+   is why they were made to flow in the first place. */
+const LOOP_ROW = { w: 600, h: 58 };
+function loopRect() { return { x: DW / 2 - LOOP_ROW.w / 2, y: taglineBottom() + 16, w: LOOP_ROW.w, h: LOOP_ROW.h }; }
+const pickerTop = () => Math.max(DH * 0.45, loopRect().y + LOOP_ROW.h + 18);
 function pickerBlock() {
   const r = STREET_ROW, n = C.STREETS.length;
   return pickerOn() ? n * r.h + (n - 1) * r.gap : 0;
@@ -2179,6 +2225,18 @@ function streetRect(i) {
   const r = STREET_ROW;
   return { x: DW / 2 - r.w / 2, y: pickerTop() + i * (r.h + r.gap), w: r.w, h: r.h };
 }
+function drawLoopPicker() {
+  const r = loopRect(), night = C.isNight(g);
+  const halves = [{ label: 'THE CLOCK', on: !night }, { label: 'THE SLOW NIGHT', on: night }];
+  rr(r.x, r.y, r.w, r.h, 29);
+  fillStroke('rgba(18,12,36,.55)', 'rgba(255,233,201,.22)', 2.5);
+  halves.forEach((h, i) => {
+    const w = r.w / 2, x = r.x + i * w;
+    if (h.on) { rr(x + 4, r.y + 4, w - 8, r.h - 8, 25); fillStroke('rgba(255,233,201,.16)', WARM, 3); }
+    text(h.label, x + w / 2, r.y + r.h / 2 + 1, 22, h.on ? CREAM : 'rgba(255,233,201,.5)', 'center', 700);
+  });
+}
+
 function drawStreetPicker() {
   C.STREETS.forEach((st, i) => {
     const r = streetRect(i), open = C.isUnlocked(st, bests), on = st === g.street || st.id === g.street.id;
@@ -2200,6 +2258,16 @@ function drawStreetPicker() {
     else if (on) text('✓', r.x + r.w - 30, r.y + r.h / 2, 34, MINT, 'right', 800);
   });
 }
+/* Experiment only: which loop to play, remembered like the chosen street. */
+let loopMode = 'clock';
+try { loopMode = localStorage.getItem('bowlbandit.loop') === 'night' ? 'night' : 'clock'; } catch (e) {}
+function selectLoop(mode) {
+  if (g.scene !== 'title' && g.scene !== 'over') return;
+  loopMode = mode === 'night' ? 'night' : 'clock';
+  C.setLoop(g, loopMode);
+  try { localStorage.setItem('bowlbandit.loop', loopMode); } catch (e) {}
+}
+
 /* Swap the game to another street, between rounds. */
 function selectStreet(st) {
   C.setStreet(g, st);
@@ -2236,6 +2304,7 @@ function drawTitle() {
   ctx.fillStyle = 'rgba(255,233,201,.4)';
   ctx.fillRect(DW / 2 - 70, hr.y + hr.h / 2 + 18, 140, 2);
 
+  drawLoopPicker();
   if (pickerOn()) drawStreetPicker();
   else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, hr.y + hr.h + 34, 22,
                           'rgba(255,233,201,.5)', 'center', 600);
@@ -2307,8 +2376,10 @@ function drawOver() {
   const food = g.score - g.keptBonus;
 
   /* the working, built first because how tall it is decides everything below */
+  const pr = C.progress(g);
   const lines = [
-    ['Bowls licked clean', String(g.bowlsCleared)],
+    C.isNight(g) ? ['Street cleared', pr.cleared + ' of ' + pr.total, pr.cleared === pr.total ? MINT : CREAM]
+                 : ['Bowls licked clean', String(g.bowlsCleared)],
     ['Bites', g.bites + (g.perfects ? '  (' + g.perfects + ' perfect)' : '')],
     ['Best streak', '\u00d7' + g.bestMult, g.bestMult > 1 ? WARM : CREAM],
   ];
@@ -2345,8 +2416,14 @@ function drawOver() {
 
   let y = gap(112);
 
-  outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
-           kept === 0 ? ALARM : WARM);
+  /* The slow night has four ways to end and the headline is where they land,
+     so saying which one costs no height on a screen that has none to spare. */
+  const END = { cleared: ['THE WHOLE STREET', MINT, 44], done: ['NOTHING LEFT OUT', WARM, 42],
+                slipped: ['SLIPPED AWAY', CREAM, 46],    owner: ['CARRIED HOME', WARM, 46] };
+  const end = C.isNight(g) && END[g.ending];
+  if (end) outlined(end[0], DW / 2, y, end[2], end[1]);
+  else outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
+                kept === 0 ? ALARM : WARM);
 
   /* score counts up */
   const k = clamp((t - 0.25) / 1.0, 0, 1);
@@ -2539,6 +2616,10 @@ function onDown(ev) {
   if ((g.scene === 'title' || g.scene === 'over') && updateReady) { loadUpdate(true); return; }
   if (g.scene === 'title') {
     askForMotion();
+    if (inside(p, loopRect())) {
+      selectLoop(p.x < DW / 2 ? 'clock' : 'night');
+      Sfx.tap(); return;
+    }
     if (pickerOn()) {
       const i = C.STREETS.findIndex((st, i) => inside(p, streetRect(i)));
       if (i >= 0) { if (C.isUnlocked(C.STREETS[i], bests) && C.STREETS[i].id !== g.street.id) selectStreet(C.STREETS[i]); Sfx.tap(); return; }
@@ -2559,6 +2640,12 @@ function onDown(ev) {
   }
   if (g.scene !== 'play') return;
   if (linger && !g.eat) return;     /* the close-up is still up: the street isn't on screen */
+
+  /* the slow night: leaving is a tap, and it has to be tested before the
+     street underneath takes that tap as a walk */
+  if (C.isNight(g) && !g.eat && inside(p, slipRect())) {
+    C.slipAway(g); handleEvents(); Sfx.tap(); return;
+  }
 
   if (g.eat) {
     if (press) biteFromPress();      /* a second finger: settle the first */
@@ -2642,6 +2729,8 @@ function frame(ts) {
 {
   const saved = C.streetById(loadJSON('bowlbandit.street', null));
   if (saved && onboarded && !(DEBUG && window.__bbStreet) && saved !== g.street && C.isUnlocked(saved, bests)) selectStreet(saved);
+  /* experiment only: and which loop was last chosen */
+  if (loopMode === 'night') C.setLoop(g, 'night');
 }
 
 fit();
@@ -2655,7 +2744,7 @@ function advance(secs) {
 if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
   /* the title screen's hit areas, in design units, for tests/title.js and the
      picker scenes in tests/screens.js -- so neither has to restate the layout */
-  titleRects: () => ({ play: playRect(), how: howRect(), DH,
+  titleRects: () => ({ play: playRect(), how: howRect(), DH, loop: loopRect(),
                        tagline: { x: 0, y: DH * 0.25 + 240 - 16, w: DW, h: 32 },
                        build: { x: 0, y: DH - 52, w: DW, h: 34 },
                        picker: pickerOn() ? C.STREETS.map((_, i) => streetRect(i)) : [] }) };

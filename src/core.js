@@ -268,6 +268,32 @@ const GAME_SECONDS = WAVES.reduce((n, w) => n + w.secs, 0);
 const GRACE        = 4.5;     // nobody stirs for the first few seconds
 const KEPT_BONUS   = 40;      // per neighbour still feeding you at the whistle
 const CAUGHT_SECS  = 1.6;
+
+/* ---------- the slow night (experiment) ---------- *
+ * An alternative loop, off unless create({ loop: 'night' }) asks for it, so
+ * the clock loop and its golden logs are untouched.
+ *
+ * There is no countdown. Each house has one dinner; eating it settles that
+ * house for the night, and being caught shuts it for a while rather than for
+ * good. The night ends when the street has nothing left to offer, when the
+ * player slips away, or when the racket they have made brings the owner out.
+ * The point of the racket meter is that the ending you get is one you caused:
+ * a quiet cat gets a long night, a clumsy one gets carried home early. */
+const SHUT_SECS     = 22;       // a frightened house takes its bowl in for this long
+const STRIKES       = 2;        // ...and stops feeding you for good on this catch
+/* Tuned by tools/simulate.js --loop night. The first pass put the drift at
+   1/260 and fed the meter from misses and catches only, which punished
+   exactly the play this loop is for: a careful cat spends longer on the
+   street, so the drift fetched the owner on 20% of expert careful nights and
+   none of the reckless ones. The same inversion #13 found under the clock.
+   So the drift is now a backstop against a cat that refuses to eat at all --
+   the street emptying is what normally ends a night -- and the meter is fed
+   mainly by being noticed, which is the thing a careful player avoids and a
+   greedy one courts. */
+const RACKET_DRIFT  = 1 / 600;  // a backstop, not a clock
+const RACKET_MISS   = 0.035;    // a clattered bowl carries
+const RACKET_CAUGHT = 0.13;     // someone shouting carries further
+const RACKET_SEEN   = 0.05;     // per second with a neighbour's eyes on you
 /* Tuned for a thumb on glass, not a key: a swipe to run takes longer than a
    key press, and the player is watching windows as well as the bar. */
 const BITE_SPEEDUP = 0.05;    // the marker quickens a little with every bite
@@ -361,6 +387,34 @@ function unlockHint(street) {
 function bowlSpot(h) { return { x: h.bowlAt.x, y: h.bowlAt.y }; }
 
 
+/* The slow night is a per-game option, and never during the first-launch
+   lesson: that is scripted around the clock. */
+const isNight = g => g.loop === 'night' && !g.practice;
+/* A house is settled when there is nothing left to do with it tonight. */
+const isSettled = (g, h) => !!(h.venue || h.angry || (isNight(g) && h.cleared));
+
+/* In the slow night the street wakes up as you work through it rather than as
+   a clock runs down, so a careful player still meets the late waves -- they
+   just take longer to get there. An angry house counts too: the street is
+   that much more on edge either way. */
+function waveByProgress(g) {
+  const hs = g.houses.filter(h => !h.venue);
+  const done = hs.filter(h => h.cleared || h.angry).length;
+  return Math.min(WAVES.length - 1, Math.floor(done / (hs.length || 1) * WAVES.length));
+}
+
+/* What the HUD and the results screen report: how much of the street you
+   actually got, and what it cost. */
+function progress(g) {
+  const hs = g.houses.filter(h => !h.venue);
+  return {
+    total: hs.length,
+    cleared: hs.filter(h => h.cleared).length,
+    lost: hs.filter(h => h.angry).length,
+    shut: hs.filter(h => !h.angry && !h.cleared && h.shut > 0).length,
+  };
+}
+
 function waveAt(sec) {
   let acc = 0;
   for (let i = 0; i < WAVES.length; i++) { acc += WAVES[i].secs; if (sec < acc) return i; }
@@ -377,6 +431,8 @@ function buildHouses(g) {
       venue: d.venue ? { from: d.venue.from, span: d.venue.span } : null,
       angry: false, state: 'idle', t: GRACE + rand(g, 0, 6),   // idle | stir | watch
       bowl: null, respawn: rand(g, 0, 2),
+      /* the slow night only: one dinner each, and a fright they get over */
+      cleared: false, shut: 0, strikes: 0,
     });
   });
 }
@@ -395,6 +451,7 @@ function reset(g) {
   g.bites = 0; g.perfects = 0; g.misses = 0; g.timesCaught = 0;   /* for the results */
   g.streak = 0; g.bestMult = 1;
   g.timeLeft = GAME_SECONDS; g.elapsed = 0;
+  g.racket = 0; g.ending = null;
   g.eat = null; g.caught = null; g.pickup = null;
   g.spot = { heat: 0, by: null };
   g.dog = null; g.dogTimer = 0; g.fox = null;
@@ -414,7 +471,8 @@ function adoptStreet(street) {
 
 function create(opts) {
   const g = { rng: (opts && opts.rng) || Math.random, street: adoptStreet((opts && opts.street) || MARROW_STREET),
-             practice: opts && opts.practice ? makePractice() : null };
+             practice: opts && opts.practice ? makePractice() : null,
+             loop: (opts && opts.loop) || 'clock' };    // 'clock' | 'night'
   reset(g);
   g.scene = 'title';           // title | play | caught | pickup | over
   return g;
@@ -426,6 +484,14 @@ function create(opts) {
 function setStreet(g, street) {
   if (g.scene !== 'title' && g.scene !== 'over') throw new Error('setStreet: a round is in progress');
   g.street = adoptStreet(street);
+  reset(g);
+}
+
+/* Which loop to play, swapped on the title screen like a street. Kept as a
+   setter so the renderer can offer both back to back while we decide. */
+function setLoop(g, loop) {
+  if (g.scene !== 'title' && g.scene !== 'over') throw new Error('setLoop: a round is in progress');
+  g.loop = loop === 'night' ? 'night' : 'clock';
   reset(g);
 }
 
@@ -516,6 +582,9 @@ function takeBite(g, atT) {
     g.streak = Math.floor(g.streak / 2);
     emit(g, 'miss', { house: h.id, streakBefore: before, streak: g.streak });
     if (!g.practice) makeNoise(g, h);
+    /* The same clatter that wakes the neighbours carries to whoever is out
+       looking for you: in the slow night a miss costs tempo, not points. */
+    if (isNight(g)) g.racket = Math.min(1, g.racket + RACKET_MISS);
     return;
   }
   /* the middle of the green is worth more: something to aim for beyond
@@ -541,6 +610,10 @@ function takeBite(g, atT) {
 
   if (h.bowl.food <= 0) {
     h.bowl = null; h.respawn = rand(g, 5.5, 9);
+    /* One dinner per house per night: a settled house puts out no more, so the
+       street empties as you work through it and there is no safe bowl to farm.
+       That is also what makes the night finite without a clock. */
+    if (isNight(g)) h.cleared = true;
     const bonus = Math.round(25 * multFor(g.streak));
     g.bowlsCleared++; g.score += bonus;
     emit(g, 'clear', { house: h.id, points: bonus });
@@ -578,8 +651,9 @@ function updateHouses(g, dt) {
   let awake = g.houses.reduce((n, h) => n + (h.state !== 'idle' ? 1 : 0), 0);
 
   for (const h of g.houses) {
+    if (h.shut > 0) h.shut -= dt;        // cooling off after a fright
     // An angry resident stops feeding you but never stops watching.
-    if (!h.venue && !h.angry && !h.bowl) {
+    if (!h.venue && !h.angry && !h.cleared && h.shut <= 0 && !h.bowl) {
       h.respawn -= dt;
       if (h.respawn <= 0 && !(g.eat && g.eat.h === h) && !(g.fox && g.fox.target === h)) spawnBowl(g, h);
     }
@@ -646,6 +720,11 @@ function watchersOfBowl(g, owner) {
 function checkSpotted(g, dt) {
   const seer = g.eat ? watchersOfBowl(g, g.eat.h)[0] || null : null;
   if (seer) {
+    /* Being stared at is how the owner works out where you are: in the slow
+       night the meter climbs while you are watched, so eating on under a
+       twitching curtain costs you the end of your night rather than only
+       your streak. */
+    if (isNight(g)) g.racket = Math.min(1, g.racket + dt * RACKET_SEEN);
     /* While a neighbour can see you there is no streak, whether or not you
        escape. Checked every tick rather than only when the meter is empty:
        a second look while the meter is still cooling must clear it too, and
@@ -671,13 +750,30 @@ function getCaught(g, witness, owner) {
      tells on the owner instead */
   const grass = witness.angry || !!witness.venue;
   const loser = grass ? owner : witness;
-  loser.angry = true; loser.bowl = null;
+  if (isNight(g)) {
+    /* Cooling off. One fright shuts a house for a while; the second stops it
+       feeding you for good. Under the clock a single catch angered a house
+       permanently, which in a loop that asks you to clear the whole street
+       would spoil nearly every night inside the first minute: a mistake
+       should cost tempo, not the run. */
+    loser.strikes++;
+    loser.bowl = null;
+    if (loser.strikes >= STRIKES) loser.angry = true;
+    else { loser.shut = SHUT_SECS; loser.respawn = rand(g, 0.5, 2); }
+    g.racket = Math.min(1, g.racket + RACKET_CAUGHT);
+  } else {
+    loser.angry = true; loser.bowl = null;
+  }
   g.timesCaught++;
   witness.state = 'idle'; witness.t = rand(g, 2.2, 3.6);
   g.caught = { witness: witness.id, owner: owner.id, loser: loser.id, grass, t: CAUGHT_SECS };
   stopEating(g);
   g.cat.target = null;
-  emit(g, 'caught', { witness: witness.id, owner: owner.id, loser: loser.id, grass });
+  /* The golden logs serialise every field of an event, so the clock loop's
+     'caught' must keep exactly the fields it always had. */
+  const ev = { witness: witness.id, owner: owner.id, loser: loser.id, grass };
+  if (isNight(g)) ev.shut = !loser.angry && loser.shut > 0;
+  emit(g, 'caught', ev);
   g.scene = 'caught';
 }
 
@@ -796,8 +892,22 @@ function beginPickup(g) {
   emit(g, 'call', {});
 }
 
+/* Leave while you are ahead. This is the decision the slow night turns on:
+   wait for a frightened house to put its bowl back out, or go with what you
+   have. Without it, a shut house at the end of a round is dead waiting. */
+function slipAway(g) {
+  if (!isNight(g) || g.scene !== 'play') return false;
+  g.ending = 'slipped';
+  endRound(g);
+  return true;
+}
+
 function endRound(g) {
   if (g.scene === 'over') return;
+  /* 'cleared' only when nobody shut you out -- the difference between a clean
+     night and merely running out of street. Set already if the owner came or
+     the player slipped away. */
+  if (!g.ending) g.ending = g.houses.every(h => h.venue || h.cleared) ? 'cleared' : 'done';
   g.keptBonus = g.houses.filter(h => !h.venue && !h.angry).length * KEPT_BONUS;
   g.score += g.keptBonus;
   stopEating(g);
@@ -850,7 +960,7 @@ function update(g, dt) {
     updateHouses(g, dt);
     if (g.caught.t <= 0) {
       g.caught = null;
-      if (g.houses.every(h => h.venue || h.angry)) endRound(g);
+      if (g.houses.every(h => isSettled(g, h))) endRound(g);
       else g.scene = 'play';
     }
     return;
@@ -858,12 +968,21 @@ function update(g, dt) {
   if (g.scene !== 'play') return;
 
   g.elapsed  += dt;
-  if (g.practice) g.timeLeft = GAME_SECONDS;    // no clock in practice
-  else g.timeLeft -= dt;
-  if (g.timeLeft <= 0) { g.timeLeft = 0; beginPickup(g); return; }
+  if (isNight(g)) {
+    /* No countdown: the night runs until the street is done with you, until
+       you slip away, or until the racket fetches the owner. The drift is what
+       stops a flawless cat prowling for ever -- the night does end, you just
+       get a longer one for being quiet. */
+    g.racket = Math.min(1, g.racket + RACKET_DRIFT * dt);
+    if (g.racket >= 1) { g.ending = 'owner'; beginPickup(g); return; }
+  } else {
+    if (g.practice) g.timeLeft = GAME_SECONDS;    // no clock in practice
+    else g.timeLeft -= dt;
+    if (g.timeLeft <= 0) { g.timeLeft = 0; g.ending = 'owner'; beginPickup(g); return; }
+  }
 
   // wave changeover
-  const wi = waveAt(played(g));
+  const wi = isNight(g) ? waveByProgress(g) : waveAt(played(g));
   if (wi !== g.waveIdx) {
     g.waveIdx = wi;
     emit(g, 'wave', { idx: wi });
@@ -880,7 +999,7 @@ function update(g, dt) {
 
   /* Only from open play: if this tick's catch took the last friendly house,
      the 'caught' scene shows SPOTTED! first and ends the round itself. */
-  if (g.scene === 'play' && g.houses.every(h => h.venue || h.angry)) endRound(g);
+  if (g.scene === 'play' && g.houses.every(h => isSettled(g, h))) endRound(g);
 }
 
 return {
@@ -891,5 +1010,8 @@ return {
   create, start, update, drainEvents, setPractice, practiceResident, practiceBowl, practiceHoldBowl,
   tapHouse, tapRoad, tapEat,
   bowlSpot, waveAt, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
+  /* the slow night */
+  setLoop, slipAway, isNight, progress, waveByProgress,
+  NIGHT: { SHUT_SECS, STRIKES, RACKET_DRIFT, RACKET_MISS, RACKET_CAUGHT, RACKET_SEEN },
 };
 });

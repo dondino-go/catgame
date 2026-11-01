@@ -9,6 +9,11 @@
  *   node tools/simulate.js              60 rounds per row
  *   node tools/simulate.js --rounds 200
  *   node tools/simulate.js --street terrace    (and that street's ladder)
+ *   node tools/simulate.js --loop night        (the slow night: no clock)
+ *
+ * In the slow night there is no fixed length, so the table reports how long a
+ * night actually ran and how much of the street the bot got, which is the
+ * whole question that loop is meant to answer.
  *
  * Bots have human-ish limits: they aim at the centre of the green with a
  * timing error (sigma, in bar widths) and react to windows after a delay.
@@ -24,6 +29,8 @@ const C = require(path.join(__dirname, '..', 'src', 'core.js'));
 const arg = name => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : null; };
 const ROUNDS = parseInt(arg('--rounds') || '60', 10);
 const STREET = arg('--street') === 'terrace' ? C.TERRACE_STREET : C.MARROW_STREET;   // --street terrace
+const LOOP = arg('--loop') === 'night' ? 'night' : 'clock';
+const NIGHT = LOOP === 'night';
 
 const SKILLS = {
   novice: { sigma: 0.16, react: 0.65 },
@@ -36,10 +43,13 @@ function play(skill, style, seed) {
   let a = seed >>> 0;
   const rng = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
   const randn = () => Math.sqrt(-2 * Math.log(rng() + 1e-9)) * Math.cos(6.2832 * rng());
-  const g = C.create({ rng, street: STREET }); C.start(g);
+  const g = C.create({ rng, street: STREET, loop: LOOP }); C.start(g);
   const DT = 1 / 60;
   let react = 0, aim = null, cool = 0;
-  while (g.scene !== 'over') {
+  /* The slow night has no clock, so it needs its own stop: the racket drift
+     ends a night in about 260s, and this only catches a bot that has wedged. */
+  let guard = 60 * 600;
+  while (g.scene !== 'over' && guard-- > 0) {
     if (g.scene === 'play') {
       const e = g.eat;
       if (e) {
@@ -64,22 +74,39 @@ function play(skill, style, seed) {
     cool -= DT;
     C.update(g, DT); C.drainEvents(g);
   }
-  return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length, mult: g.bestMult, rank: C.rankFor(g.score, STREET) };
+  const pr = C.progress(g);
+  return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length,
+           mult: g.bestMult, rank: C.rankFor(g.score, STREET),
+           cleared: pr.cleared, total: pr.total, ending: g.ending, secs: g.elapsed };
 }
 
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
 const short = name => name.split(' ').map(w => w[0]).join('');      /* "Bowl Bandit" -> "BB" */
 
 console.log('Balance simulation, ' + ROUNDS + ' rounds per row\n');
-console.log('Street: ' + STREET.name + '\n');
-console.log('skill   style     score p10 / p50 / p90   kept   best x   ranks (' +
-            C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
+console.log('Street: ' + STREET.name + '   Loop: ' + (NIGHT ? 'the slow night' : 'the clock') + '\n');
+console.log(NIGHT
+  ? 'skill   style     score p10 / p50 / p90   got     night p50   how it ended'
+  : 'skill   style     score p10 / p50 / p90   kept   best x   ranks (' +
+    C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
 for (const [k, s] of Object.entries(SKILLS)) {
   for (const style of ['cautious', 'greedy']) {
     const r = [];
     for (let i = 1; i <= ROUNDS; i++) r.push(play(s, style, i * 7919 + 13));
     const sc = r.map(x => x.score).sort((x, y) => x - y);
     const avg = f => (r.reduce((n, x) => n + x[f], 0) / r.length).toFixed(1);
+    if (NIGHT) {
+      const secs = r.map(x => x.secs).sort((x, y) => x - y);
+      const endings = ['cleared', 'done', 'slipped', 'owner'].map(e => {
+        const n = r.filter(x => x.ending === e).length;
+        return n ? e + ' ' + Math.round(100 * n / r.length) + '%' : null;
+      }).filter(Boolean).join(', ');
+      console.log(k.padEnd(8) + style.padEnd(10) +
+                  [pct(sc, 0.1), pct(sc, 0.5), pct(sc, 0.9)].join(' / ').padEnd(24) +
+                  (avg('cleared') + '/' + r[0].total).padEnd(8) +
+                  (pct(secs, 0.5).toFixed(0) + 's').padEnd(12) + endings);
+      continue;
+    }
     const ranks = C.ranksOf(STREET).map(([, name]) => {
       const n = r.filter(x => x.rank === name).length;
       return n ? short(name) + ' ' + Math.round(100 * n / r.length) + '%' : null;

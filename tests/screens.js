@@ -30,13 +30,15 @@ const URL = 'file://' + path.join(ROOT, 'mobile.html') + '?debug&manual';
 const NOISE = 48;
 const VW = 390, VH = 844;
 
-async function scene(browser, name, { onboarded = true, street, bests, setup }) {
+async function scene(browser, name, { onboarded = true, street, bests, loop, setup }) {
   const ctx = await browser.newContext({ viewport: { width: VW, height: VH }, deviceScaleFactor: 1,
                                          locale: 'en-GB', timezoneId: 'Europe/London' });
   /* a scene can run on another street, handed to the page as data */
   if (street) await ctx.addInitScript(st => { window.__bbStreet = st; }, street);
   /* best scores already on the board, to open streets */
   if (bests) await ctx.addInitScript(b => { try { localStorage.setItem('bowlbandit.bests', JSON.stringify(b)); } catch (e) {} }, bests);
+  /* which loop to play: the slow night is an experiment behind this flag */
+  if (loop) await ctx.addInitScript(l => { try { localStorage.setItem('bowlbandit.loop', l); } catch (e) {} }, loop);
   await ctx.addInitScript(on => {
     let a = 12345;
     Math.random = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
@@ -63,6 +65,8 @@ async function scene(browser, name, { onboarded = true, street, bests, setup }) 
        restated here: the title screen's layout flows, so it is not a fixed
        fraction of the height */
     streetRow: i => p.evaluate(i => { const r = window.__bb.titleRects().picker[i]; return r.y + r.h / 2; }, i),
+    /* the middle of PLAY, asked of the page: the title screen's layout flows */
+    playY: () => p.evaluate(() => { const r = window.__bb.titleRects().play; return r.y + r.h / 2; }),
     /* where a row's centre is on screen, for the street the page is running */
     rowAt: async r => p.evaluate(([r, DH]) => { const rows = window.__bb.g.street.rows; return 132 + (r + 0.5) * ((DH - 24 - 132) / rows); }, [r, DH]),
     check: (what, cond) => CHECKS.push([name + ': ' + what, !!cond]),
@@ -166,6 +170,21 @@ const SCENES = {
   'title-locked': { bests: { marrow: 699 }, setup: async a => {
     await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
+  } },
+  /* the slow night: the attention meter where the clock was, GOT instead of
+     FEEDING YOU, and the SLIP AWAY button at the foot of the street */
+  'night-street': { loop: 'night', setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(3400); await a.game(QUIET); await a.run(300);
+    a.check('the slow night is running', await a.game(() => window.__bb.C.isNight(window.__bb.g)));
+    a.check('and there is no clock', await a.game(() => window.__bb.g.racket >= 0 && window.__bb.g.ending === null));
+  } },
+  'night-results': { loop: 'night', setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400);
+    await a.game(() => { const g = window.__bb.g, C = window.__bb.C;
+      g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } });
+      g.score = 1870; g.bites = 44; g.perfects = 18; g.misses = 2; g.bestMult = 3; });
+    await a.run(9000);
+    a.check('a cleared street ends the night', await a.game(() => window.__bb.g.ending === 'cleared'));
   } },
   'results': { setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
