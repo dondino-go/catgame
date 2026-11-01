@@ -186,6 +186,20 @@ const SCENES = {
     await a.run(9000);
     a.check('a cleared street ends the night', await a.game(() => window.__bb.g.ending === 'cleared'));
   } },
+  /* the case the results screen has to get right: seven of eight and carried
+     home is a good night, and must not read like being carried home with two */
+  'night-partial': { loop: 'night', setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400);
+    await a.game(() => { const g = window.__bb.g;
+      const hs = g.houses.filter(h => !h.venue);
+      hs.forEach((h, i) => { h.bowl = null; if (i < 7) h.cleared = true; else h.angry = true; });
+      g.score = 1540; g.bites = 38; g.perfects = 12; g.misses = 4; g.timesCaught = 1; g.bestMult = 2;
+      g.racket = 1; });
+    await a.run(9000);
+    a.check('the owner ends a seven-of-eight night', await a.game(() => window.__bb.g.ending === 'owner'));
+    a.check('and it grades as the second rung from the top',
+            await a.game(() => window.__bb.C.nightGrade(window.__bb.g).idx === 3));
+  } },
   'results': { setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
     await a.game(() => { const g = window.__bb.g; g.score = 2480; g.bowlsCleared = 12; g.bites = 51; g.perfects = 20;

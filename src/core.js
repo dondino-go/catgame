@@ -415,6 +415,24 @@ function progress(g) {
   };
 }
 
+/* How good a night was, which is how much of the street you got -- not what
+   you scored and not how it ended. Eight of eight is rare; a player who gets
+   seven and is carried home has had a good night and the results screen has
+   to say so, or the only outcome that reads as a win is the one almost nobody
+   reaches. The street's own ladder supplies the names, so a new street needs
+   nothing extra, and the thresholds are fractions so a five-bowl street grades
+   the same way an eight-bowl one does. */
+const NIGHT_GRADE = [0.35, 0.6, 0.8, 1];      // the floor of each rung above the first
+function nightGrade(g) {
+  const pr = progress(g);
+  const frac = pr.total ? pr.cleared / pr.total : 0;
+  let idx = 0;
+  for (let i = 0; i < NIGHT_GRADE.length; i++) if (frac >= NIGHT_GRADE[i]) idx = i + 1;
+  const names = ranksOf(g.street);
+  return { idx, frac, cleared: pr.cleared, total: pr.total, lost: pr.lost,
+           name: names[Math.min(idx, names.length - 1)][1] };
+}
+
 function waveAt(sec) {
   let acc = 0;
   for (let i = 0; i < WAVES.length; i++) { acc += WAVES[i].secs; if (sec < acc) return i; }
@@ -1022,7 +1040,7 @@ return {
   tapHouse, tapRoad, tapEat,
   bowlSpot, waveAt, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
   /* the slow night */
-  setLoop, slipAway, isNight, progress, waveByProgress,
+  setLoop, slipAway, isNight, progress, waveByProgress, nightGrade,
   NIGHT: { SHUT_SECS, STRIKES, RACKET_DRIFT, RACKET_MISS, RACKET_CAUGHT, RACKET_SEEN },
 };
 });

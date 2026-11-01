@@ -371,7 +371,12 @@ function handleEvents() {
       case 'wave':
         if (tut) break;
         if (e.idx > 0) Sfx.waveUp();
-        banner = { t: 2.8, idx: e.idx };
+        /* The slow night announces nothing. A wave is the street getting
+           nosier, and that is already on screen: more windows lit at once, the
+           dog's bark and every curtain twitching, the fox walking on. A card
+           over the top of it only says in words what the player can see, and
+           covers the street while it does. */
+        if (!C.isNight(g)) banner = { t: 2.8, idx: e.idx };
         break;
       case 'over':
         Sfx.over();
@@ -1177,11 +1182,15 @@ function drawHud() {
   /* while eating, the second row goes: less to look at above the windows */
   if (g.eat) return;
   /* second row: which wave we're in, and the sound toggle */
-  if (!tut) text('WAVE ' + (g.waveIdx + 1) + ' · ' + C.WAVES[g.waveIdx].name,
-       24, 109, 20, 'rgba(255,233,201,.55)', 'left', 600);
-  for (let i = 0; i < C.WAVES.length; i++) {
-    circle(DW / 2 - 36 + i * 24, 109, 6);
-    fillStroke(i <= g.waveIdx ? WARM : 'rgba(255,233,201,.22)', INK, 2.5);
+  /* Same reason: in the slow night the wave is neither named nor counted. The
+     dots would only repeat GOT, since the waves follow how far you have got. */
+  if (!C.isNight(g)) {
+    if (!tut) text('WAVE ' + (g.waveIdx + 1) + ' · ' + C.WAVES[g.waveIdx].name,
+         24, 109, 20, 'rgba(255,233,201,.55)', 'left', 600);
+    for (let i = 0; i < C.WAVES.length; i++) {
+      circle(DW / 2 - 36 + i * 24, 109, 6);
+      fillStroke(i <= g.waveIdx ? WARM : 'rgba(255,233,201,.22)', INK, 2.5);
+    }
   }
   drawSlip();
   const m = muteRect();
@@ -2418,10 +2427,18 @@ function drawOver() {
 
   /* The slow night has four ways to end and the headline is where they land,
      so saying which one costs no height on a screen that has none to spare. */
-  const END = { cleared: ['THE WHOLE STREET', MINT, 44], done: ['NOTHING LEFT OUT', WARM, 42],
-                slipped: ['SLIPPED AWAY', CREAM, 46],    owner: ['CARRIED HOME', WARM, 46] };
-  const end = C.isNight(g) && END[g.ending];
-  if (end) outlined(end[0], DW / 2, y, end[2], end[1]);
+  /* The headline is how much of the street you got, because that is what the
+     night was for. How it ended is flavour and goes under the map: a player
+     who got seven of eight and was carried home should read that as a good
+     night, not as the same failure as being carried home with two. */
+  const grade = C.isNight(g) && C.nightGrade(g);
+  if (grade) {
+    const whole = grade.cleared === grade.total && grade.total > 0;
+    const title = whole ? 'THE WHOLE STREET'
+      : (NUMBER_WORDS[grade.cleared] || grade.cleared).toUpperCase() + ' OF ' +
+        (NUMBER_WORDS[grade.total] || grade.total).toUpperCase();
+    outlined(title, DW / 2, y, whole ? 44 : 46, grade.idx >= 3 ? MINT : grade.idx >= 2 ? WARM : grade.idx >= 1 ? CREAM : ALARM);
+  }
   else outlined(kept === 0 ? 'RUN OFF THE STREET' : 'CARRIED HOME', DW / 2, y, kept === 0 ? 40 : 46,
                 kept === 0 ? ALARM : WARM);
 
@@ -2441,7 +2458,7 @@ function drawOver() {
     const sc = 1 + (1 - pop) * 0.6;
     ctx.save(); ctx.translate(DW / 2, y); ctx.scale(sc, sc);
     ctx.globalAlpha = pop;
-    outlined('— ' + C.rankFor(g.score, g.street).toUpperCase() + ' —', 0, 0, 38, WARM);
+    outlined('— ' + (grade ? grade.name : C.rankFor(g.score, g.street)).toUpperCase() + ' —', 0, 0, 38, WARM);
     ctx.restore();
   }
 
@@ -2452,7 +2469,12 @@ function drawOver() {
   drawStreetMap(DW / 2, y, rowH);
   y += rowH * g.street.rows + gap(40);
   const total = homes.length;
-  text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
+  const ENDED = { cleared: ['YOU CLEARED THE STREET', MINT], done: ['NOTHING LEFT TO TAKE', WARM],
+                  slipped: ['YOU SLIPPED AWAY', CREAM],      owner: ['THE OWNER CAME FOR YOU', WARM] };
+  const ended = grade && ENDED[g.ending];
+  if (ended) text(ended[0] + (grade.lost ? '  ·  ' + grade.lost + ' WON\u2019T FEED YOU AGAIN' : ''),
+                  DW / 2, y, 22, ended[1], 'center', 800);
+  else text(kept === total ? 'ALL ' + (NUMBER_WORDS[total] || total).toUpperCase() + ' STILL FEED YOU' : kept + ' OF ' + total + ' STILL FEED YOU', DW / 2, y, 22,
        kept ? MINT : ALARM, 'center', 800);
 
   y += gap(44);
