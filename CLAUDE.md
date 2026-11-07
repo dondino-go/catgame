@@ -17,6 +17,21 @@ build step, no dependencies (Playwright is used by one optional test only).
 Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
 into the feature branch (`claude/new-streets`), not the other way round.
 
+## Git workflow
+
+- **Run `git push` as its own standalone command.** Never chain it after a
+  build, a test run or a commit with `&&` or `;`. A push buried at the end of
+  a long chain was refused as a production deploy, and a bare push of the same
+  commit to the same branch went through moments later -- the objection was to
+  the shape of the command, not to the branch.
+- **Say which branch and remote you are pushing to before you push.**
+- **Confirm before deleting or force-pushing any branch.** Deleting a remote
+  branch is refused here anyway (`[Git Destructive]`), so it falls to the user
+  to run; say so rather than retrying.
+- Remember which branch is live: `claude/mobile-redesign` is what GitHub Pages
+  serves, so a push there reaches testers' phones. `main` is the canonical
+  source and reaches nobody.
+
 ## The night: how a round works
 
 There is no countdown. Each house has **one dinner**: eating a bowl to the
@@ -245,6 +260,28 @@ steps frames itself with `__bb.advance(seconds)`.
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
+## Screenshot goldens: how to re-record
+
+- **Never re-record across the whole suite.** `node tests/screens.js --update`
+  rewrites *every* reference, Marrow ones included.
+- **To change one reference, delete that PNG and rerun without `--update`.**
+  A missing reference is recorded (`REC`) and nothing else is touched. There is
+  no flag for targeting one screen: `tests/screens.js` parses `--update` and
+  nothing else.
+- **Do not use `--update` and tidy up afterwards with `git checkout`.** That
+  reverts to the last *commit*, so a reference that legitimately changed
+  earlier in the same session is silently restored to a stale version. That is
+  what happened to `results-partial`: re-recorded correctly for a shortened
+  line, reverted by the next clean-up, and wrong until the final check before
+  shipping. **A stale reference is worse than a failing one -- it passes.**
+- **If you do run `--update`, `git status tests/screens/` afterwards** and
+  check every changed file is one you meant to change.
+- **Known flaky, do not re-record on a single failure** (#21): historically
+  `results` (53 pixels), `eating-seen` (8) and `title` (28); currently seen on
+  `lane-street` (2) and `title-locked` (30). Rerun before believing a failure,
+  and compare `tests/screens/out/` with the reference. A real change fails both
+  renders *and* keeps failing on the next run.
+
 ## Conventions
 
 - **The build stamp.** A pre-commit hook in `.githooks/` runs
@@ -299,6 +336,9 @@ steps frames itself with `__bb.advance(seconds)`.
 - When the user reports a bug or idea, offer to file it as an issue. When work
   starts on one, reference it in the commit message (e.g. "Fixes #12"), and
   close it once the work is done and pushed.
+- **Close an issue with evidence**: a comment naming the commit that fixed it
+  and how it was verified, not just a state change. The backlog is only worth
+  keeping if a closed issue says what made it closable.
 - Labels: `playtest`, `review`, `bug`, `idea`, `refactor`.
 
 ## Code review
