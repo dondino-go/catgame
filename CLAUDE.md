@@ -307,6 +307,20 @@ steps frames itself with `__bb.advance(seconds)`.
   window at once, so they get far more of the street than a real player --
   a tester not reaching the last bowl is the simulator being optimistic, not
   the night being too easy. Do not retune against bot numbers alone.
+- **A test that passes without the fix proves nothing.** Put the bug back,
+  confirm the test fails, then restore. It is a minute's work and it keeps
+  earning: the old title layout failed 9 of 33 phone shapes, the over-long
+  results line failed all 33 at "719 wide", and the shipped update-check guard
+  failed three of `tests/update.js`'s six checks -- each of those is why the
+  guard around it can be trusted.
+- **When that check shows a test is weak, say so in the test.** The night's
+  first "cleared and angry never overlap" sweep passed happily with the grass
+  rule reverted: a bot has to be caught twice by the same cleared house in one
+  night, which is rare. The sweep was kept, because it still catches some
+  *other* path turning a cleared house angry, but it now says in its own
+  comment that it does not guard the grass rule and points at the contrived
+  case beside it that does. A sweep that reads like a guard and is not one is
+  worse than no sweep -- it is where the next session stops looking.
 - **Comments explain why**, especially for anything learnt from a playtest.
   Match that density and tone.
 - **Commits**: one clear subject line, then a body that says what was wrong or
