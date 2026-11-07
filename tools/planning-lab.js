@@ -37,20 +37,10 @@ const L = require('./street-lab.js');
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const ROUNDS = parseInt(arg('--rounds', '80'), 10), NSTREETS = parseInt(arg('--streets', '12'), 10);
 
-/* ---------- the rule change, on a copy of the rules ---------- */
+/* ---------- the rule change, on a copy of the rules (tools/fed-sleep.js) ---------- */
 function patchedCore() {
-  let s = fs.readFileSync(path.join(__dirname, '..', 'src', 'core.js'), 'utf8');
-  const rep = (a, b) => { if (!s.includes(a)) throw new Error('src/core.js has changed: cannot find\n  ' + a + '\nUpdate tools/planning-lab.js.'); s = s.replace(a, b); };
-  rep('function isThreat(w, owner) { return w !== owner && owner.neighbours.includes(w.id); }',
-      'const EXP = { fedSleep: false };\nfunction isThreat(w, owner) { return w !== owner && owner.neighbours.includes(w.id) && !(EXP.fedSleep && w.cleared); }');
-  rep('bowlSpot, wave, watchersOfBowl, isThreat,', 'EXP, bowlSpot, wave, watchersOfBowl, isThreat,');
-  rep('    h.t -= dt;\n    if (h.t <= 0) {\n      if (h.state === \'idle\') {',
-      '    if (EXP.fedSleep && h.cleared) { if (h.state !== \'idle\') { h.state = \'idle\'; awake--; } continue; }\n    h.t -= dt;\n    if (h.t <= 0) {\n      if (h.state === \'idle\') {');
-  rep("      if (!isOpen(g, h)) continue;\n      if (h.state === 'idle') h.state = 'stir';",
-      "      if (!isOpen(g, h) || (EXP.fedSleep && h.cleared)) continue;\n      if (h.state === 'idle') h.state = 'stir';");
-  rep("for (const h of g.houses) { if (!isOpen(g, h)) continue; h.state = 'watch'; h.t = 0.7; }",
-      "for (const h of g.houses) { if (!isOpen(g, h) || (EXP.fedSleep && h.cleared)) continue; h.state = 'watch'; h.t = 0.7; }");
-  const m = { exports: {} }; new Function('module', 'exports', s)(m, m.exports);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'core.js'), 'utf8');
+  const m = { exports: {} }; new Function('module', 'exports', require('./fed-sleep.js').apply(src))(m, m.exports);
   return m.exports;
 }
 const C = patchedCore();
