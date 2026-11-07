@@ -19,7 +19,8 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const C = require(path.join(__dirname, '..', 'src', 'core.js'));
+const CORE = require(path.join(__dirname, '..', 'src', 'core.js'));
+const C = CORE;
 const G = require('./street-gen.js');
 
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
@@ -61,7 +62,10 @@ function list() {
 
 /* ---------- bots, as in tools/simulate.js ---------- */
 const SKILLS = { novice: { sigma: 0.16, react: 0.65 }, decent: { sigma: 0.09, react: 0.45 }, expert: { sigma: 0.025, react: 0.25 } };
-function play(street, skill, style, seed) {
+/* `o.C` is the rules to play on (the planning lab hands in a patched copy) and `o.pick(g, C, pool)`
+   chooses which quiet bowl to go for; the default is the nearest, as in tools/simulate.js. */
+function play(street, skill, style, seed, o = {}) {
+  const C = o.C || CORE;
   let a = seed >>> 0;
   const rng = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
   const randn = () => Math.sqrt(-2 * Math.log(rng() + 1e-9)) * Math.cos(6.2832 * rng());
@@ -90,8 +94,8 @@ function play(street, skill, style, seed) {
         const quiet = g.houses.filter(h => h.bowl && h.neighbours.every(i => g.houses[i].state === 'idle'));
         const pool = quiet.length ? quiet : (style === 'cautious' ? [] : g.houses.filter(h => h.bowl));
         if (pool.length) {
-          pool.sort((p, q) => Math.abs(C.bowlSpot(p).y - g.cat.y) - Math.abs(C.bowlSpot(q).y - g.cat.y));
-          C.tapHouse(g, pool[0].id);
+          const pickH = o.pick ? o.pick(g, C, pool) : pool.sort((p, q) => Math.abs(C.bowlSpot(p).y - g.cat.y) - Math.abs(C.bowlSpot(q).y - g.cat.y))[0];
+          C.tapHouse(g, pickH.id);
         } else stuck += DT;
       }
     }
@@ -213,7 +217,7 @@ function pace() {
   C.WAVES.forEach((w, i) => { w.awake = base[i].awake; w.idle = base[i].idle; });
 }
 
-const cmd = process.argv[2];
+const cmd = require.main === module ? process.argv[2] : null;
 if (cmd === 'rule') ruleCheck();
 else if (cmd === 'list') list();
 else if (cmd === 'play') playAll();
@@ -224,4 +228,6 @@ else if (cmd === 'dump') {
   const all = streets();
   fs.writeFileSync(process.argv[3] || 'streets.json', JSON.stringify({ results: res, streets: all.map(s => ({ date: s.date, street: s.street, info: s.info, structure: s.structure })) }));
   console.log('\nwrote ' + (process.argv[3] || 'streets.json'));
-} else console.log('usage: node tools/street-lab.js rule | list | play | analyse | pace | dump out.json   [--days 20] [--rounds 40] [--from 2026-11-08]');
+} else if (require.main === module) console.log('usage: node tools/street-lab.js rule | list | play | analyse | pace | dump out.json   [--days 20] [--rounds 40] [--from 2026-11-08]');
+
+module.exports = { play, SKILLS };
