@@ -8,23 +8,36 @@ build step, no dependencies (Playwright is used by one optional test only).
 
 | Branch | What it is |
 |---|---|
-| `main` | **The mobile game: the canonical source.** Not the live branch -- see the note below. |
+| `main` | **The live build and the canonical source.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
+| `claude/new-streets` | **Where work is built** (new streets, minigames, the endgame). Branched from `main`; merged back into `main` after a preview and, where it applies, a `/code-review`. |
 | `legacy-desktop` | The original desktop game (`index.html`) and its three suites, exactly as `main` held them before the swap. Kept until #10 retires them. |
-| `claude/mobile-redesign` | **Live playtest build.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
-| `claude/new-streets` | Where new features are built (new streets, minigames), branched from `claude/mobile-redesign`. Merged back after a preview and a `/code-review`. |
-| `claude/slow-loop` | The night: the clock round replaced by an open-ended night with an attention meter. **Merged into `claude/mobile-redesign` and live; don't commit here any more.** |
-| `claude/data-driven-streets` | The refactor that made the street a data description (Phases 1 and 2). **Merged into `claude/mobile-redesign`; don't commit here any more.** |
 
-Fixes from playtest feedback go on `claude/mobile-redesign`, then get merged
-into the feature branch (`claude/new-streets`), not the other way round.
+Retired -- **don't commit to these**: `claude/mobile-redesign` (the old live
+branch; Pages moved to `main`), `claude/slow-loop` (the night) and
+`claude/data-driven-streets` (the refactor). All three were merged into `main`.
 
-**`main` is the canonical source, but `claude/mobile-redesign` is still what
-testers run.** GitHub Pages was deliberately left pointing at it through the
-swap, so nothing on a tester's phone moved. Shipping to testers therefore
-still means pushing to `claude/mobile-redesign`, and `main` follows. Moving
-Pages to `main` is a separate, deliberate step, best taken together with #10
-(making the mobile game `index.html`), since that is what decides what the
-site's root serves.
+Fixes from playtest feedback go on `main` (through the preview), then get
+merged into `claude/new-streets`, not the other way round.
+
+`index.html` on `main` is still the legacy desktop game and `mobile.html` is
+the mobile one; the swap is #10. The installed app's `start_url` is
+`mobile.html`, so moving Pages from one branch to another changed nothing at
+that address.
+
+## Git workflow
+
+- **Run `git push` as its own standalone command.** Never chain it after a
+  build, a test run or a commit with `&&` or `;`. A push buried at the end of
+  a long chain was refused as a production deploy, and a bare push of the same
+  commit to the same branch went through moments later -- the objection was to
+  the shape of the command, not to the branch.
+- **Say which branch and remote you are pushing to before you push.**
+- **Confirm before deleting or force-pushing any branch.** Deleting a remote
+  branch is refused here anyway (`[Git Destructive]`), so it falls to the user
+  to run; say so rather than retrying.
+- Remember which branch is live: `main` is what GitHub Pages serves, so a
+  push there reaches testers' phones. `claude/new-streets` reaches nobody.
+
 ## The night: how a round works
 
 There is no countdown. Each house has **one dinner**: eating a bowl to the
@@ -126,8 +139,8 @@ then the button earns itself.
 
 - Phases 1 (#5: the rules read a street description) and 2 (#6: the renderer
   reads it) of the data-driven refactor are done, reviewed and live on
-  `claude/mobile-redesign`. Marrow Street plays and looks exactly as before.
-- Terrace Row, the first new street (#8), is live on `claude/mobile-redesign`
+  `main`. Marrow Street plays and looks exactly as before.
+- Terrace Row, the first new street (#8), is live on `main`
   and tagged "work in progress" in the picker for testers (`wip: true` on the
   street; remove it when the street is done). Five brick terrace houses on a
   narrow road at a warm evening, and a pub opposite that watches every bowl
@@ -140,10 +153,12 @@ then the button earns itself.
   until it is playtested.
   Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
-- Open follow-ups: review findings #16 to #20, the screenshot flake (#21,
-  mitigated by a retry, cause unknown -- but see the resize lesson below for a
-  lead), art style feedback being collected (#22), and the playtest checklist
-  (#13).
+- Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
+  helpers read the page now, the street-row ones still restate `L.hud`), the
+  screenshot flake (#21, mitigated by a retry, cause unknown -- but see the
+  resize lesson below for a lead), and art style feedback being collected
+  (#22). The old playtest checklist (#13) is closed: it was written for the
+  clock round and its numbers would mislead.
 - **The night is live.** The clock loop was kept beside it for a playtest and
   lost; the attention meter was the clear winner. Shipped to testers on 1 Nov
   after two `/code-review` passes (7 findings then 4, all addressed). All
@@ -251,6 +266,28 @@ steps frames itself with `__bb.advance(seconds)`.
 - `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
   They will be retired when the mobile game replaces it.
 
+## Screenshot goldens: how to re-record
+
+- **Never re-record across the whole suite.** `node tests/screens.js --update`
+  rewrites *every* reference, Marrow ones included.
+- **To change one reference, delete that PNG and rerun without `--update`.**
+  A missing reference is recorded (`REC`) and nothing else is touched. There is
+  no flag for targeting one screen: `tests/screens.js` parses `--update` and
+  nothing else.
+- **Do not use `--update` and tidy up afterwards with `git checkout`.** That
+  reverts to the last *commit*, so a reference that legitimately changed
+  earlier in the same session is silently restored to a stale version. That is
+  what happened to `results-partial`: re-recorded correctly for a shortened
+  line, reverted by the next clean-up, and wrong until the final check before
+  shipping. **A stale reference is worse than a failing one -- it passes.**
+- **If you do run `--update`, `git status tests/screens/` afterwards** and
+  check every changed file is one you meant to change.
+- **Known flaky, do not re-record on a single failure** (#21): historically
+  `results` (53 pixels), `eating-seen` (8) and `title` (28); currently seen on
+  `lane-street` (2) and `title-locked` (30). Rerun before believing a failure,
+  and compare `tests/screens/out/` with the reference. A real change fails both
+  renders *and* keeps failing on the next run.
+
 ## Conventions
 
 - **The build stamp.** A pre-commit hook in `.githooks/` runs
@@ -276,6 +313,20 @@ steps frames itself with `__bb.advance(seconds)`.
   window at once, so they get far more of the street than a real player --
   a tester not reaching the last bowl is the simulator being optimistic, not
   the night being too easy. Do not retune against bot numbers alone.
+- **A test that passes without the fix proves nothing.** Put the bug back,
+  confirm the test fails, then restore. It is a minute's work and it keeps
+  earning: the old title layout failed 9 of 33 phone shapes, the over-long
+  results line failed all 33 at "719 wide", and the shipped update-check guard
+  failed three of `tests/update.js`'s six checks -- each of those is why the
+  guard around it can be trusted.
+- **When that check shows a test is weak, say so in the test.** The night's
+  first "cleared and angry never overlap" sweep passed happily with the grass
+  rule reverted: a bot has to be caught twice by the same cleared house in one
+  night, which is rare. The sweep was kept, because it still catches some
+  *other* path turning a cleared house angry, but it now says in its own
+  comment that it does not guard the grass rule and points at the contrived
+  case beside it that does. A sweep that reads like a guard and is not one is
+  worse than no sweep -- it is where the next session stops looking.
 - **Comments explain why**, especially for anything learnt from a playtest.
   Match that density and tone.
 - **Commits**: one clear subject line, then a body that says what was wrong or
@@ -284,9 +335,9 @@ steps frames itself with `__bb.advance(seconds)`.
 ## Preview before shipping
 
 - Changes meant for testers go to the Claude artifact preview first, not
-  straight to `claude/mobile-redesign`. Publish the change there, say what to
+  straight to `main`. Publish the change there, say what to
   try, and wait for the user to say "ship it" before pushing to
-  `claude/mobile-redesign` (it's live on testers' phones via GitHub Pages).
+  `main` (it's live on testers' phones via GitHub Pages).
 - Exceptions: changes the user has explicitly asked to go straight to the
   branch, and docs or test-only changes that don't affect the game.
 - Say which build stamp the preview should show, so the user can confirm
@@ -305,17 +356,20 @@ steps frames itself with `__bb.advance(seconds)`.
 - When the user reports a bug or idea, offer to file it as an issue. When work
   starts on one, reference it in the commit message (e.g. "Fixes #12"), and
   close it once the work is done and pushed.
+- **Close an issue with evidence**: a comment naming the commit that fixed it
+  and how it was verified, not just a state change. The backlog is only worth
+  keeping if a closed issue says what made it closable.
 - Labels: `playtest`, `review`, `bug`, `idea`, `refactor`.
 
 ## Code review
 
 - Suggest a `/code-review` (high) at the end of each refactor phase, before
-  merging a branch into `claude/mobile-redesign` or `main`, and after a new
+  merging a branch into `main`, and after a new
   street, minigame or scoring change.
 - Review only the commits since the last review, and update the marker below
   after each one.
 - Report findings first; fix only what the user picks. Don't push review
-  fixes to `claude/mobile-redesign` without asking: it's live on testers'
+  fixes to `main` without asking: it's live on testers'
   phones.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
@@ -378,7 +432,7 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   already published there (Artifact `read` with `paths`), and may start on a
   detached HEAD or a random `claude/...` branch: check `git status -sb` and
   switch to the branch you were asked to use before committing.
-- A docs-only commit to `claude/mobile-redesign` skips the restamp
+- A docs-only commit to `main` skips the restamp
   (`git -c core.hooksPath=/dev/null commit ...`), so the build stamp testers
   see still matches the last change to the game and nobody is prompted to
   reload for nothing.
