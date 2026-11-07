@@ -1,0 +1,118 @@
+<title>Street a Day Playtest</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<!--
+  PROTOTYPE (#34): play generated streets in the real game, on a phone.
+
+  Layout is the published one, not the repo's: this page at the root, the game
+  at src/ (core.js, game.js, style.css, version.js) and tools/street-gen.js as
+  street-gen.js beside it. See tools/street-lab.js for the analysis side.
+
+  The game only takes a street from outside under ?debug, and an artifact page
+  has no query string. So game.js is fetched, its one DEBUG line patched on in
+  memory, and run: the shipped file is untouched, and if that line ever changes
+  this stops with a message instead of quietly playing Marrow Street.
+-->
+<style>
+/* Layout: a picker of phone-shaped street cards; choosing one replaces the page with the game. */
+:root {
+  --bg: #f6f4fa; --surface: #ffffff; --fg: #231c33; --muted: #6a6180; --rule: #dcd6e8;
+  --accent: #6c3fd1; --accent-soft: #ece5fb; --house: #8a73c9; --pub: #d98a2b; --road: #cfc7e0;
+  --display: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
+  --body: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #17121f; --surface: #221a2f; --fg: #eee9f7; --muted: #a79dc0; --rule: #382d4a;
+  --accent: #b69cff; --accent-soft: #2e2347; --house: #8e78d6; --pub: #e8a04a; --road: #3b3050; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #17121f; --surface: #221a2f; --fg: #eee9f7; --muted: #a79dc0; --rule: #382d4a;
+  --accent: #b69cff; --accent-soft: #2e2347; --house: #8e78d6; --pub: #e8a04a; --road: #3b3050; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.5 var(--body); margin: 0; }
+.picker { padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 900px; margin: 0 auto; }
+h1 { font: 800 clamp(2rem, 6vw, 2.8rem)/1.05 var(--display); margin: 0 0 8px; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 60ch; margin: 0 0 8px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 22px; }
+a.card { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 12px; text-decoration: none; color: inherit;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; }
+a.card:focus-visible, a.card:hover { border-color: var(--accent); outline: none; }
+a.card:active { background: var(--accent-soft); }
+.card svg { display: block; width: 100%; height: 96px; }
+.card b { font: 700 1rem/1.2 var(--display); }
+.card .sub { color: var(--muted); font-size: .88rem; line-height: 1.3; }
+.date { font-variant-numeric: tabular-nums; }
+.key { display: flex; gap: 6px 16px; flex-wrap: wrap; color: var(--muted); font-size: .88rem; margin-top: 14px; }
+.key i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+.err { padding: 24px 16px; color: var(--fg); font-family: var(--body); }
+/* in the game: the way back, kept off the HUD (top) and clear of the build stamp (bottom centre) */
+#back { position: fixed; z-index: 20; left: max(10px, env(safe-area-inset-left, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  font: 700 13px/1 var(--body); color: #fff; background: rgba(40, 28, 66, .82); border: 1px solid rgba(255,255,255,.25);
+  padding: 9px 12px; border-radius: 999px; text-decoration: none; }
+</style>
+
+<div id="root"></div>
+
+<script src="src/core.js"></script>
+<script src="street-gen.js"></script>   <!-- needs the rules above -->
+<script>
+(function () {
+  var COUNT = 12, FROM = Date.UTC(2026, 10, 8);
+  var days = []; for (var i = 0; i < COUNT; i++) days.push(new Date(FROM + i * 864e5).toISOString().slice(0, 10));
+  var QUICK = { maxBowls: 6 };                 /* a daily should be a single bite */
+  var root = document.getElementById('root');
+  var date = decodeURIComponent((location.hash || '').slice(1));
+  window.addEventListener('hashchange', function () { location.reload(); });
+
+  var WHEN = ['', 'a quarter of the way in', 'halfway', 'three quarters in'];
+
+  /* a street as a little plan: left side, road, right side, top of the street at the top */
+  function plan(st) {
+    var ch = 20, W = 66, H = st.rows * ch + 4, out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Plan of ' + st.name + '" preserveAspectRatio="xMidYMid meet">';
+    out += '<rect x="26" y="0" width="14" height="' + H + '" rx="2" fill="var(--road)"/>';
+    out += '<line x1="33" y1="3" x2="33" y2="' + (H - 3) + '" stroke="var(--surface)" stroke-width="1.2" stroke-dasharray="3 3"/>';
+    st.houses.forEach(function (h) {
+      var x = h.side < 0 ? 2 : 42, span = h.venue ? h.venue.span : 1;
+      out += '<rect x="' + x + '" y="' + (h.row * ch + 3) + '" width="22" height="' + (span * ch - 4) + '" rx="3" fill="' + (h.venue ? 'var(--pub)' : 'var(--house)') + '"/>';
+      if (h.bowl) out += '<circle cx="' + (h.side < 0 ? 25 : 41) + '" cy="' + (h.row * ch + 3 + (ch - 4) / 2) + '" r="2.4" fill="var(--surface)"/>';
+    });
+    return out + '</svg>';
+  }
+
+  function picker() {
+    var html = '<div class="picker"><h1>Street a Day Playtest</h1>' +
+      '<p class="lede">The real game on streets made from the date. Tap one to play it, tap Streets in the corner to come back. Your best on each is kept on this phone.</p>' +
+      '<p class="lede">These are the quick kind, 4 to 6 bowls. Tell me which ones felt dull, tight or good, and which you would play again tomorrow.</p>' +
+      '<div class="key"><span><i style="background:var(--house)"></i>house</span><span><i style="background:var(--pub)"></i>pub, watches from a point in the night</span><span>dots are bowls</span></div>' +
+      '<div class="grid">';
+    days.forEach(function (d) {
+      var g = StreetGen.generate(d, QUICK), st = g.street, s = StreetGen.structure(st), v = st.houses.filter(function (h) { return h.venue; })[0];
+      html += '<a class="card" href="#' + d + '">' + plan(st) + '<b>' + st.name + '</b><span class="sub"><span class="date">' + d.slice(8) + '/' + d.slice(5, 7) + '</span> · ' + s.bowls + ' bowls' +
+        (v ? '<br>pub opens ' + WHEN[v.venue.from] : '') + '</span></a>';
+    });
+    root.innerHTML = html + '</div></div>';
+  }
+
+  function load(src) {
+    return new Promise(function (ok, no) { var s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = function () { no(new Error('could not load ' + src)); }; document.body.appendChild(s); });
+  }
+
+  function game(d) {
+    var st = StreetGen.generate(d, QUICK).street;
+    root.innerHTML = '<div id="stage"><canvas id="c"></canvas></div><a id="back" href="#">&larr; Streets</a>';
+    window.__bbStreet = st;
+    /* the game's stylesheet pins html and body to the viewport in its own dark, so it is
+       only added once a street is chosen, and waited for: the game measures the page on start */
+    new Promise(function (ok, no) { var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = 'src/style.css'; l.onload = ok; l.onerror = function () { no(new Error('could not load src/style.css')); }; document.head.appendChild(l); })
+      .then(function () { return load('src/version.js'); }).then(function () { return fetch('src/game.js'); })
+      .then(function (r) { if (!r.ok) throw new Error('could not load src/game.js'); return r.text(); })
+      .then(function (src) {
+        var needle = 'const DEBUG = /[?&]debug\\b/.test(location.search);';
+        if (src.indexOf(needle) < 0) throw new Error('src/game.js no longer has the DEBUG line this page patches; update tools/street-lab-play.html');
+        var s = document.createElement('script'); s.textContent = src.replace(needle, 'const DEBUG = true;'); document.body.appendChild(s);
+      })
+      .catch(function (e) { root.innerHTML = '<div class="err"><b>Could not start the game.</b><br>' + e.message + '<br><br><a href="#">Back to the streets</a></div>'; });
+  }
+
+  if (days.indexOf(date) >= 0) game(date); else picker();
+})();
+</script>

@@ -24,8 +24,9 @@
  * a narrow or a standard road, and the two existing looks.
  */
 'use strict';
-const path = require('path');
-const C = require(path.join(__dirname, '..', 'src', 'core.js'));
+/* Node (the lab) or a browser page (tools/street-lab-play.html): there the
+   rules are window.BowlCore, loaded from src/core.js beforehand. */
+const C = typeof module === 'object' && module.exports ? require(require('path').join(__dirname, '..', 'src', 'core.js')) : window.BowlCore;
 
 const hash = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const mulberry = a => () => {
@@ -114,8 +115,10 @@ const ARCHETYPES = [
   [['full', 'venue'], 22], [['gappy', 'venue'], 14], [['full', 'empty'], 8], [['venue', 'venue'], 12],
 ];
 
-function build(rnd, seed) {
-  const rows = weighted(rnd, [[4, 22], [5, 40], [6, 38]]);
+function build(rnd, seed, opts) {
+  const maxBowls = (opts && opts.maxBowls) || 9, minBowls = (opts && opts.minBowls) || 4;
+  /* a quick street is short too: six rows with four bowls is mostly holes */
+  const rows = weighted(rnd, maxBowls <= 6 ? [[4, 45], [5, 45], [6, 10]] : [[4, 22], [5, 40], [6, 38]]);
   const [la, ra] = weighted(rnd, ARCHETYPES);
   const flip = rnd() < 0.5;
   const kinds = flip ? [ra, la] : [la, ra];                  // which archetype takes the left side
@@ -134,10 +137,10 @@ function build(rnd, seed) {
     if (kind === 'empty') cells[s] = cells[s].map(() => 'gap');
   });
 
-  /* nine bowls at most, so a night stays a few minutes; more than that and some become gaps */
+  /* a cap on bowls (nine unless asked), so a night stays short; more than that and some become gaps */
   const houseCells = () => { const out = []; cells.forEach((col, s) => col.forEach((c, r) => { if (c === 'house') out.push([s, r]); })); return out; };
-  while (houseCells().length > 9) { const [s, r] = pick(rnd, houseCells()); cells[s][r] = 'gap'; }
-  if (houseCells().length < 4) return null;
+  while (houseCells().length > maxBowls) { const [s, r] = pick(rnd, houseCells()); cells[s][r] = 'gap'; }
+  if (houseCells().length < minBowls) return null;
 
   /* items in id order: the left side top to bottom, then the right */
   const items = [], meta = [];
@@ -195,10 +198,10 @@ function build(rnd, seed) {
   return { street, info: { rows, kinds: kinds.join('+'), venues: venues.length, repairs: d.repairs, evening } };
 }
 
-function generate(seed) {
+function generate(seed, opts) {
   const rnd = mulberry(hash(seed));
   for (let attempt = 0; attempt < 200; attempt++) {
-    const b = build(rnd, seed);
+    const b = build(rnd, seed, opts);
     if (!b) continue;
     const bad = C.validateStreet(b.street);
     if (!bad.length) { b.info.attempts = attempt + 1; return b; }
@@ -240,4 +243,5 @@ function structure(st) {
            maxDeg: Math.max(...deg), islands: comps, degSeq: deg.slice().sort().join('') };
 }
 
-module.exports = { generate, deriveNeighbours, ascii, structure, hash, mulberry };
+const API = { generate, deriveNeighbours, ascii, structure, hash, mulberry };
+if (typeof module === 'object' && module.exports) module.exports = API; else window.StreetGen = API;
