@@ -44,6 +44,12 @@
  *   gives `paths` instead -- several such rectangles and the links between
  *   them -- and the cat and the fox take the shortest way round rather than
  *   walking through the houses. See "walking routes" below.
+ * width (optional, default 1): how many world units across the street is. One
+ *   run of road with houses down both sides is exactly 1, which is also
+ *   exactly the width of the canvas, so a street with a second run has to say
+ *   so and is drawn smaller to fit. Everything shrinks together, so a wider
+ *   street wants more rows as well or it leaves the bottom of the screen
+ *   empty.
  * dog.ends / fox.ends: y the animal enters at, one per end of the road (the
  *   first is "from the top"); it runs to the other and is gone `overrun`
  *   past it. fox.patrol: the stretch it mooches along when nothing is worth
@@ -207,6 +213,18 @@ function overlapRect(a, b) {
   return x[0] <= x[1] && y[0] <= y[1] ? { x, y } : null;
 }
 
+/* Which run of road a house fronts: the one it names with `on`, or the one
+   its bowl stands on. A crossing has no pavement, so only a run will do. The
+   renderer places the house against this road rather than against the
+   street's only one, and validateStreet works the same thing out for itself
+   from the raw description before any of this exists. */
+function runIndexFor(R, d) {
+  if (!d || !d.bowl) return -1;
+  const on = R.stretches.filter(s => s.roadX != null && rectHas(s, d.bowl.x, d.bowl.y));
+  const pick = d.on !== undefined ? on.filter(s => s.id === d.on) : on;
+  return pick.length ? pick[0].i : (R.stretches.findIndex(s => s.roadX != null));
+}
+
 /* The route map, derived from a street once and never changed: no randomness,
    so building it cannot disturb a seeded replay, and nothing here reads or
    writes game state. A street whose description is bad never gets this far --
@@ -357,6 +375,14 @@ function validateStreet(st) {
     bad.push('unlock needs the id of a street and a rung (1 or more) of its ladder');
   if (!(Number.isInteger(st.rows) && st.rows > 0)) bad.push('rows must be a positive integer');
   if (!(num(st.roadX) && st.roadX >= 0.48 && st.roadX <= 0.52)) bad.push('roadX must be a number between 0.48 and 0.52');
+  /* How wide the street is in world units. 1 is one run of road with houses
+     down both sides, which fills the canvas exactly; more than that is drawn
+     smaller. The ceiling is where a house stops being readable: at a width of
+     2 the houses are half size, which a look at Marrow Street rendered that
+     way says is about as far as it goes. */
+  if (st.width !== undefined && !(num(st.width) && st.width >= 1 && st.width <= 2))
+    bad.push('width must be a number from 1 to 2 (past 2 a house is too small to read)');
+  const wide = num(st.width) && st.width >= 1 ? st.width : 1;
   const walkOk = st.walk && pair(st.walk.x) && pair(st.walk.y);
   if (st.walk !== undefined && st.paths !== undefined)
     bad.push('a street gives its walkable ground as walk or as paths, not both');
@@ -378,7 +404,7 @@ function validateStreet(st) {
         if (!s || typeof s.id !== 'string' || !s.id) { bad.push(at + ': needs an id'); return; }
         if (seen.has(s.id)) bad.push(at + ': two stretches share the id ' + s.id); else seen.add(s.id);
         if (!pair(s.x) || !pair(s.y)) bad.push(at + ': needs x and y ranges, [min, max]');
-        if (s.roadX !== undefined && !(num(s.roadX) && s.roadX >= 0 && s.roadX <= 1)) bad.push(at + ': roadX must be a number from 0 to 1');
+        if (s.roadX !== undefined && !(num(s.roadX) && s.roadX >= 0 && s.roadX <= wide)) bad.push(at + ': roadX must be a number from 0 to ' + wide + ', the width of the street');
       });
       if (p.links !== undefined && !Array.isArray(p.links)) bad.push('paths.links must be a list');
       else (p.links || []).forEach((l, i) => {
@@ -417,6 +443,13 @@ function validateStreet(st) {
     if (!pair(s.x) || !pair(s.y) || !num(s.roadX)) return;
     if (s.x[0] < s.roadX - kerb - eps || s.x[1] > s.roadX + kerb + eps)
       bad.push((st.paths ? 'stretch ' + s.id + '.x' : 'walk.x') + ' must stay on the road and pavements');
+  });
+  /* Nothing may stand outside the street's own width: the canvas is exactly
+     one unit of it wide, so ground past the edge is ground nobody can see. */
+  P.stretches.forEach(s => {
+    if (!pair(s.x) || !pair(s.y)) return;
+    if (s.x[0] < -eps || s.x[1] > wide + eps)
+      bad.push((st.paths ? 'stretch ' + s.id : 'walk') + ' runs outside the street, which is ' + wide + ' wide');
   });
   const stretchesAt = p => (p && num(p.x) && num(p.y))
     ? P.stretches.filter(s => pair(s.x) && pair(s.y) && rectHas(s, p.x, p.y)) : [];
@@ -747,6 +780,7 @@ function buildHouses(g) {
   g.street.houses.forEach((d, id) => {
     g.houses.push({
       id, col: d.col, row: d.row, side: d.side, name: d.name,
+      run: runIndexFor(g.routes, d),      /* which run of road it stands on */
       neighbours: d.neighbours.slice(), bowlAt: d.bowl ? { x: d.bowl.x, y: d.bowl.y } : null,
       venue: d.venue ? { from: d.venue.from, span: d.venue.span } : null,
       angry: false, state: 'idle', t: GRACE + rand(g, 0, 6),   // idle | stir | watch

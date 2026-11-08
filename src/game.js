@@ -158,13 +158,24 @@ function layout() {
   L.hud    = 132;
   L.footer = 24;
   L.paveW  = Math.round(C.PAVE_W * DW);
-  const roadHalf = Math.round(C.roadHalfOf(g.street) * DW);   /* half the road's width, in design units */
-  L.roadL  = sx(g.street.roadX) - roadHalf;
-  L.roadR  = sx(g.street.roadX) + roadHalf;
+  L.roadHalf = Math.round(C.roadHalfOf(g.street) * DW);       /* half the road's width, in design units */
+  L.roadL  = sx(g.street.roadX) - L.roadHalf;                 /* the main run, which the set-pieces still follow */
+  L.roadR  = sx(g.street.roadX) + L.roadHalf;
   L.bodyW  = LOOK.bodyW;
   L.top    = L.hud;
   L.bot    = DH - L.footer;
-  L.rowH   = (L.bot - L.top) / g.street.rows;
+  /* One run of road with houses down both sides is 232 + 256 + 232 = 720
+     design units: exactly the canvas. So a street with a second run has to be
+     drawn smaller, and everything shrinks together -- one scale applied once
+     in draw() rather than a factor threaded through forty drawing calls.
+     Rows are measured in street space, before that scale, so the street still
+     fills the height; a wide street therefore wants more rows as well, or it
+     leaves the bottom of the screen empty. Marrow Street is width 1, so k is
+     1 and every number below is the one it always was. */
+  L.width  = g.street.width || 1;
+  L.k      = 1 / L.width;
+  L.W      = DW * L.width;                                    /* the street's width in street space */
+  L.rowH   = (L.bot - L.top) / g.street.rows / L.k;
   L.bodyH  = Math.min(L.rowH - 44, 290) * LOOK.bodyH;
 }
 
@@ -201,34 +212,61 @@ const bowlX = h => sx(h.bowlAt.x);
 const rowY  = h => sy(h.bowlAt.y);
 const onLeft = h => h.side < 0;
 
+/* The runs of road, in street space. A house stands against the run it fronts
+   (core works that out as h.run), not against the street's only one. */
+const isRun    = s => s.roadX != null;
+const firstRun = () => g.routes.stretches.find(isRun) || g.routes.stretches[0];
+const runRoadL = s => sx(s.roadX) - L.roadHalf;
+const runRoadR = s => sx(s.roadX) + L.roadHalf;
+const houseRun = h => g.routes.stretches[h.run] || firstRun();
+const sceneryRun = sc => (sc.on !== undefined && g.routes.stretches.find(s => s.id === sc.on)) || firstRun();
+
+/* How far a strip of houses reaches away from its road: halfway across the
+   block it shares with the next run alongside it, or to the edge of the
+   street if there is none. On a street with one run that is 0 and the width
+   of the canvas, which is the full-width strip this always returned. */
+function stripOuter(run, side, yTop, yBot) {
+  const mine = side < 0 ? runRoadL(run) : runRoadR(run);
+  let out = side < 0 ? 0 : L.W;
+  for (const o of g.routes.stretches) {
+    if (o === run || !isRun(o)) continue;
+    if (sy(o.y[1]) <= yTop || sy(o.y[0]) >= yBot) continue;      /* not alongside these rows */
+    const near = side < 0 ? runRoadR(o) : runRoadL(o);
+    if (side < 0 ? near >= mine : near <= mine) continue;        /* that one is the other way */
+    const mid = (mine + near) / 2;
+    out = side < 0 ? Math.max(out, mid) : Math.min(out, mid);
+  }
+  return out;
+}
+
 /* the house's whole strip, garden included: all of it is one tap target */
 function houseRect(h) {
-  if (h.venue) {
-    const y = sy(h.row);
-    return onLeft(h) ? { x: 0, y, w: L.roadL, h: L.rowH * h.venue.span } : { x: L.roadR, y, w: DW - L.roadR, h: L.rowH * h.venue.span };
-  }
-  const y = rowY(h) - L.rowH / 2;
-  return onLeft(h)
-    ? { x: 0, y, w: L.roadL, h: L.rowH }
-    : { x: L.roadR, y, w: DW - L.roadR, h: L.rowH };
+  const run = houseRun(h);
+  const y  = h.venue ? sy(h.row) : rowY(h) - L.rowH / 2;
+  const hh = h.venue ? L.rowH * h.venue.span : L.rowH;
+  const inner = onLeft(h) ? runRoadL(run) : runRoadR(run);
+  const outer = stripOuter(run, h.side, y, y + hh);
+  return onLeft(h) ? { x: outer, y, w: inner - outer, h: hh }
+                   : { x: inner, y, w: outer - inner, h: hh };
 }
 /* the building itself */
 function bodyRect(h) {
   const sz = g.street.houses[h.id].size || {};
+  const r = houseRect(h), fx = fenceX(h);
   /* never so wide that it runs into its own garden fence */
-  const w = Math.min(L.bodyW * (sz.w || 1), (onLeft(h) ? fenceX(h.side) : DW - fenceX(h.side)) - 12 - 8);
-  const x = onLeft(h) ? 12 : DW - 12 - w;
+  const w = Math.min(L.bodyW * (sz.w || 1), (onLeft(h) ? fx - r.x : r.x + r.w - fx) - 12 - 8);
+  const x = onLeft(h) ? r.x + 12 : r.x + r.w - 12 - w;
   if (h.venue) {                                  /* a venue is one tall building over its rows */
-    const r = houseRect(h);
     return { x, y: r.y + 10, w, h: r.h - 20 };
   }
   const cy = rowY(h), hh = Math.min(L.bodyH * (sz.h || 1), L.rowH - 12);
   return { x, y: cy - hh / 2, w, h: hh };
 }
-/* where the garden meets the pavement -- the fence line */
-function fenceX(side) {
-  return side < 0 ? L.roadL - L.paveW : L.roadR + L.paveW;
+/* where the garden meets the pavement -- the fence line of a given run */
+function fenceEdge(run, side) {
+  return side < 0 ? runRoadL(run) - L.paveW : runRoadR(run) + L.paveW;
 }
+function fenceX(h) { return fenceEdge(houseRun(h), h.side); }
 
 /* ---------- game + presentation state ---------- */
 /* ?debug lets a test page hand in its own street (window.__bbStreet) to check
@@ -563,7 +601,7 @@ function drawLamp(x, y, dir) {
 function drawFence(h) {
   /* low fence along the front of each garden, with a gap for the path */
   const r = houseRect(h);
-  const x = fenceX(h.side);
+  const x = fenceX(h);
   const gapTop = rowY(h) - 44, gapBot = rowY(h) + 44;
   ctx.strokeStyle = h.angry ? '#4c4165' : '#6a5a96';
   ctx.lineWidth = 7 * STROKE;
@@ -587,8 +625,8 @@ function drawVenue(h) {
   const roadEdge = onLeft(h) ? b.x + b.w : b.x;
   const roofX = onLeft(h) ? b.x : b.x + faceW, roofW = b.w - faceW;
 
-  const gx = onLeft(h) ? b.x + b.w : fenceX(h.side);
-  const gw = onLeft(h) ? fenceX(h.side) - (b.x + b.w) : b.x - fenceX(h.side);
+  const gx = onLeft(h) ? b.x + b.w : fenceX(h);
+  const gw = onLeft(h) ? fenceX(h) - (b.x + b.w) : b.x - fenceX(h);
   ctx.fillStyle = GRASS;
   ctx.fillRect(gx, b.y - 8, gw, b.h + 16);
 
@@ -657,7 +695,7 @@ function drawVenue(h) {
   }
 
   /* a fence along the garden, no gap: nobody walks up to a bowl here */
-  const fx = fenceX(h.side);
+  const fx = fenceX(h);
   ctx.strokeStyle = '#6a5a96'; ctx.lineWidth = 7 * STROKE; ctx.lineCap = 'round';
   for (let yy = b.y + 6; yy < b.y + b.h - 8; yy += 21) { ctx.beginPath(); ctx.moveTo(fx, yy); ctx.lineTo(fx, Math.min(yy + 12, b.y + b.h)); ctx.stroke(); }
 
@@ -673,8 +711,11 @@ function drawVenue(h) {
    house uses. Drawn from above like the houses, on the garden side of the
    pavement, and never tapped (a tap on it is a road tap). */
 function drawScenery(sc) {
-  const left = sc.side < 0, fx = fenceX(sc.side);
-  const x0 = left ? 0 : fx, x1 = left ? fx : DW, y0 = sy(sc.row), rh = L.rowH, cy = y0 + rh / 2;
+  const left = sc.side < 0, run = sceneryRun(sc), fx = fenceEdge(run, sc.side);
+  const y0 = sy(sc.row), rh = L.rowH, cy = y0 + rh / 2;
+  /* the same strip a house on this run and side would get */
+  const outer = stripOuter(run, sc.side, y0, y0 + rh);
+  const x0 = left ? outer : fx, x1 = left ? fx : outer;
   const cx = (x0 + x1) / 2;
   ctx.fillStyle = GRASS;
   ctx.fillRect(x0, y0 + 4, x1 - x0, rh - 8);
@@ -682,6 +723,30 @@ function drawScenery(sc) {
   ctx.strokeStyle = '#6a5a96'; ctx.lineWidth = 7 * STROKE; ctx.lineCap = 'round';
   for (let yy = y0 + 10; yy < y0 + rh - 14; yy += 21) { ctx.beginPath(); ctx.moveTo(fx, yy); ctx.lineTo(fx, Math.min(yy + 12, y0 + rh - 8)); ctx.stroke(); }
 
+  if (sc.kind === 'block') {
+    /* A building with nobody in it. A street wider than one run of road has
+       gaps in its blocks that no house fills, and an empty garden strip reads
+       as a mistake rather than as a street; this fills one. It has no bowl
+       and nobody ever comes to its windows -- it is scenery, so the rules
+       never see it at all. */
+    const w = Math.min(L.bodyW, (left ? fx - x0 : x1 - fx) - 12 - 8);
+    const bx = left ? x0 + 12 : x1 - 12 - w;
+    const hh = Math.min(L.bodyH, rh - 12), by = cy - hh / 2;
+    rr(bx, by, w, hh, 12);
+    fillStroke('#2f2749', INK, 4.5);
+    /* a roofline down the road side, so it sits in the row like a house does */
+    ctx.save(); rr(bx, by, w, hh, 12); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,.04)';
+    ctx.fillRect(left ? bx + w * 0.55 : bx, by, w * 0.45, hh);
+    ctx.restore();
+    /* dark windows: shut up for the night, and never lit */
+    const ww = Math.min(42, w * 0.3);
+    for (const [fx2, fy2] of [[0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) {
+      rr(bx + w * fx2 - ww / 2, by + hh * fy2 - ww / 2, ww, ww, 5);
+      fillStroke('#241d3b', 'rgba(42,27,61,.9)', 3);
+    }
+    return;
+  }
   if (sc.kind === 'busstop') {
     /* a shelter with a bench under it, and the stop's sign out on the pavement edge */
     const w = Math.min(130, x1 - x0 - 60), h = 150, sx0 = left ? x0 + 14 : x1 - 14 - w, sy0 = cy - h / 2;
@@ -735,8 +800,8 @@ function drawHouse(h) {
   const roofW = b.w - faceW;
 
   /* garden between the house and the pavement */
-  const gx = onLeft(h) ? b.x + b.w : fenceX(h.side);
-  const gw = onLeft(h) ? fenceX(h.side) - (b.x + b.w) : b.x - fenceX(h.side);
+  const gx = onLeft(h) ? b.x + b.w : fenceX(h);
+  const gw = onLeft(h) ? fenceX(h) - (b.x + b.w) : b.x - fenceX(h);
   ctx.fillStyle = dull ? '#36405a' : GRASS;
   ctx.fillRect(gx, b.y - 8, gw, b.h + 16);
 
@@ -2608,14 +2673,25 @@ function draw() {
   ctx.fillRect(0, 0, DW, DH);
 
   ctx.save();
+  /* A street wider than one run of road is drawn smaller, all of it together.
+     Anchored at the left edge of the street and the top of row 0, because
+     that is where street space starts. k is 1 on every street that has one
+     run, so this is the identity transform and nothing below it moves. */
+  if (L.k !== 1) { ctx.translate(0, L.top); ctx.scale(L.k, L.k); ctx.translate(0, -L.top); }
   pickupCamera();
   leaveCamera();
   drawStreet();
-  /* lamps stand on row boundaries (bowls are mid-row), a quarter and three
-     quarters of the way down, so they never sit on a bowl */
-  const rows = g.street.rows, boundary = f => clamp(Math.round(rows * f), 1, rows - 1);
-  drawLamp(L.roadL + 14, sy(boundary(0.25)), 1);
-  drawLamp(L.roadR - 14, sy(boundary(0.75)), -1);
+  /* Lamps stand on row boundaries (bowls are mid-row), so they never sit on a
+     bowl: the first boundary inside a run and the last, one lamp each side.
+     On the three streets that have shipped those are the same two boundaries
+     the quarter-and-three-quarters rule picked. */
+  for (const run of g.routes.stretches) {
+    if (!isRun(run)) continue;
+    const lo = Math.ceil(run.y[0]), hi = Math.floor(run.y[1]);
+    if (lo > hi) continue;
+    drawLamp(runRoadL(run) + 14, sy(lo), 1);
+    drawLamp(runRoadR(run) - 14, sy(hi), -1);
+  }
 
   for (const sc of g.street.scenery || []) drawScenery(sc);
   for (const h of g.houses) drawHouse(h);
@@ -2678,6 +2754,10 @@ function toDesign(ev) {
   };
 }
 const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+/* screen -> street space, undoing the scale a wide street is drawn at. The
+   HUD, the buttons and the close-up are all in screen space and must not go
+   through this; only things laid out from sx/sy. */
+const toStreet = p => L.k === 1 ? p : { x: p.x / L.k, y: L.top + (p.y - L.top) / L.k };
 
 /* Getting off the bowl. A swipe or a shake both end here. */
 function bolt() {
@@ -2759,9 +2839,10 @@ function onDown(ev) {
   }
 
   if (p.y < L.hud || p.y > L.bot) return;
-  const hit = g.houses.find(h => !h.venue && inside(p, houseRect(h)));
+  const q = toStreet(p);
+  const hit = g.houses.find(h => !h.venue && inside(q, houseRect(h)));
   if (hit) C.tapHouse(g, hit.id);
-  else     C.tapRoad(g, p.x / DW, (p.y - L.top) / L.rowH);
+  else     C.tapRoad(g, q.x / DW, (q.y - L.top) / L.rowH);
   Sfx.tap();
 }
 
@@ -2841,7 +2922,7 @@ function advance(secs) {
 }
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
-if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
+if (DEBUG) window.__bb = { houseRect, L, g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
   /* whether a check is in flight, for tests/update.js: the stall it guards
      against is only visible as a check that never clears */
   checking: () => !!checking,
