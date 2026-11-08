@@ -3,10 +3,10 @@
  *
  * The rules know nothing about any particular street. A street is a plain
  * description (see MARROW_STREET and validateStreet below): the houses with
- * their grid position, bowl spot and explicit list of neighbours, the area the
- * cat may walk in, the road the dog runs down and the fox patrols, and where
- * the cat starts. create() takes one, defaulting to Marrow Street, and refuses
- * a street that fails the validator.
+ * their grid position, bowl spot and explicit list of neighbours, the ground
+ * the cat may walk on, the road the dog runs down and the fox patrols, and
+ * where the cat starts. create() takes one, defaulting to Marrow Street,
+ * and refuses a street that fails the validator.
  *
  * Marrow Street is a 2 x 4 grid seen from above: the left column is houses
  * 0-3, the right column is 4-7, the road runs between them. A house's
@@ -40,7 +40,10 @@
  * house.neighbours: ids of the houses that can see its bowl (and whose bowls
  *   it can see). Must be mutual.
  * walk: the rectangle the cat may be sent to; every bowl is inside it, and it
- *   stays on the road and pavements.
+ *   stays on the road and pavements. A street that is not one straight road
+ *   gives `paths` instead -- several such rectangles and the links between
+ *   them -- and the cat and the fox take the shortest way round rather than
+ *   walking through the houses. See "walking routes" below.
  * dog.ends / fox.ends: y the animal enters at, one per end of the road (the
  *   first is "from the top"); it runs to the other and is gone `overrun`
  *   past it. fox.patrol: the stretch it mooches along when nothing is worth
@@ -150,6 +153,182 @@ function deepFreeze(o) {
 }
 deepFreeze(MARROW_STREET); deepFreeze(TERRACE_STREET);   // shared by every default game: nothing may edit it mid-round
 
+/* ---------- walking routes ---------- *
+ * A street's walkable ground is a list of convex rectangles -- `stretches` --
+ * and the `links` that join them. Inside one stretch a straight line is
+ * always legal, which is the whole reason the ground is described as areas
+ * rather than as a thin graph of points: a street that is a single run of
+ * road (Marrow Street, Terrace Row) has one stretch, so every walk on it is
+ * the straight line it has always been, down to the last bit of arithmetic.
+ * A spine-and-spurs graph of points would instead send the cat out to the
+ * middle of the road and back every time it crossed between two bowls --
+ * longer, slower, visibly on rails, and it would rewrite every golden log.
+ *
+ * Where two linked stretches meet is simply their overlap, so a junction
+ * has no coordinates of its own to drift out of step with the rectangles.
+ *
+ * A link carries `open`. Nothing closes one today; it is there so that a
+ * gate -- "clearing this bowl opens that path" -- is a flag the search
+ * already reads rather than a rebuild of this section.
+ *
+ * A stretch that carries its own `roadX` is a run down the street: the
+ * ground a renderer can paint as road and pavements, and the only kind a
+ * house may front. One without is a crossing or a yard -- walkable, but
+ * nothing stands on it.
+ *
+ * `walk: { x, y }` is the original single-rectangle shape and still works:
+ * it reads as one stretch called 'main'.
+ */
+function pathsOf(st) {
+  if (st && st.paths) return st.paths;
+  const w = st && st.walk;
+  if (!w || !w.x || !w.y) return { stretches: [], links: [] };
+  return { stretches: [{ id: 'main', roadX: st.roadX, x: w.x, y: w.y }], links: [] };
+}
+
+const rectHas  = (r, x, y) => x >= r.x[0] && x <= r.x[1] && y >= r.y[0] && y <= r.y[1];
+const rectClamp = (r, x, y) => ({ x: clamp(x, r.x[0], r.x[1]), y: clamp(y, r.y[0], r.y[1]) });
+function overlapRect(a, b) {
+  const x = [Math.max(a.x[0], b.x[0]), Math.min(a.x[1], b.x[1])];
+  const y = [Math.max(a.y[0], b.y[0]), Math.min(a.y[1], b.y[1])];
+  return x[0] <= x[1] && y[0] <= y[1] ? { x, y } : null;
+}
+
+/* The route map, derived from a street once and never changed: no randomness,
+   so building it cannot disturb a seeded replay, and nothing here reads or
+   writes game state. A street whose description is bad never gets this far --
+   create() runs validateStreet first. */
+function buildRoutes(street) {
+  const p = pathsOf(street);
+  const stretches = p.stretches.map((s, i) => ({
+    id: s.id, i, x: [s.x[0], s.x[1]], y: [s.y[0], s.y[1]],
+    roadX: typeof s.roadX === 'number' ? s.roadX : null,
+  }));
+  const byId = {};
+  stretches.forEach(s => { byId[s.id] = s; });
+  const links = [];
+  for (const l of (p.links || [])) {
+    const a = byId[l.a], b = byId[l.b];
+    if (!a || !b || a === b) continue;
+    const rect = overlapRect(a, b);
+    if (!rect) continue;
+    links.push({ a: a.i, b: b.i, open: l.open !== false, rect,
+                 mid: { x: (rect.x[0] + rect.x[1]) / 2, y: (rect.y[0] + rect.y[1]) / 2 } });
+  }
+  /* which links touch each stretch, so the search can step junction to junction */
+  const at = stretches.map(() => []);
+  links.forEach((l, i) => { at[l.a].push(i); at[l.b].push(i); });
+  const bounds = {
+    x: [Math.min(...stretches.map(s => s.x[0])), Math.max(...stretches.map(s => s.x[1]))],
+    y: [Math.min(...stretches.map(s => s.y[0])), Math.max(...stretches.map(s => s.y[1]))],
+  };
+  /* `single` is not an optimisation. It is the promise that a street which is
+     one run of road behaves exactly as it did before routes existed. */
+  return { stretches, links, at, bounds, single: stretches.length === 1 };
+}
+
+/* The corners to turn on the way from one point to another, nearest first,
+   not counting the destination. Empty means "walk straight there", which is
+   the answer for every point on a one-stretch street. */
+function routeHops(R, fx, fy, tx, ty) {
+  if (!R || R.single || !R.links.length) return [];
+  /* standing somewhere that can see the destination in a straight line */
+  for (const s of R.stretches) if (rectHas(s, fx, fy) && rectHas(s, tx, ty)) return [];
+  const from = [], to = [];
+  for (const s of R.stretches) {
+    if (rectHas(s, fx, fy)) from.push(s.i);
+    if (rectHas(s, tx, ty)) to.push(s.i);
+  }
+  /* Off the map (the fox walks on from beyond the end of the road) or nowhere
+     to get to: head straight rather than stand still. A character stuck on
+     the spot is a worse bug than one that takes a shortcut. */
+  if (!from.length || !to.length) return [];
+
+  /* Dijkstra over junctions. A junction is a link, standing in both the
+     stretches it joins, so two junctions are a straight hop apart when they
+     share a stretch. Costs use each junction's midpoint, which is stable;
+     where the character actually aims is worked out afterwards. */
+  const n = R.links.length;
+  const cost = new Array(n).fill(Infinity), prev = new Array(n).fill(-1), done = new Array(n).fill(false);
+  const touches = (li, si) => R.links[li].a === si || R.links[li].b === si;
+  for (const si of from) for (const li of R.at[si]) {
+    if (!R.links[li].open) continue;
+    const c = dist(fx, fy, R.links[li].mid.x, R.links[li].mid.y);
+    if (c < cost[li]) cost[li] = c;
+  }
+  for (;;) {
+    let u = -1, best = Infinity;
+    for (let i = 0; i < n; i++) if (!done[i] && cost[i] < best) { best = cost[i]; u = i; }
+    if (u < 0) break;
+    done[u] = true;
+    for (const si of [R.links[u].a, R.links[u].b]) for (const v of R.at[si]) {
+      if (done[v] || !R.links[v].open) continue;
+      const c = cost[u] + dist(R.links[u].mid.x, R.links[u].mid.y, R.links[v].mid.x, R.links[v].mid.y);
+      if (c < cost[v]) { cost[v] = c; prev[v] = u; }
+    }
+  }
+  let end = -1, endCost = Infinity;
+  for (let i = 0; i < n; i++) {
+    if (cost[i] === Infinity || !to.some(si => touches(i, si))) continue;
+    const c = cost[i] + dist(R.links[i].mid.x, R.links[i].mid.y, tx, ty);
+    if (c < endCost) { endCost = c; end = i; }
+  }
+  if (end < 0) return [];                     /* no way through: straight line, as above */
+  const path = [];
+  for (let i = end; i >= 0; i = prev[i]) path.unshift(i);
+
+  /* Aim each junction at wherever the route goes next, rather than at its
+     own middle: that pulls the line tight against the inside of a corner,
+     so the cat cuts it the way it would on an open road. The aim point stays
+     inside the junction, and a junction lies in both its stretches, so every
+     leg of the walk stays on painted ground. */
+  return path.map((li, k) => {
+    const nxt = k + 1 < path.length ? R.links[path[k + 1]].mid : { x: tx, y: ty };
+    return rectClamp(R.links[li].rect, nxt.x, nxt.y);
+  });
+}
+
+/* The next corner to make for, or null for "walk straight at it". Null is the
+   answer on every one-stretch street, and the callers lean on that: they do
+   the same arithmetic on the same numbers they always did. */
+function routeNext(R, fx, fy, tx, ty) {
+  const hops = routeHops(R, fx, fy, tx, ty);
+  /* A corner you are already standing on is no corner at all -- without this
+     a character stood in a junction would aim at its own feet and stall. */
+  for (const p of hops) if (Math.abs(p.x - fx) > 1e-9 || Math.abs(p.y - fy) > 1e-9) return p;
+  return null;
+}
+
+/* The whole walk, corners and destination, for tests and tools. */
+function routePath(R, fx, fy, tx, ty) {
+  return routeHops(R, fx, fy, tx, ty).concat([{ x: tx, y: ty }]);
+}
+
+/* How far it really is, round the corners. Deliberately the same expression
+   as a straight line when there are no corners, so that a fox comparing
+   bowls on a one-stretch street compares exactly the numbers it used to. */
+function routeDist(R, fx, fy, tx, ty) {
+  const hops = routeHops(R, fx, fy, tx, ty);
+  if (!hops.length) return dist(fx, fy, tx, ty);
+  let d = 0, x = fx, y = fy;
+  for (const p of hops) { d += dist(x, y, p.x, p.y); x = p.x; y = p.y; }
+  return d + dist(x, y, tx, ty);
+}
+
+/* The nearest spot a character may actually stand, for a tap that lands in a
+   garden or off the end of the road. On one stretch this is the clamp into
+   the walkable rectangle that tapRoad has always done. */
+function clampToPaths(R, x, y) {
+  if (R.single) return rectClamp(R.stretches[0], x, y);
+  for (const s of R.stretches) if (rectHas(s, x, y)) return { x, y };
+  let best = null, bd = Infinity;
+  for (const s of R.stretches) {
+    const p = rectClamp(s, x, y), d = dist(x, y, p.x, p.y);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best || { x, y };
+}
+
 /* Everything wrong with a street, as a list of messages (empty if it is fine).
    create() throws on a non-empty list; tests and tools can read it. */
 function validateStreet(st) {
@@ -163,17 +342,78 @@ function validateStreet(st) {
   if (!(Number.isInteger(st.rows) && st.rows > 0)) bad.push('rows must be a positive integer');
   if (!(num(st.roadX) && st.roadX >= 0.48 && st.roadX <= 0.52)) bad.push('roadX must be a number between 0.48 and 0.52');
   const walkOk = st.walk && pair(st.walk.x) && pair(st.walk.y);
-  if (!walkOk) bad.push('walk needs x and y ranges, [min, max]');
+  if (st.walk !== undefined && st.paths !== undefined)
+    bad.push('a street gives its walkable ground as walk or as paths, not both');
+  else if (st.paths === undefined && !walkOk) bad.push('walk needs x and y ranges, [min, max]');
   /* the road and both pavements, as the renderer draws them around roadX */
   if (st.roadHalf !== undefined && !(num(st.roadHalf) && st.roadHalf >= 0.1 && st.roadHalf <= ROAD_HALF))
     bad.push('roadHalf must be a number from 0.1 up to ' + ROAD_HALF.toFixed(3) + ' (the houses need room beside a wider road)');
   if (st.look !== undefined && !(st.look && typeof st.look === 'object' && !Array.isArray(st.look))) bad.push('look must be an object');
+
+  /* ---- walkable ground: one rectangle (walk) or several joined up (paths) ---- */
+  const P = pathsOf(st);
+  if (st.paths !== undefined) {
+    const p = st.paths;
+    if (!p || typeof p !== 'object' || !Array.isArray(p.stretches) || !p.stretches.length) bad.push('paths needs a non-empty list of stretches');
+    else {
+      const seen = new Set();
+      p.stretches.forEach((s, i) => {
+        const at = 'stretch ' + i + (s && typeof s.id === 'string' && s.id ? ' (' + s.id + ')' : '');
+        if (!s || typeof s.id !== 'string' || !s.id) { bad.push(at + ': needs an id'); return; }
+        if (seen.has(s.id)) bad.push(at + ': two stretches share the id ' + s.id); else seen.add(s.id);
+        if (!pair(s.x) || !pair(s.y)) bad.push(at + ': needs x and y ranges, [min, max]');
+        if (s.roadX !== undefined && !(num(s.roadX) && s.roadX >= 0 && s.roadX <= 1)) bad.push(at + ': roadX must be a number from 0 to 1');
+      });
+      if (p.links !== undefined && !Array.isArray(p.links)) bad.push('paths.links must be a list');
+      else (p.links || []).forEach((l, i) => {
+        const at = 'link ' + i;
+        if (!l || !seen.has(l.a) || !seen.has(l.b)) { bad.push(at + ': names a stretch this street does not have'); return; }
+        if (l.a === l.b) { bad.push(at + ': joins ' + l.a + ' to itself'); return; }
+        const A = p.stretches.find(s => s.id === l.a), B = p.stretches.find(s => s.id === l.b);
+        /* A junction is the overlap of the two stretches, so stretches that do
+           not touch have nowhere to cross: the link would be a route onto
+           ground with a gap in it. */
+        if (A && B && pair(A.x) && pair(A.y) && pair(B.x) && pair(B.y) && !overlapRect(A, B))
+          bad.push(at + ': ' + l.a + ' and ' + l.b + ' do not meet, so there is no way across');
+      });
+      /* Every stretch has to be walkable to from every other, or a bowl on it
+         could never be raided. Gates are judged open here: one that starts
+         shut is still a way through once something opens it. */
+      if (p.stretches.every(s => s && pair(s.x) && pair(s.y))) {
+        const R = buildRoutes(st), reach = new Set([0]), queue = [0];
+        while (queue.length) {
+          const s = queue.shift();
+          for (const li of R.at[s]) for (const v of [R.links[li].a, R.links[li].b])
+            if (!reach.has(v)) { reach.add(v); queue.push(v); }
+        }
+        if (reach.size < R.stretches.length)
+          bad.push('paths: ' + R.stretches.filter(s => !reach.has(s.i)).map(s => s.id).join(', ') + ' cannot be walked to from ' + R.stretches[0].id);
+      }
+    }
+  }
   const half = roadHalfOf(st);
-  const kerb = num(st.roadX) ? half + PAVE_W : 0, eps = 1e-9;
-  if (walkOk && num(st.roadX) && (st.walk.x[0] < st.roadX - kerb - eps || st.walk.x[1] > st.roadX + kerb + eps))
-    bad.push('walk.x must stay on the road and pavements');
-  const inWalk = p => walkOk && p && num(p.x) && num(p.y) &&
-    p.x >= st.walk.x[0] && p.x <= st.walk.x[1] && p.y >= st.walk.y[0] && p.y <= st.walk.y[1];
+  const kerb = half + PAVE_W, eps = 1e-9;
+  /* A stretch carrying a roadX is a run down the street -- road and pavements,
+     the ground a renderer paints -- so it has to fit between its own two
+     kerbs. One without is a crossing or a yard: walkable, but nothing stands
+     on it, so it only has to be a rectangle. */
+  P.stretches.forEach(s => {
+    if (!pair(s.x) || !pair(s.y) || !num(s.roadX)) return;
+    if (s.x[0] < s.roadX - kerb - eps || s.x[1] > s.roadX + kerb + eps)
+      bad.push((st.paths ? 'stretch ' + s.id + '.x' : 'walk.x') + ' must stay on the road and pavements');
+  });
+  const stretchesAt = p => (p && num(p.x) && num(p.y))
+    ? P.stretches.filter(s => pair(s.x) && pair(s.y) && rectHas(s, p.x, p.y)) : [];
+  const inWalk = p => stretchesAt(p).length > 0;
+  /* Which run of road a house fronts: the one it names with `on`, or the one
+     its bowl stands on. Only a run of road will do -- a crossing has no
+     pavement to put a bowl on. */
+  const frontsOf = h => {
+    const on = stretchesAt(h && h.bowl).filter(s => num(s.roadX));
+    return h && h.on !== undefined ? on.filter(s => s.id === h.on) : on;
+  };
+  const runOf = h => (h && h.bowl && !h.venue)
+    ? (frontsOf(h)[0] || stretchesAt(h.bowl)[0] || P.stretches[0] || null) : null;
   if (!(st.catStart && inWalk(st.catStart))) bad.push('catStart must be inside the walkable area');
   const hs = st.houses;
   if (!Array.isArray(hs) || !hs.length) { bad.push('houses must be a non-empty list'); return bad; }
@@ -214,11 +454,22 @@ function validateStreet(st) {
       }
       return;
     }
+    if (h.on !== undefined) {
+      /* a house may say which run of road it fronts; its bowl has to be on it */
+      if (!P.stretches.some(s => s.id === h.on)) bad.push(at + ': on names no stretch of this street');
+      else if (h.bowl && !stretchesAt(h.bowl).some(s => s.id === h.on)) bad.push(at + ': bowl is not on ' + h.on + ', the run it fronts');
+    }
     if (!inWalk(h.bowl)) bad.push(at + ': bowl must be inside the walkable area');
-    else if (num(st.roadX)) {
-      /* on its own side's pavement: between the kerb and the road's edge */
-      const d = (h.bowl.x - st.roadX) * h.side;
-      if (!(d >= half - eps && d <= kerb + eps)) bad.push(at + ': bowl must stand on the pavement on its own side of the road');
+    else {
+      /* on its own side's pavement of the run it fronts: between the kerb and
+         the road's edge. Measured against that run's own middle, so a street
+         with more than one run of road checks each house against the one it
+         actually stands on. */
+      const ok = frontsOf(h).some(s => {
+        const d = (h.bowl.x - s.roadX) * h.side;
+        return d >= half - eps && d <= kerb + eps;
+      });
+      if (!ok) bad.push(at + ': bowl must stand on the pavement on its own side of the road');
     }
     if (!(h.row >= 0 && h.row < st.rows) || Math.abs(h.bowl.y - (h.row + 0.5)) > eps) bad.push(at + ': bowl.y must be row + 0.5, inside the street');
     if (!Array.isArray(h.neighbours)) { bad.push(at + ': neighbours must be a list'); return; }
@@ -230,9 +481,14 @@ function validateStreet(st) {
       else if (!(hs[n] && hs[n].neighbours || []).includes(id)) bad.push(at + ': neighbour ' + n + ' does not list it back');
     }
   });
-  /* a house's whole strip is its tap target, so two on one side must not overlap */
+  /* A house's whole strip is its tap target, so two on one side of the same
+     run of road must not overlap. Two the same way up on different runs never
+     can -- they are round a corner from each other -- which is why the run is
+     part of the test and not just the side. */
+  const run = hs.map(runOf);
   hs.forEach((a, i) => hs.forEach((b, j) => {
-    if (j > i && a && b && a.side === b.side && a.bowl && b.bowl && !a.venue && !b.venue && Math.abs(a.bowl.y - b.bowl.y) < 1 - eps)
+    if (j > i && a && b && a.side === b.side && a.bowl && b.bowl && !a.venue && !b.venue &&
+        run[i] === run[j] && Math.abs(a.bowl.y - b.bowl.y) < 1 - eps)
       bad.push('houses ' + i + ' and ' + j + ' overlap: same-side houses need bowls at least one row apart');
   }));
   if (!hs.some(h => h && !h.venue)) bad.push('a street needs at least one house with a bowl');
@@ -507,6 +763,9 @@ function adoptStreet(street) {
 function create(opts) {
   const g = { rng: (opts && opts.rng) || Math.random, street: adoptStreet((opts && opts.street) || MARROW_STREET),
              practice: opts && opts.practice ? makePractice() : null };
+  /* Built once, beside the street it describes, and never from inside
+     update(): it uses no randomness, so a seeded replay cannot notice it. */
+  g.routes = buildRoutes(g.street);
   reset(g);
   g.scene = 'title';           // title | play | caught | leaving | pickup | over
   return g;
@@ -518,6 +777,7 @@ function create(opts) {
 function setStreet(g, street) {
   if (g.scene !== 'title' && g.scene !== 'over') throw new Error('setStreet: a round is in progress');
   g.street = adoptStreet(street);
+  g.routes = buildRoutes(g.street);
   reset(g);
 }
 
@@ -561,8 +821,8 @@ function tapHouse(g, id) {
 function tapRoad(g, x, y) {
   if (g.scene !== 'play') return;
   if (g.eat) stopEating(g);
-  const w = g.street.walk;
-  g.cat.target = { x: clamp(x, w.x[0], w.x[1]), y: clamp(y, w.y[0], w.y[1]), house: null };
+  const p = clampToPaths(g.routes, x, y);
+  g.cat.target = { x: p.x, y: p.y, house: null };
 }
 
 /* Tap to take a bite while eating. `atT` is where the marker was when the
@@ -885,7 +1145,10 @@ function foxPickTarget(g) {
   let best = null, bd = Infinity;
   for (const h of g.houses) {
     if (!h.bowl || foxBarred(g, h)) continue;
-    const s = bowlSpot(h), d = dist(f.x, f.y, s.x, s.y);
+    /* By how far it has to walk, not how far it looks: on a street that bends,
+       the nearest bowl as the crow flies can be the long way round. With no
+       corners in the way this is the straight line it always was. */
+    const s = bowlSpot(h), d = routeDist(g.routes, f.x, f.y, s.x, s.y);
     if (d < bd) { bd = d; best = h; }
   }
   f.target = best;
@@ -912,9 +1175,14 @@ function updateFox(g, dt) {
 
   const h = f.target, s = bowlSpot(h), d = dist(f.x, f.y, s.x, s.y);
   if (d > 0.04) {
-    const step = Math.min(d, FOX_SPEED * dt);
-    f.x += ((s.x - f.x) / d) * step;
-    f.y += ((s.y - f.y) / d) * step;
+    /* Arrival is still judged against the bowl, never against a corner, or
+       the fox would sit down and eat at the turn. */
+    const wp = routeNext(g.routes, f.x, f.y, s.x, s.y);
+    const tx = wp ? wp.x : s.x, ty = wp ? wp.y : s.y;
+    const wd = wp ? dist(f.x, f.y, tx, ty) : d;
+    const step = Math.min(wd, FOX_SPEED * dt);
+    f.x += ((tx - f.x) / wd) * step;
+    f.y += ((ty - f.y) / wd) * step;
     f.eatT = 0;
     return;
   }
@@ -968,7 +1236,7 @@ function beginLeave(g) {
   g.cat.target = null;
   clearSpot(g);              /* it never showed before because the ending cut away on the same frame */
   if (!g.ending) g.ending = g.houses.every(h => h.venue || (h.cleared && !h.angry)) ? 'cleared' : 'done';
-  const w = g.street.walk.y;
+  const w = g.routes.bounds.y;
   /* the anchor the turn is made around, so it starts and finishes on the spot */
   g.leave = { t: 0, up: Math.abs(g.cat.y - w[0]) <= Math.abs(g.cat.y - w[1]),
               ax: g.cat.x, ay: g.cat.y };
@@ -1000,15 +1268,24 @@ function endRound(g) {
 function updateCat(g, dt) {
   const c = g.cat;
   if (!c.target) return;
-  const d = dist(c.x, c.y, c.target.x, c.target.y);
+  /* The next corner to make for. On a street that is one run of road there
+     are no corners, routeNext hands back null, and the walk below is the
+     straight line it has always been -- the same arithmetic on the same
+     numbers, which is what keeps the golden playthroughs identical. */
+  const wp = routeNext(g.routes, c.x, c.y, c.target.x, c.target.y);
+  const tx = wp ? wp.x : c.target.x, ty = wp ? wp.y : c.target.y;
+  const d = dist(c.x, c.y, tx, ty);
   const step = CAT_SPEED * dt;
-  if (Math.abs(c.target.x - c.x) > 0.01) c.face = c.target.x > c.x ? 1 : -1;
+  if (Math.abs(tx - c.x) > 0.01) c.face = tx > c.x ? 1 : -1;
   if (d > step) {
-    c.x += ((c.target.x - c.x) / d) * step;
-    c.y += ((c.target.y - c.y) / d) * step;
+    c.x += ((tx - c.x) / d) * step;
+    c.y += ((ty - c.y) / d) * step;
     return;
   }
-  c.x = c.target.x; c.y = c.target.y;
+  c.x = tx; c.y = ty;
+  /* A corner, not the bowl: the rest of this step is given up rather than
+     carried round the turn, which costs at most a frame and nobody can see. */
+  if (wp) return;
   const hid = c.target.house;
   c.target = null;
   if (hid !== null) {
@@ -1051,7 +1328,7 @@ function update(g, dt) {
       g.cat.x = lv.x; g.cat.y = lv.y;
     } else {
       /* out past the end of the road, drifting to the middle of it on the way */
-      const w = g.street.walk.y, endY = lv.up ? w[0] - 1.4 : w[1] + 1.4;
+      const w = g.routes.bounds.y, endY = lv.up ? w[0] - 1.4 : w[1] + 1.4;
       const dy = endY - g.cat.y, step = CAT_SPEED * 0.95 * dt;
       g.cat.y += Math.abs(dy) > step ? Math.sign(dy) * step : dy;
       g.cat.x = lerp(g.cat.x, g.street.roadX, dt * 2.2);
@@ -1131,6 +1408,8 @@ return {
   create, start, update, drainEvents, setPractice, practiceResident, practiceBowl, practiceHoldBowl,
   tapHouse, tapRoad, tapEat,
   bowlSpot, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
+  /* walking routes */
+  pathsOf, buildRoutes, routeNext, routePath, routeDist, clampToPaths,
   /* the slow night */
   progress, waveByProgress, nightGrade, lockWave, skipLeave,
   LEAVE_SECS, LEAVE_CIRCLE, LEAVE_SKIP,

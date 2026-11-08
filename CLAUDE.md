@@ -140,6 +140,56 @@ leaving early protects nothing. A cash-out needs something at stake. If the
 night ever wants a final decision, give the endings different outcomes first --
 then the button earns itself.
 
+## Walking routes
+
+A street's walkable ground is a list of convex rectangles -- **stretches** --
+and the **links** that join them. Inside one stretch a straight line is always
+legal, which is the whole reason the ground is described as areas rather than
+as a thin graph of points: Marrow Street and Terrace Row are one stretch each,
+so every walk on them is the straight line it always was, down to the last bit
+of arithmetic, and **all twelve golden logs are byte-identical across the
+change**. A spine-and-spurs graph of points would instead have sent the cat out
+to the middle of the road and back every time it crossed between two bowls --
+longer, slower, visibly on rails, and it would have rewritten every log for
+nothing.
+
+Where two linked stretches meet is simply their overlap, so a junction has no
+coordinates of its own to drift out of step with the rectangles. A stretch that
+carries its own `roadX` is a **run of road** -- the ground a renderer can paint,
+and the only kind a house may front. One without is a crossing or a yard:
+walkable, but nothing stands on it.
+
+`walk: { x, y }` is the original single-rectangle shape and still works: it
+reads as one stretch called `main`. A street gives one or the other, never
+both.
+
+The cat and the fox follow routes; the fox also judges which bowl is nearest by
+**how far it has to walk**, not by the crow flight. `routeNext` returns `null`
+for "walk straight at it", which is the answer everywhere on a one-run street
+and is what the callers lean on to stay bit-identical.
+
+**A link carries `open`, and nothing closes one.** It is there so that a gate
+-- "clearing this bowl opens that path" -- is a flag the search already reads
+rather than a rebuild of the section. When something does close a path, the
+callers will need more than this: with no route the router falls back to a
+straight line rather than leaving a character stuck on the spot, so a closed
+gate would let the cat walk through a house. Gating means `tapHouse` declining
+an unreachable bowl, not just flipping the flag.
+
+**Not routed yet, and tied to the road line on purpose:** the dog's run, the
+cat's walk off at the end of a night, and the owner's approach (which is drawn
+entirely in screen space in `pickupPlan`). All three are set-pieces shot along
+a straight road, and they move to routes when the renderer can draw a bend.
+
+**The renderer still draws one straight road.** `drawStreet`, `houseRect`,
+`bodyRect`, `fenceX`, the lamps, the house hit test and both cameras all key
+off `L.roadL`/`L.roadR`. Drawing a bend means painting per stretch (plus the
+corner, the kerbs and the centre line), placing houses relative to the run they
+front, and clamping both cameras to painted ground -- a bigger piece of work
+than the routing, and it drags the art with it (#22). So **`tests/bent.js` is a
+rules fixture and is deliberately not in `C.STREETS`**: a branching street
+cannot be shown to a player until that work is done.
+
 ## Where things stand
 
 - Phases 1 (#5: the rules read a street description) and 2 (#6: the renderer
@@ -157,7 +207,9 @@ then the button earns itself.
   since the ladders were re-derived for the night). Its owed
   `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 is closed: it was
   playtested by the owner and by the iPhone tester.
-  Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
+  Phase 3 walking routes (#7) is done in the rules (see **Walking routes**);
+  drawing a street that bends is still to do.
+  Next: more streets (#12) and minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
 - Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
   helpers read the page now, the street-row ones still restate `L.hud`), the
@@ -182,7 +234,8 @@ then the button earns itself.
   The rule that keeps this cheap: no `if (street.id === ...)` in the renderer.
   Everything per-street comes from the street description, `look` included.
 - A new street is a description checked by `validateStreet` (see
-  `tests/streets.js` for an odd-shaped one), with its own sight-line test,
+  `tests/streets.js` for an odd-shaped one and `tests/bent.js` for one that
+  bends), with its own sight-line test,
   golden playthroughs and screenshots, a preview, and a `/code-review`.
 
 ## Layout
@@ -190,7 +243,9 @@ then the button earns itself.
 - `src/core.js`: the rules. No canvas, DOM, audio or timers. The street is a
   data description (`MARROW_STREET`, checked by `validateStreet`; `create()`
   takes a `street`) and the practice night is a core option
-  (`create({ practice })`). Owns all game state; the renderer drives it with `update(g, dt)` and `tapHouse` /
+  (`create({ practice })`). Its walkable ground is one rectangle (`walk`) or
+  several joined up (`paths`), and the cat and the fox take the shortest way
+  round it -- see **Walking routes**. Owns all game state; the renderer drives it with `update(g, dt)` and `tapHouse` /
   `tapRoad` / `tapEat`, reads state to draw, and drains `g.events` for sound
   and animation. UMD: `require()` in Node, `window.BowlCore` in the browser.
 - `src/game.js`: the renderer and input. Everything is drawn in code, from
@@ -211,8 +266,8 @@ then the button earns itself.
   experiment (#34, closed). A street generator that derives `neighbours` from
   geometry, bot labs that measure how much a street or a rule changes a night,
   and a playable page. Nothing in `src/` uses them. They only know straight
-  roads, so they are a starting point for #7 and the roguelike run (#37), not a
-  finished tool.
+  roads -- they predate `paths` and have not been taught about it -- so they
+  are a starting point for the roguelike run (#37), not a finished tool.
 
 ## Commands
 
@@ -246,6 +301,13 @@ steps frames itself with `__bb.advance(seconds)`.
   house, the four endings, the attention meter, waves following progress, the
   fox racing rather than sharing, and that the lesson is left alone by all of
   it. `tests/core.test.js` covers the rules the night inherited.
+- `tests/routes.test.js`: walking routes. The route functions on Bent Lane
+  (`tests/bent.js`, a street with a cul-de-sac round a block of houses), and
+  then a real cat and a real fox set loose on it and watched every tick -- a
+  route that is right on paper and a walk that leaves the pavement are
+  different bugs. It also pins the half that must NOT change: on a street with
+  one run of road the router asks for no corners and every distance is exactly
+  the crow flight, which is what keeps the golden logs identical.
 - `tests/golden.test.js`: eight seeded Marrow rounds and four Terrace Row ones
   must replay **identically**.
   Any change that alters play fails it. If the change is intended, re-record
