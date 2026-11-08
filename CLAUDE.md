@@ -141,16 +141,17 @@ then the button earns itself.
   reads it) of the data-driven refactor are done, reviewed and live on
   `main`. Marrow Street plays and looks exactly as before.
 - Terrace Row, the first new street (#8), is live on `main`
-  and tagged "work in progress" in the picker for testers (`wip: true` on the
-  street; remove it when the street is done). Five brick terrace houses on a
+  and still tagged "work in progress" in the picker (`wip: true` on the street;
+  removing it is a game change, so it goes through the preview -- the street is
+  done and playtested, the tag just has not been taken off). Five brick terrace houses on a
   narrow road at a warm evening, and a pub opposite that watches every bowl
   from wave 3 (a `venue` house: no bowl, watch only) with a bus stop and a beer
   garden beside it (`scenery`). It has its own ranks, wave wording, picker row,
   best score and unlock (Bin Lid Regular on Marrow Street: eased for
   playtesting from the second rung to the first, and now 600 rather than 700
   since the ladders were re-derived for the night). Its owed
-  `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 stays open
-  until it is playtested.
+  `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 is closed: it was
+  playtested by the owner and by the iPhone tester.
   Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
 - Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
