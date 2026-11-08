@@ -244,9 +244,11 @@ it is being played; give it one before it is anything but work in progress.
   since the ladders were re-derived for the night). Its owed
   `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 is closed: it was
   playtested by the owner and by the iPhone tester.
-  Phase 3 walking routes (#7) is done in the rules (see **Walking routes**);
-  drawing a street that bends is still to do.
-  Next: more streets (#12) and minigames (#9).
+  Phase 3 walking routes (#7) is done, rules and renderer both (see
+  **Walking routes**), and Lamplighter Block is the street that proves it.
+  It has been through the preview once and plays; what it still owes is
+  listed below and in #39.
+  Next: finishing Lamplighter Block (#39), more streets (#12), minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
 - Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
   helpers read the page now, the street-row ones still restate `L.hud`), the
@@ -364,7 +366,7 @@ steps frames itself with `__bb.advance(seconds)`.
   one run of road the router asks for no corners and every distance is exactly
   the crow flight, which is what keeps the golden logs identical.
 - `tests/runaway.js`: a sideways flick off a bowl, on Lamplighter Block
-  (`tests/block.js`, two roads with a block of houses between them) and on
+  (`C.BLOCK_STREET`, two roads with a block of houses between them) and on
   Marrow Street. It measures how far the cat moves **along** the road, not
   across it: the first version checked the cat ended up near its own road and
   passed happily with the bug put back, because a cat setting off down the
