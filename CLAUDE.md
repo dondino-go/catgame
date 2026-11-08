@@ -394,7 +394,13 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `b5ed7b3` (the night's second pass, `e0b35c6..b5ed7b3`, high,
+last reviewed: `1e2eddb` (everything since the night's second pass, including
+two commits that had shipped unreviewed, `b5ed7b3..1e2eddb`, high, 10 findings;
+9 fixed in `8320a8b` -- a RUN bar frozen through the owner's pickup, the
+full-meter rule living in three places, a rank test that guarded nothing, an
+update test with a fixed sleep and a silent skip, the bot loop copied into the
+labs, and a stale install description -- and 1 filed as #38).
+before that: `b5ed7b3` (the night's second pass, `e0b35c6..b5ed7b3`, high,
 4 findings; all 4 fixed in `0954268` -- a results line that clipped at 719 of
 720 units, the two ranks disagreeing, a frozen RUN bar through the send-off,
 and a stale threshold in a comment).
