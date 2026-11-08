@@ -1952,7 +1952,18 @@ function tutGo(step) { tut.step = step; tut.t = 0; }
 
 /* the house the paw points at: near the cat, never the top row (the coach
    bubble sits there), and not the bowl just eaten */
-const catSide = () => g.cat.x > g.street.roadX ? 1 : -1;   /* which side of the road the cat is nearer */
+/* Which run of road the cat is on: the nearest one. On a street with a single
+   run this is that run, and catSide below is the comparison it always was. */
+function catRun() {
+  let best = firstRun(), bd = Infinity;
+  for (const s of g.routes.stretches) {
+    if (!isRun(s)) continue;
+    const d = Math.abs(g.cat.x - s.roadX);
+    if (d < bd) { bd = d; best = s; }
+  }
+  return best;
+}
+const catSide = () => g.cat.x > catRun().roadX ? 1 : -1;   /* which side of its road the cat is nearer */
 function tutTarget() {
   const any = g.houses.filter(h => h.bowl && !h.angry && h !== tut.first);
   const lower = any.filter(h => h.row > Math.min(...g.houses.map(x => x.row)));
@@ -2759,11 +2770,19 @@ const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= 
    through this; only things laid out from sx/sy. */
 const toStreet = p => L.k === 1 ? p : { x: p.x / L.k, y: L.top + (p.y - L.top) / L.k };
 
-/* Getting off the bowl. A swipe or a shake both end here. */
+/* Getting off the bowl. A swipe or a shake both end here.
+
+   Onto the road the BOWL is on, not the street's main one. On a street with
+   two runs, aiming at street.roadX sent a cat eating on the back road off
+   round the block by way of the alley -- a fifteen second trek -- instead of
+   stepping off the bowl, which is the one thing running away has to do. The
+   route finder stopped it walking through the houses, so it never looked
+   broken; it just did not work. */
 function bolt() {
   if (g.scene !== 'play' || !g.eat) return;
-  const dir = g.cat.x < g.street.roadX ? 1 : -1;
-  C.tapRoad(g, g.street.roadX + dir * 0.12, g.cat.y);
+  const rx = houseRun(g.eat.h).roadX;
+  const dir = g.cat.x < rx ? 1 : -1;
+  C.tapRoad(g, rx + dir * 0.12, g.cat.y);
   Sfx.tone(700, 0.12, 'triangle', 0.1, 1200);
 }
 
@@ -2922,7 +2941,7 @@ function advance(secs) {
 }
 
 /* ?debug exposes the game to the console, for setting up a scene by hand */
-if (DEBUG) window.__bb = { houseRect, L, g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
+if (DEBUG) window.__bb = { houseRect, L, bolt, g, C, tut: () => tut, checkForUpdate, updateReady: () => updateReady, advance,
   /* whether a check is in flight, for tests/update.js: the stall it guards
      against is only visible as a check that never clears */
   checking: () => !!checking,

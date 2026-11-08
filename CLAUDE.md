@@ -194,14 +194,34 @@ rule about what may sit where -- the pavement a bowl stands on, two tap strips
 overlapping, scenery sitting on a house -- is measured against that run, or
 things round a corner from each other read as on top of each other.
 
-**The renderer still draws one straight road.** `drawStreet`, `houseRect`,
-`bodyRect`, `fenceX`, the lamps, the house hit test and both cameras all key
-off `L.roadL`/`L.roadR`. Drawing a bend means painting per stretch (plus the
-corner, the kerbs and the centre line), placing houses relative to the run they
-front, and clamping both cameras to painted ground -- a bigger piece of work
-than the routing, and it drags the art with it (#22). So **`tests/bent.js` is a
-rules fixture and is deliberately not in `C.STREETS`**: a branching street
-cannot be shown to a player until that work is done.
+**A street says how wide it is.** One run of road with houses down both sides
+is 232 + 256 + 232 = 720 design units: exactly the canvas, so a second run
+could not be on screen at all. `width` (default 1) says how many of those a
+street is, and the renderer draws the whole thing at one scale in `draw()`
+rather than threading a factor through forty drawing calls. Rows are measured
+**before** that scale, so the street still fills the height -- which means a
+wide street wants more rows too, or it leaves the bottom of the screen empty.
+That is the shape of the idea: not one street squashed, but a bigger place
+drawn smaller. Marrow Street rendered at 60% and 50% is what settled it; every
+house name is still legible at 60%.
+
+**Everything that asks "which road?" must ask the cat's, not the street's.**
+Houses stand against the run they front (`h.run`, from core) and a strip
+reaches halfway across the block it shares with the next run along. The
+run-away flick aims at the road the *bowl* is on: aiming at `street.roadX`
+sent a cat eating on the back road off round the block by way of the alley,
+and the route finder walked it there quite correctly, so it never looked
+broken -- it just did not work. `scenery` takes a `block` kind for the gaps a
+wider street leaves: a building with nobody in it, which the rules never see.
+
+**Still tied to the main run:** `pickupPlan` (the owner's approach), the dog's
+run and the cat's walk off. Those are set-pieces shot along one road, and the
+cameras have not been checked at width 2 either.
+
+**No street with two runs ships yet.** `tests/bent.js` and `tests/block.js`
+are fixtures, deliberately not in `C.STREETS`: the alley has no kerbs, the
+set-pieces above are unfixed, and a new street needs its own ranks, picker
+row, sight-line test and screenshots first.
 
 ## Where things stand
 
@@ -291,6 +311,7 @@ node tests/screens.js             # reference screenshots (needs Playwright)
 node tests/safearea.js            # canvas stays inside a phone's safe area
 node tests/results.js             # the results screen fits on every phone shape
 node tests/title.js               # the title screen fits, and PLAY always starts a round
+node tests/runaway.js             # a flick off a bowl, on a street with two roads
 node tests/update.js              # picking up a new build, over HTTP
 sh tools/stamp-build.sh           # stamp the build by hand
 ```
@@ -321,6 +342,12 @@ steps frames itself with `__bb.advance(seconds)`.
   different bugs. It also pins the half that must NOT change: on a street with
   one run of road the router asks for no corners and every distance is exactly
   the crow flight, which is what keeps the golden logs identical.
+- `tests/runaway.js`: a sideways flick off a bowl, on Lamplighter Block
+  (`tests/block.js`, two roads with a block of houses between them) and on
+  Marrow Street. It measures how far the cat moves **along** the road, not
+  across it: the first version checked the cat ended up near its own road and
+  passed happily with the bug put back, because a cat setting off down the
+  back road towards the alley is at much the same x as one stepping across it.
 - `tests/golden.test.js`: eight seeded Marrow rounds and four Terrace Row ones
   must replay **identically**.
   Any change that alters play fails it. If the change is intended, re-record
@@ -518,7 +545,18 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   believing it is broken. None of this can reach a phone still on the original
   cache-first worker; those still need the manual steps in #24.
 - For visual changes, render options side by side and let the user pick,
-  rather than guessing in successive pushes.
+  rather than guessing in successive pushes. **Render the thing before
+  arguing about it.** "Everything gets too small to read" was the reason a
+  street wider than one road looked impossible; Marrow Street drawn at 60%
+  and 50% took five minutes to produce and showed it was fine, which turned a
+  large piece of work (houses drawn facing up a horizontal road) into a small
+  one (one `ctx.scale`).
+- **Put the bug back, then check you measured the right thing.** The run-away
+  test passed with its bug restored: it asked whether the cat ended up near
+  its own road, and a cat setting off DOWN that road towards the alley is at
+  much the same x as one stepping ACROSS it. The two only part in y. A test
+  can be aimed at the right behaviour and still measure a quantity that both
+  the fix and the bug produce.
 - `node tests/screens.js --update` re-records **every** screen, Marrow ones
   included. **To change one reference, delete just that PNG and rerun without
   `--update`**: a missing reference is recorded (`REC`) and nothing else is
