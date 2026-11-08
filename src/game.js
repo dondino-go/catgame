@@ -438,42 +438,77 @@ function updateVisuals(dt) {
  *  DRAWING
  * ================================================================== */
 
+/* Every run of road, in screen space. A run is painted over the whole rows it
+   touches, not over the walkable strip inside it: Marrow Street's cat may walk
+   y 0.2..3.8 but its road has always been painted from the top of row 0 to the
+   bottom of the last one, and a street with one run must come out pixel for
+   pixel as it always did. A crossing (a stretch with no roadX of its own) is
+   painted as plain tarmac over its own rectangle: no pavements, no centre
+   line -- it is the bit where two roads meet. */
+function runsOnScreen() {
+  const half = Math.round(C.roadHalfOf(g.street) * DW);
+  return g.routes.stretches.map(s => {
+    const isRun = s.roadX != null;
+    return {
+      isRun, cx: isRun ? sx(s.roadX) : (sx(s.x[0]) + sx(s.x[1])) / 2,
+      l: isRun ? sx(s.roadX) - half : sx(s.x[0]),
+      r: isRun ? sx(s.roadX) + half : sx(s.x[1]),
+      top: isRun ? sy(Math.floor(s.y[0])) : sy(s.y[0]),
+      bot: isRun ? sy(Math.ceil(s.y[1]))  : sy(s.y[1]),
+    };
+  });
+}
+
 function drawStreet() {
   ctx.fillStyle = NIGHT;
   ctx.fillRect(0, 0, DW, DH);
 
-  /* pavement strips, which carry the bowls */
-  ctx.fillStyle = PAVE;
-  ctx.fillRect(L.roadL - L.paveW, L.top, L.paveW, L.bot - L.top);
-  ctx.fillRect(L.roadR, L.top, L.paveW, L.bot - L.top);
+  const runs = runsOnScreen();
+  /* Each run paints its own set in the order it always did -- pavement, road,
+     kerb lip, slabs, centre line -- because the slabs are stroked right up to
+     the kerb and bleed a hair over it, so the road has to go down before them
+     or a one-run street would come out a pixel different. */
+  for (const r of runs) {
+    if (!r.isRun) continue;
 
-  /* the road */
-  ctx.fillStyle = ROAD;
-  ctx.fillRect(L.roadL, L.top, L.roadR - L.roadL, L.bot - L.top);
-  ctx.fillStyle = ROAD_2;
-  ctx.fillRect(L.roadL, L.top, 7, L.bot - L.top);
-  ctx.fillRect(L.roadR - 7, L.top, 7, L.bot - L.top);
+    /* pavement strips, which carry the bowls */
+    ctx.fillStyle = PAVE;
+    ctx.fillRect(r.l - L.paveW, r.top, L.paveW, r.bot - r.top);
+    ctx.fillRect(r.r, r.top, L.paveW, r.bot - r.top);
 
-  /* kerb lip, on the garden side of each pavement */
-  ctx.fillStyle = PAVE_LIP;
-  ctx.fillRect(L.roadL - L.paveW, L.top, 6, L.bot - L.top);
-  ctx.fillRect(L.roadR + L.paveW - 6, L.top, 6, L.bot - L.top);
+    /* the road */
+    ctx.fillStyle = ROAD;
+    ctx.fillRect(r.l, r.top, r.r - r.l, r.bot - r.top);
+    ctx.fillStyle = ROAD_2;
+    ctx.fillRect(r.l, r.top, 7, r.bot - r.top);
+    ctx.fillRect(r.r - 7, r.top, 7, r.bot - r.top);
 
-  /* paving slabs */
-  ctx.strokeStyle = 'rgba(42,27,61,.18)';
-  ctx.lineWidth = 3 * STROKE;
-  for (let y = L.top; y < L.bot; y += 54) {
-    ctx.beginPath(); ctx.moveTo(L.roadL - L.paveW, y); ctx.lineTo(L.roadL, y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(L.roadR, y + 27); ctx.lineTo(L.roadR + L.paveW, y + 27); ctx.stroke();
+    /* kerb lip, on the garden side of each pavement */
+    ctx.fillStyle = PAVE_LIP;
+    ctx.fillRect(r.l - L.paveW, r.top, 6, r.bot - r.top);
+    ctx.fillRect(r.r + L.paveW - 6, r.top, 6, r.bot - r.top);
+
+    /* paving slabs */
+    ctx.strokeStyle = 'rgba(42,27,61,.18)';
+    ctx.lineWidth = 3 * STROKE;
+    for (let y = r.top; y < r.bot; y += 54) {
+      ctx.beginPath(); ctx.moveTo(r.l - L.paveW, y); ctx.lineTo(r.l, y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(r.r, y + 27); ctx.lineTo(r.r + L.paveW, y + 27); ctx.stroke();
+    }
+
+    /* centre line */
+    ctx.strokeStyle = 'rgba(255,233,201,.28)';
+    ctx.lineWidth = 7 * STROKE;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([38, 34]);
+    ctx.beginPath(); ctx.moveTo(r.cx, r.top); ctx.lineTo(r.cx, r.bot); ctx.stroke();
+    ctx.setLineDash([]);
   }
 
-  /* centre line */
-  ctx.strokeStyle = 'rgba(255,233,201,.28)';
-  ctx.lineWidth = 7 * STROKE;
-  ctx.lineCap = 'round';
-  ctx.setLineDash([38, 34]);
-  ctx.beginPath(); ctx.moveTo(sx(g.street.roadX), L.top); ctx.lineTo(sx(g.street.roadX), L.bot); ctx.stroke();
-  ctx.setLineDash([]);
+  /* Crossings last, so the junction reads as a junction: flat tarmac over
+     whatever the runs painted there, centre lines broken by it. */
+  ctx.fillStyle = ROAD;
+  for (const r of runs) if (!r.isRun) ctx.fillRect(r.l, r.top, r.r - r.l, r.bot - r.top);
 
   /* a drain and a puddle, so the tarmac isn't an empty ribbon */
   const dy = L.top + L.rowH * 1.2;
