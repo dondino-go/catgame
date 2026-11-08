@@ -6,9 +6,14 @@
  * (or a network slower than NET_TIMEOUT) it opens from the copy saved last
  * time. Bump VERSION only to throw the old cache away.
  */
-const VERSION = 'bowl-bandit-v4';
+const VERSION = 'bowl-bandit-v5';
 const NET_TIMEOUT = 3000;
+/* Both entry pages and the bare address: the cache is keyed by URL, so the root
+   (what the site's link opens), index.html and the old mobile.html are three
+   entries, and an installed app launches whichever address it was added from. */
 const SHELL = [
+  './',
+  './index.html',
   './mobile.html',
   './src/core.js',
   './src/game.js',

@@ -123,7 +123,7 @@ function overlaps(B) {
   const p = await browser.newPage({ viewport: { width: VW, height: 844 }, deviceScaleFactor: 2 });
   await p.addInitScript(RECORD);
   await p.addInitScript(() => { try { localStorage.setItem('bowlbandit.onboarded', 'true'); } catch (e) {} });
-  await p.goto('file://' + path.join(ROOT, 'mobile.html') + '?debug&manual');
+  await p.goto('file://' + path.join(ROOT, 'index.html') + '?debug&manual');
   await p.waitForFunction(() => window.__bb && window.__bb.g);
   await p.evaluate(() => Promise.all([500, 600, 700, 800].map(w => document.fonts.load(w + " 40px 'Baloo 2'"))));
   await p.evaluate(() => window.__bb.advance(0.5));

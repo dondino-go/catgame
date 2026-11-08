@@ -1,96 +1,107 @@
 # Bowl Bandit
 
-A cat works one street. Eight houses, eight bowls, two minutes.
+A cat raids the food bowls on a street of nosy neighbours. Every house puts a
+bowl out for you. Lovely. But neighbours gossip, and that's the whole game.
 
-Every house on Marrow Street puts a bowl of food out for you. Lovely. But
-neighbours gossip — and that's the whole game.
+**[Play it](https://dondino-go.github.io/catgame/)** on your phone. It is a
+portrait game made for touch, and once you add it to your home screen it opens
+with no signal and picks up new builds by itself. Plain HTML, CSS and
+JavaScript on one canvas: no build step, no dependencies.
 
-**[Play it](https://dondino-go.github.io/catgame/)** · or clone and open
-`index.html`. No build step, no dependencies.
-
-## Controls
+## How to play
 
 | | |
 |---|---|
-| `WASD` / arrow keys | prowl the street |
-| `Space` | start eating, then time each bite |
-| walk away | stop eating |
-| `Esc` | stop eating |
-| `M` | mute |
+| **tap a house** | the cat walks to its bowl and sits down |
+| **tap** | take a bite, when the marker is in the green |
+| **swipe sideways** | run away from the bowl |
 
-## The rule
+Eating is timing: a marker sweeps a bar, and you tap on the green. Each bite the
+bar speeds up and the green shrinks. Miss and the bowl clatters, which is noisy.
 
-Eating is a timing minigame: a marker sweeps a bar, and you press `Space` on the
-green to take a bite. Each bite the bar speeds up and the green shrinks. Miss and
-the bowl clatters, which brings nearby residents to their windows.
+The interesting part is *who is watching*. Every house has neighbours: the houses
+either side of it, and the one across the road. A curtain twitches before a
+neighbour comes to the window, and a window that is lit and looking at your bowl
+means **leave now**. Being caught shuts that house for a while, and the second
+catch at the same house ends it for good.
 
-The interesting part is *who is watching*. Every house has neighbours — the
-houses either side of it, and the one directly across the road. If a neighbour of
-the bowl's owner sees you eating from it, **someone stops feeding you, for good**:
+(Swipes are sideways only, because up and down belong to the phone.)
 
-- if the witness still puts a bowl out, **they** withdraw theirs
-- if the witness already gave up on you, they can't withhold anything — so they
-  **grass you up to the owner**, and the owner withdraws instead
+## The night
 
-The bowl's own owner never minds. They put it there for you.
+There is no countdown. Each house has **one dinner**: eat a bowl to the bottom
+and that house is settled, so the street empties as you work through it and
+there is no safe bowl to farm. A night ends three ways:
 
-You get a warning: a curtain twitches before a window opens, a watching resident
-spills light onto the street (yellow if harmless, red if they can see *you* at
-*this* bowl), and once you're spotted a `RUN!` bar gives you a beat to bolt
-before it counts.
+- **cleared**: you got a bowl from every house
+- **done**: every house is settled, but some were lost
+- **owner**: the attention meter filled and your owner came to carry you home
 
-Every neighbour still feeding you when the whistle blows is worth **40 points**,
-so stripping the street to feed faster is a losing trade. Lose all eight and the
-round ends early.
+Attention drifts up slowly, jumps when a bowl clatters or you are caught, and
+climbs while someone has their eyes on you. A quiet cat gets a long night; a
+clumsy one gets carried home early. The verdict at the end is about how much of
+the street you got. The rank is about how well you played it.
 
-## Waves
+The street wakes up as you take its food, so it gets nosier the further you get:
+more windows lit, a dog that barks and then bolts down the road sending every
+neighbour to the window, and a fox that races you for the bowls.
 
-Difficulty steps at 30-second boundaries rather than creeping, so you can feel
-the street turning against you.
+## Streets
 
-| Wave | | Warning | Watchers | Bowl | Time to bolt |
-|---|---|---|---|---|---|
-| 1 | Quiet Street | 1.90s | 1 | 3 bites | 0.55s |
-| 2 | Curtains Twitching | 1.45s | 2 | 4 bites | 0.42s |
-| 3 | Getting Nosy | 1.05s | 3 | 5 bites | 0.30s |
-| 4 | Neighbourhood Watch | 0.72s | 4 | 6 bites | 0.18s |
+- **Marrow Street**: eight houses, two rows of four, either side of the road.
+- **Terrace Row**: five brick terrace houses on a narrow road at a warm evening,
+  and a pub opposite that watches every bowl once it is last orders. Reaching a
+  rank on Marrow Street opens it. (Still tagged "work in progress".)
 
-Wave 2 lets **a dog** loose: it barks, then bolts the length of the road while
-every resident goes to the window. Get off the bowls. Wave 3 brings **a fox**
-working the same street — it robs bowls one ball at a time, and it's slower than
-you are, so you can beat it to one. When the clock runs out your owner comes and
-carries you home.
+A street is a data description: where the houses are, which bowls each window can
+see, how wide the road is, how it looks. The rules and the renderer both read it,
+so a new street is data plus its own tests.
+
+## Run it
+
+Serve the folder's *parent* so the address matches GitHub Pages, then open it:
+
+```sh
+cd ..
+python3 -m http.server 8123
+# http://127.0.0.1:8123/catgame/
+```
+
+Add `?debug` to expose `window.__bb` for setting up scenes by hand, and
+`?manual` to stop the animation timer so a test can step frames itself.
 
 ## Tests
 
 ```sh
-node tests/run.js
+node tests/run.js        # the rules, seeded playthroughs, both streets, the night, the entry pages
+node tests/screens.js    # reference screenshots (needs Playwright)
+node tests/safearea.js   # the canvas stays inside a phone's safe area
+node tests/results.js    # the results screen fits on every phone shape
+node tests/title.js      # the title screen fits, and PLAY always starts a round
+node tests/update.js     # picking up a new build, over HTTP
+node tools/simulate.js   # the balance simulator: bots of four skill levels
 ```
 
-103 checks, no dependencies. The suites read `index.html` and run its `<script>`
-against a stubbed canvas and DOM, so they exercise exactly the file a browser
-loads.
-
-| | |
-|---|---|
-| `behaviour.test.js` | the rule in all its cases, waves, dog, fox, owner ending, 9000 frames of mashing |
-| `geometry.test.js` | all 64 window/bowl sight pairs, house layout, on-screen tells |
-| `layout.test.js` | traces every text draw through the canvas transforms to catch overflow and collisions |
-| `balance.js` | simulates rounds across five skill profiles (a report, not a test) |
-
-`geometry.test.js` is the one to keep an eye on. The core rule is enforced by a
-sight radius, so moving a window or a bowl can silently break which neighbours
-can see what. It asserts every window reaches exactly its own bowl, both
-same-side neighbours and the one across — and no diagonals.
+`tests/golden.test.js` replays twelve seeded nights and insists they come out
+identical, so any change that alters play fails it until it is re-recorded on
+purpose.
 
 ## How it's built
 
-One `index.html`: a canvas, a fixed-timestep loop, and everything drawn with
-canvas primitives. Sound is a handful of oscillators, so there are no assets at
-all.
+- `src/core.js`: the rules. No canvas, no DOM, no timers, so it runs in Node and
+  in the browser and the tests drive it directly.
+- `src/game.js`: the renderer and input. Everything is drawn in code, from the
+  street description; sound is a handful of oscillators, so there are no assets.
+- `index.html`: the page. `mobile.html` is the same page again, kept because
+  phones that installed the game before it moved still launch that address.
+- `manifest.webmanifest`, `sw.js`, `icons/`: the installable app. The service
+  worker is network first, with the saved copy as the fallback.
+- `src/version.js`: the build stamp, written by a commit hook and shown on the
+  title and results screens.
 
-Outline weight for the whole game is the single `STROKE` constant — every stroke
-is scaled by it, so the line weight can be tuned from one number.
+The original desktop game (WASD and a two-minute round) is kept on the
+`legacy-desktop` branch. Working rules for contributors, and the reasons behind
+them, are in [CLAUDE.md](CLAUDE.md).
 
 **The art is provisional.** It wants a proper design system and a real character
 design; what's there now is placeholder that survived because the gameplay

@@ -62,7 +62,7 @@ const STUB = () => {
 
 (async () => {
   const server = await serve();
-  const url = 'http://127.0.0.1:' + server.address().port + '/mobile.html?debug&manual';
+  const url = 'http://127.0.0.1:' + server.address().port + '/index.html?debug&manual';
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await ctx.addInitScript(STUB);

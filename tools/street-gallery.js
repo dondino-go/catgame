@@ -19,7 +19,7 @@ const out = process.argv[2];
 if (!out) { console.log('usage: node tools/street-gallery.js <outdir> [--days 20] [--from 2026-11-08]'); process.exit(1); }
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const DAYS = parseInt(arg('--days', '20'), 10), FROM = new Date(arg('--from', '2026-11-08') + 'T00:00:00Z');
-const URL = 'file://' + path.join(__dirname, '..', 'mobile.html') + '?debug&manual';
+const URL = 'file://' + path.join(__dirname, '..', 'index.html') + '?debug&manual';
 const QUIET = () => { const g = window.__bb.g; g.houses.forEach(h => { h.state = 'idle'; h.t = 9999; }); };
 
 async function shoot(browser, street, file) {

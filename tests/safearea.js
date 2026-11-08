@@ -55,7 +55,7 @@ async function open(browser, phone) {
   const p = await browser.newPage({ viewport: { width: phone.w, height: phone.h }, deviceScaleFactor: 3 });
   await p.addInitScript(RECORD);
   await p.addInitScript(() => { try { localStorage.setItem('bowlbandit.onboarded', 'true'); } catch (e) {} });
-  await p.goto('file://' + path.join(ROOT, 'mobile.html') + '?debug&manual');
+  await p.goto('file://' + path.join(ROOT, 'index.html') + '?debug&manual');
   await p.waitForFunction(() => window.__bb && window.__bb.g);
   /* stand in for the insets the phone would report, then re-lay out */
   await p.evaluate(({ top, bottom }) => {

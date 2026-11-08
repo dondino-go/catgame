@@ -2165,7 +2165,8 @@ async function runCheck() {
    in which case the stamp never changes and the title screen would reload
    forever. So refresh every file first, and reload on our own at most once
    per new build. */
-const GAME_FILES = ['mobile.html', 'src/version.js', 'src/core.js', 'src/game.js', 'src/style.css'];
+/* both entry pages: an install launches whichever it was added from (see tests/entry.test.js) */
+const GAME_FILES = ['index.html', 'mobile.html', 'src/version.js', 'src/core.js', 'src/game.js', 'src/style.css'];
 let loading = false;
 async function loadUpdate(byTap) {
   if (loading) return;                 /* a tap and a check can arrive together */
@@ -2209,7 +2210,7 @@ async function loadUpdate(byTap) {
 }
 
 /* The last resort: throw away our offline copy so the next load has nowhere to
-   go but the network. mobile.html registers sw.js again on that load, so
+   go but the network. The page registers sw.js again on that load, so
    offline play comes back by itself.
    Ours only: dondino-go.github.io is one origin for every GitHub Pages site on
    the account, and both caches.keys() and getRegistrations() answer for the
