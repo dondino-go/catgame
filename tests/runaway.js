@@ -27,7 +27,7 @@ catch (e) { console.log('Playwright not installed: skipping the run-away checks.
 
 const ROOT = path.join(__dirname, '..');
 const URL = 'file://' + path.join(ROOT, 'index.html') + '?debug&manual';
-const BLOCK = require('./block.js');
+const BLOCK = require('../src/core.js').BLOCK_STREET;
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; console.log('  PASS ' + msg); } else { fail++; console.log('  FAIL ' + msg); } };

@@ -148,16 +148,112 @@ const TERRACE_STREET = {
   fox: { x: 0.5, ends: [-0.6, 5.6], patrol: { y: [0.3, 4.7], speed: 0.3 } },
 };
 
+/* Lamplighter Block: the first street that is not one straight road.
+ *
+ * A back lane. Two roads with a block of houses between them, back to back,
+ * and an alley at the bottom joining them -- so the far road is a two-minute
+ * walk away by route and no distance at all as the crow flies, which is the
+ * whole point of giving the street a shape.
+ *
+ * Eight bowls and twenty sight lines: Marrow Street's exactly. That is
+ * deliberate, so the first night on a shaped street can be compared with a
+ * night on a straight one without the bowl count explaining the difference.
+ * Whether the shape is worth anything is the question this street exists to
+ * answer; if it is, the pace and the size are the next things to tune.
+ *
+ * `width: 2` means the whole street is drawn at half size, and it has eight
+ * rows rather than four so it still fills the screen -- a bigger place drawn
+ * smaller, not one street squashed. The rest of the block is `block` scenery:
+ * buildings with nobody in them, which the rules never see.
+ *
+ * The one sight line that crosses the block is Mr Quill (main road, right)
+ * and The Mullens (back road, left): they back onto each other, so a window
+ * at the rear catches a cat it has no business seeing from the front.
+ */
+const BLOCK_STREET = {
+  id: 'block',
+  name: 'Lamplighter Block',
+  wip: true,                    // the picker says so: being played for the first time
+  /* No unlock while it is being playtested: it is the street we most need
+     opened, and gating it behind a rank on another one only gets in the way.
+     Give it one before it is anything other than work in progress. */
+  rows: 8,
+  roadX: 0.5,                   // the main run: the set-pieces still follow it
+  width: 2,
+  paths: {
+    stretches: [
+      { id: 'main', roadX: 0.5, x: [0.2612, 0.7388], y: [0.2, 7.8] },
+      { id: 'back', roadX: 1.5, x: [1.2612, 1.7388], y: [0.2, 7.8] },
+      /* the alley: a crossing, so nothing fronts it and it has no pavement */
+      { id: 'alley',            x: [0.5,    1.5],    y: [7.0, 7.6] },
+    ],
+    links: [{ a: 'main', b: 'alley' }, { a: 'alley', b: 'back' }],
+  },
+  catStart: { x: 0.5, y: 3.5 },
+  houses: [
+    { name: 'The Pemburys', col: 0, row: 0, side: -1, bowl: { x: 0.29, y: 0.5 }, neighbours: [1, 3] },
+    { name: 'Old Nan',      col: 0, row: 2, side: -1, bowl: { x: 0.29, y: 2.5 }, neighbours: [0, 2, 4] },
+    { name: 'The Dobsons',  col: 0, row: 4, side: -1, bowl: { x: 0.29, y: 4.5 }, neighbours: [1, 4] },
+    { name: 'Mr Quill',     col: 1, row: 1, side:  1, bowl: { x: 0.71, y: 1.5 }, neighbours: [0, 4, 5] },
+    { name: 'Bea & Rook',   col: 1, row: 3, side:  1, bowl: { x: 0.71, y: 3.5 }, neighbours: [1, 2, 3] },
+    /* backing onto Mr Quill across the block: the one sight line that crosses it */
+    { name: 'The Mullens',  col: 2, row: 1, side: -1, bowl: { x: 1.29, y: 1.5 }, neighbours: [3, 6, 7] },
+    { name: 'Doctor Pye',   col: 3, row: 0, side:  1, bowl: { x: 1.71, y: 0.5 }, neighbours: [5, 7] },
+    { name: 'The Ashfords', col: 3, row: 2, side:  1, bowl: { x: 1.71, y: 2.5 }, neighbours: [5, 6] },
+  ],
+  /* the rest of the block, so a gap in a row reads as a street and not a
+     mistake. The two middle strips stop at row 6: row 7 is the alley. */
+  scenery: [
+    { kind: 'block', row: 1, side: -1, on: 'main' },
+    { kind: 'block', row: 3, side: -1, on: 'main' },
+    { kind: 'block', row: 5, side: -1, on: 'main' },
+    { kind: 'block', row: 6, side: -1, on: 'main' },
+    { kind: 'block', row: 7, side: -1, on: 'main' },
+    { kind: 'block', row: 0, side:  1, on: 'main' },
+    { kind: 'block', row: 2, side:  1, on: 'main' },
+    { kind: 'block', row: 4, side:  1, on: 'main' },
+    { kind: 'block', row: 6, side:  1, on: 'main' },
+    { kind: 'block', row: 0, side: -1, on: 'back' },
+    { kind: 'block', row: 3, side: -1, on: 'back' },
+    { kind: 'block', row: 5, side: -1, on: 'back' },
+    { kind: 'block', row: 6, side: -1, on: 'back' },
+    { kind: 'block', row: 1, side:  1, on: 'back' },
+    { kind: 'block', row: 3, side:  1, on: 'back' },
+    { kind: 'block', row: 5, side:  1, on: 'back' },
+    { kind: 'block', row: 6, side:  1, on: 'back' },
+    { kind: 'block', row: 7, side:  1, on: 'back' },
+  ],
+  /* Derived from `node tools/simulate.js --street block --rounds 150`, from
+     this street's own night medians, the same way Marrow's and Terrace Row's
+     were. A night here pays less than one on Marrow Street for the same play
+     -- expert careful medians 1649 against 1950 -- because the walk round
+     the block is time not spent eating, so the ladder sits lower rather than
+     the street feeling stingy. Medians it is built from: greedy novice 668,
+     careful novice 846, careful decent 1294, careful expert 1649. */
+  ranks: [
+    [0,    'Alley Amateur'],
+    [560,  'Bin Lid Regular'],
+    [820,  'Back Lane Sweetheart'],
+    [1150, 'Bowl Bandit'],
+    [1600, 'Ghost of Lamplighter Block'],
+  ],
+  waveBlurbs: {
+    3: 'both sides of the block are at their windows now',
+  },
+  dog: { x: 0.5, ends: [-0.6, 8.6], overrun: 0.2 },
+  fox: { x: 0.5, ends: [-0.6, 8.6], patrol: { y: [0.3, 7.7], speed: 0.3 } },
+};
+
 /* The streets in the order the title screen lists them. Marrow Street is
    always open; a street with `unlock` opens when the best score on the street
    it names reaches that rung of that street's own ladder. */
-const STREETS = [MARROW_STREET, TERRACE_STREET];
+const STREETS = [MARROW_STREET, TERRACE_STREET, BLOCK_STREET];
 
 function deepFreeze(o) {
   if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze); }
   return o;
 }
-deepFreeze(MARROW_STREET); deepFreeze(TERRACE_STREET);   // shared by every default game: nothing may edit it mid-round
+deepFreeze(MARROW_STREET); deepFreeze(TERRACE_STREET); deepFreeze(BLOCK_STREET);   // shared by every default game: nothing may edit it mid-round
 
 /* ---------- walking routes ---------- *
  * A street's walkable ground is a list of convex rectangles -- `stretches` --
@@ -722,6 +818,10 @@ function unlockHint(street) {
 
 /* ---------- layout ---------- */
 function bowlSpot(h) { return { x: h.bowlAt.x, y: h.bowlAt.y }; }
+/* The run of road a house fronts. Everything that used to reach for
+   street.roadX wants this instead: on a street with two roads, "the road" is
+   not a property of the street. */
+function runOf(g, h) { return g.routes.stretches[h && h.run] || g.routes.stretches[0]; }
 
 
 /* A house is settled when there is nothing left to do with it tonight. */
@@ -1479,13 +1579,13 @@ function update(g, dt) {
 }
 
 return {
-  MARROW_STREET, TERRACE_STREET, STREETS, streetById, isUnlocked, unlockHint, setStreet, toTitle, validateStreet, ROAD_HALF, roadHalfOf, PAVE_W,
+  MARROW_STREET, TERRACE_STREET, BLOCK_STREET, STREETS, streetById, isUnlocked, unlockHint, setStreet, toTitle, validateStreet, ROAD_HALF, roadHalfOf, PAVE_W,
   PRACTICE, WAVES, GRACE, KEPT_BONUS,
   CAT_SPEED, FOX_SPEED, DOG_SPEED, CAUGHT_SECS, PICKUP_SECS, PERFECT_FRAC, BITE_SPEEDUP, MAX_SPEED, STREAK_STEP, STREAK_CAP, multFor,
   RANKS, rankFor, ranksOf, blurbFor, isOpen,
   create, start, update, drainEvents, setPractice, practiceResident, practiceBowl, practiceHoldBowl,
   tapHouse, tapRoad, tapEat,
-  bowlSpot, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
+  bowlSpot, runOf, wave, watchersOfBowl, isThreat, houseDist, spawnBowl,
   /* walking routes */
   pathsOf, buildRoutes, routeNext, routePath, routeDist, clampToPaths,
   /* the slow night */

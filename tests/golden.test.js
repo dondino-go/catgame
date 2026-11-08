@@ -49,7 +49,7 @@ function playthrough(skill, style, seed, street) {
       if (e) {
         const ns = e.h.neighbours.map(i => g.houses[i]);
         const danger = style === 'cautious' ? ns.some(n => n.state !== 'idle') : g.spot.heat > 0;
-        if (danger) { react += DT; if (react > skill.react) { C.tapRoad(g, g.street.roadX, g.cat.y); react = 0; aim = null; } }
+        if (danger) { react += DT; if (react > skill.react) { C.tapRoad(g, C.runOf(g, e.h).roadX, g.cat.y); react = 0; aim = null; } }
         else react = 0;
         if (g.eat && cool <= 0) {
           if (aim == null) aim = Math.min(1, Math.max(0, e.zone + e.zoneW / 2 + randn() * skill.sigma));
@@ -98,6 +98,12 @@ for (const [k, s] of Object.entries(SKILLS))
 for (const [k, s] of Object.entries(SKILLS))
   for (const style of ['cautious', 'greedy'])
     RUNS.push({ name: 'terrace-' + k + '-' + style + '-11', skill: s, style, seed: 11, street: C.TERRACE_STREET });
+/* Lamplighter Block: and on the first street that is not one straight road,
+   so the walk round it is pinned too -- a change to route-finding that nobody
+   meant shows up here as a night that goes differently. */
+for (const [k, s] of Object.entries(SKILLS))
+  for (const style of ['cautious', 'greedy'])
+    RUNS.push({ name: 'block-' + k + '-' + style + '-11', skill: s, style, seed: 11, street: C.BLOCK_STREET });
 
 console.log('\n=== GOLDEN PLAYTHROUGHS ===');
 if (!fs.existsSync(DIR)) fs.mkdirSync(DIR);

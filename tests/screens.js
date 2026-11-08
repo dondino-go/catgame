@@ -79,6 +79,7 @@ const CHECKS = [];
 const TEST_LANE = require('./streets');
 const CORE = require('../src/core.js');
 const TERRACE = CORE.TERRACE_STREET;      // JSON-clean, so the page can be handed it as data
+const BLOCK   = CORE.BLOCK_STREET;        // two roads and an alley, drawn at half size
 /* Read off the ladder, not restated: a best one point under the rung Terrace
    Row unlocks at. Hard-coding 699 silently stopped testing a locked street
    the moment the ladder was re-derived for the night. */
@@ -161,6 +162,43 @@ const SCENES = {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
     await a.game(() => { const g = window.__bb.g; g.score = 1700; g.bowlsCleared = 7; g.bites = 30; g.perfects = 9;
       g.misses = 2; g.timesCaught = 1; g.bestMult = 2; g.houses[3].angry = true; g.houses[3].bowl = null; g.racket = 1; });
+    await a.run(9000);
+  } },
+  /* Lamplighter Block: the first street that is not one straight road, drawn
+     at half size because it is twice as wide. The taps matter more than the
+     picture here -- every one of them goes through the scale before it
+     reaches a house, and the two middle strips are back to back with only
+     the fence line between them. */
+  'block-street': { street: BLOCK, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET); await a.run(300);
+    const target = () => a.game(() => { const t = window.__bb.g.cat.target; return t ? t.house : 'none'; });
+    const poke = async (x, row) => { await a.game(() => { window.__bb.g.cat.target = null; }); await a.tap(x, await a.rowAt(row)); return target(); };
+    a.check('a tap far left goes to house 0 on the main road (The Pemburys)', await poke(40, 0) === 0);
+    a.check('a tap far right goes to house 6 on the back road (Doctor Pye)', await poke(680, 0) === 6);
+    a.check('a tap just left of the middle goes to house 3 (Mr Quill, main road)', await poke(300, 1) === 3);
+    a.check('a tap just right of it goes to house 5 (The Mullens, back road)', await poke(420, 1) === 5);
+    a.check('a tap on a placeholder building is a road tap', await poke(40, 1) === null);
+    await a.game(() => { window.__bb.g.cat.target = null; });
+    await a.run(200);
+  } },
+  /* the sight line that crosses the block: eating at Mr Quill's with The
+     Mullens at the back window, which is a watcher from the other road */
+  'block-eating': { street: BLOCK, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET);
+    await a.game(() => { window.__bb.C.WAVES[0].react = 30; window.__bb.C.tapHouse(window.__bb.g, 3); });
+    await a.run(4200);
+    await a.game(() => { const g = window.__bb.g; g.eat.speed = 0;
+      g.houses[5].state = 'watch'; g.houses[5].t = 9999; g.houses[0].state = 'stir'; g.houses[0].t = 9999; });
+    await a.run(500);
+  } },
+  /* eight rows of street map on the results card, which is twice what any
+     other street asks of it */
+  'block-results': { street: BLOCK, setup: async a => {
+    await a.tap(360, a.DH * 0.6 + 54); await a.run(400);
+    await a.game(() => { const g = window.__bb.g; g.score = 1240; g.bowlsCleared = 6; g.bites = 34; g.perfects = 11;
+      g.misses = 3; g.timesCaught = 1; g.foxLosses = 1; g.bestMult = 2;
+      g.houses.forEach((h, i) => { if (i < 6) { h.cleared = true; h.bowl = null; } });
+      g.houses[6].angry = true; g.houses[6].bowl = null; g.racket = 1; });
     await a.run(9000);
   } },
   /* the title once Terrace Row is open: pick it, and the game is on it */

@@ -8,7 +8,7 @@
  *
  *   node tools/simulate.js              60 rounds per row
  *   node tools/simulate.js --rounds 200
- *   node tools/simulate.js --street terrace    (and that street's ladder)
+ *   node tools/simulate.js --street terrace   (any street id, and its ladder)
  *
  * There is no fixed length, so the table reports how long a night actually
  * ran and how much of the street the bot got, as well as what it scored.
@@ -27,7 +27,8 @@ const C = CORE;
 
 const arg = name => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : null; };
 const ROUNDS = parseInt(arg('--rounds') || '60', 10);
-const STREET = arg('--street') === 'terrace' ? C.TERRACE_STREET : C.MARROW_STREET;   // --street terrace
+/* --street <id>, any street in C.STREETS; Marrow Street by default */
+const STREET = (arg('--street') && C.streetById(arg('--street'))) || C.MARROW_STREET;
 
 const SKILLS = {
   novice: { sigma: 0.16, react: 0.65 },
@@ -63,7 +64,7 @@ function play(skill, style, seed, o = {}) {
       if (e) {
         const ns = e.h.neighbours.map(i => g.houses[i]);
         const danger = style === 'cautious' ? ns.some(n => n.state !== 'idle') : g.spot.heat > 0;
-        if (danger) { react += DT; if (react > skill.react) { C.tapRoad(g, g.street.roadX, g.cat.y); react = 0; aim = null; } }
+        if (danger) { react += DT; if (react > skill.react) { C.tapRoad(g, C.runOf(g, e.h).roadX, g.cat.y); react = 0; aim = null; } }
         else react = 0;
         if (g.eat && cool <= 0) {
           if (aim == null) aim = Math.min(1, Math.max(0, e.zone + e.zoneW / 2 + randn() * skill.sigma));

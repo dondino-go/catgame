@@ -218,10 +218,14 @@ wider street leaves: a building with nobody in it, which the rules never see.
 run and the cat's walk off. Those are set-pieces shot along one road, and the
 cameras have not been checked at width 2 either.
 
-**No street with two runs ships yet.** `tests/bent.js` and `tests/block.js`
-are fixtures, deliberately not in `C.STREETS`: the alley has no kerbs, the
-set-pieces above are unfixed, and a new street needs its own ranks, picker
-row, sight-line test and screenshots first.
+**Lamplighter Block is the first street with two of them** (`BLOCK_STREET`):
+a back lane, two roads with a block of houses between them and an alley at
+the bottom joining them. Eight bowls and twenty sight lines -- Marrow
+Street's exactly -- on purpose, so a night on a shaped street can be compared
+with a night on a straight one without the bowl count explaining the
+difference. It is `wip` and deliberately **not** gated behind an unlock while
+it is being played; give it one before it is anything but work in progress.
+`tests/bent.js` is still only a rules fixture.
 
 ## Where things stand
 
@@ -272,6 +276,13 @@ row, sight-line test and screenshots first.
   `tests/streets.js` for an odd-shaped one and `tests/bent.js` for one that
   bends), with its own sight-line test,
   golden playthroughs and screenshots, a preview, and a `/code-review`.
+- **Lamplighter Block (`block`) is in the picker, open and tagged `wip`**,
+  waiting on its first playtest. It is the first street with two roads. What
+  it still owes: an unlock, a look of its own (it borrows the default night
+  palette), kerbs on the alley, and the set-pieces listed under **Walking
+  routes** that still follow the main road. The results screen's street map
+  does not know about runs either -- it draws every house as left or right of
+  one road -- which reads fine but is not the street's shape.
 
 ## Layout
 
@@ -330,6 +341,14 @@ steps frames itself with `__bb.advance(seconds)`.
 ## Tests and what they guard
 
 - `tests/core.test.js`: the rules, directly against `src/core.js`.
+- `tests/block.test.js`: Lamplighter Block -- its sight lines, including the
+  one that crosses the block (Mr Quill and The Mullens back onto each other
+  from different roads), that the walk between the two roads goes by the alley
+  and never crosses the block, its ladder and wording, and that it is in the
+  picker. It guards hardest that the street has **the same eight bowls and
+  twenty sight lines as Marrow Street**: the moment that stops being true, a
+  night here measures the size rather than the shape, which is the one thing
+  the street exists to measure.
 - `tests/terrace.test.js`: Terrace Row's sight lines (every window sees exactly
   the bowls it should, pub included), the pub's rules, its ranks and wording,
   and street unlocks and switching. A new street gets its own file like this.
@@ -350,8 +369,10 @@ steps frames itself with `__bb.advance(seconds)`.
   across it: the first version checked the cat ended up near its own road and
   passed happily with the bug put back, because a cat setting off down the
   back road towards the alley is at much the same x as one stepping across it.
-- `tests/golden.test.js`: eight seeded Marrow rounds and four Terrace Row ones
-  must replay **identically**.
+- `tests/golden.test.js`: eight seeded Marrow rounds, four Terrace Row ones
+  and four Lamplighter Block ones must replay **identically**. The Block logs
+  pin the walk round a shaped street: route-finding changed by accident shows
+  up there as a night that goes differently.
   Any change that alters play fails it. If the change is intended, re-record
   with `--update` and say so in the commit message. During the refactor the
   logs must not change at all.
@@ -359,7 +380,10 @@ steps frames itself with `__bb.advance(seconds)`.
   with `tests/screens/*.png` (pixel differences over 48/255 fail). Eight are
   Marrow Street (two of them the title with the street picker); four are
   Terrace Row (`terrace-*`: the pub shut and open, the close-up, the results
-  map) and check that a tap on the pub walks to the road; two (`lane-*`) run on the odd-shaped test street in
+  map) and check that a tap on the pub walks to the road; three (`block-*`)
+  are Lamplighter Block, where the taps matter more than the picture -- every
+  one goes through the half-size scale before it reaches a house, and the two
+  middle strips are back to back with only a fence between them; two (`lane-*`) run on the odd-shaped test street in
   `tests/streets.js`, handed to the page as `window.__bbStreet` under `?debug`,
   and also check that taps land on the houses as drawn. Re-record with
   `--update` only for intended visual changes, and never re-record a Marrow
