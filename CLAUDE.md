@@ -247,8 +247,8 @@ row, sight-line test and screenshots first.
 - Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
   helpers read the page now, the street-row ones still restate `L.hud`), the
   screenshot flake (#21, mitigated by a retry, cause unknown -- but see the
-  resize lesson below for a lead), and art style feedback being collected
-  (#22). The old playtest checklist (#13) is closed: it was written for the
+  resize lesson below for a lead; note that a both-render failure can still be
+  a flake, and can also be a stale reference). The old playtest checklist (#13) is closed: it was written for the
   clock round and its numbers would mislead.
 - **The night is live.** The clock loop was kept beside it for a playtest and
   lost; the attention meter was the clear winner. Shipped to testers on 1 Nov
@@ -260,12 +260,14 @@ row, sight-line test and screenshots first.
 - Open on the night: fighting the fox off at a bowl (#30) -- the fox now races
   you for a bowl rather than eating out of it, which cost it most of its teeth
   -- and whether a dog pass in the endgame is unfair (#31).
-- **New streets are on hold** until the art style feedback (#22) lands: each
-  street is drawn by hand, so a restyle would mean redrawing them. The work
-  that isn't art carries on -- per-street events (#27), walking routes (#7),
-  and how the streets fit together (the picker, unlocks and transitions).
-  The rule that keeps this cheap: no `if (street.id === ...)` in the renderer.
-  Everything per-street comes from the street description, `look` included.
+- **New streets are no longer on hold.** They used to wait for the art style
+  feedback (#22) on the grounds that a restyle would mean redrawing every
+  hand-drawn street. #22 collected nothing in the eleven days it was open and
+  was closed; the hold it created was the only thing it was doing, and it was
+  holding up work that turned out not to touch the art at all.
+  The rule that keeps new streets cheap: no `if (street.id === ...)` in the
+  renderer. Everything per-street comes from the street description, `look`
+  included.
 - A new street is a description checked by `validateStreet` (see
   `tests/streets.js` for an odd-shaped one and `tests/bent.js` for one that
   bends), with its own sight-line test,
@@ -405,10 +407,19 @@ steps frames itself with `__bb.advance(seconds)`.
 - **If you do run `--update`, `git status tests/screens/` afterwards** and
   check every changed file is one you meant to change.
 - **Known flaky, do not re-record on a single failure** (#21): historically
-  `results` (53 pixels), `eating-seen` (8) and `title` (28); currently seen on
-  `lane-street` (2) and `title-locked` (30). Rerun before believing a failure,
-  and compare `tests/screens/out/` with the reference. A real change fails both
-  renders *and* keeps failing on the next run.
+  `results` (53 pixels), `eating-seen` (8), `title` (28) and `title-locked`
+  (30). Rerun before believing a failure, and compare `tests/screens/out/`
+  with the reference.
+- **Failing both renders is not proof of a real change.** That used to be the
+  rule here and it is wrong twice over. `lane-street` failed both renders on
+  every run for a whole session, including on an unmodified tree at
+  `5edf3cf` -- it was a **stale reference**, not a flake, and re-recording
+  that one PNG fixed it. In the same session `lane-eating` failed both
+  renders by 18 pixels once and passed clean on the next two runs, so the
+  retry does not always catch the flake either. The test that tells them
+  apart is **does it still fail on a fresh run**, and for a persistent one,
+  **does it fail with your changes stashed**. If it fails without your work in
+  the tree, it is not your work.
 
 ## Conventions
 
