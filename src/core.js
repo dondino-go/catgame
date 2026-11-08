@@ -937,9 +937,25 @@ function updateFox(g, dt) {
 }
 
 /* ---------- the owner arrives ---------- */
+
+/* A full attention meter means the owner has found you, whatever else happened
+   on the same tick. Three places end a night -- the drift in `play`, a catch
+   that has just played out, and the street settling -- and the last two each
+   once missed this and let the cat stroll off with the bar at 1.00. So the
+   meter is asked here, and the first thing any of them does is ask. */
+const ownerHere = g => !g.practice && g.racket >= 1;
+function fetchOwner(g) { g.ending = 'owner'; beginPickup(g); }
+
+/* checkSpotted only runs in `play`, so a RUN bar half drained when the scene
+   changes would sit frozen on screen through whatever follows: it is drawn from
+   g.spot without looking at g.eat, and the close-up eases out rather than
+   cutting. Every way out of `play` clears it. */
+function clearSpot(g) { g.spot.heat = 0; g.spot.by = null; }
+
 function beginPickup(g) {
   stopEating(g);
   g.cat.target = null;
+  clearSpot(g);
   g.pickup = { t: 0, side: g.cat.x > g.street.roadX ? 1 : 0 };
   g.scene = 'pickup';
   emit(g, 'call', {});
@@ -950,10 +966,7 @@ function beginPickup(g) {
 function beginLeave(g) {
   stopEating(g);
   g.cat.target = null;
-  /* checkSpotted only runs in `play`, so a half-drained RUN bar from the last
-     bite would sit frozen on screen for the whole send-off. It never showed
-     before because the ending cut away on the same frame. */
-  g.spot.heat = 0; g.spot.by = null;
+  clearSpot(g);              /* it never showed before because the ending cut away on the same frame */
   if (!g.ending) g.ending = g.houses.every(h => h.venue || (h.cleared && !h.angry)) ? 'cleared' : 'done';
   const w = g.street.walk.y;
   /* the anchor the turn is made around, so it starts and finishes on the spot */
@@ -1058,7 +1071,7 @@ function update(g, dt) {
          the bar sitting at 1.00 and the owner never arriving. If they have
          found you, that is how the night ended, whatever else happened on the
          same tick. */
-      if (!g.practice && g.racket >= 1) { g.ending = 'owner'; beginPickup(g); }
+      if (ownerHere(g)) fetchOwner(g);
       else if (!g.practice && g.houses.every(h => isSettled(g, h))) beginLeave(g);
       else g.scene = 'play';
     }
@@ -1080,7 +1093,7 @@ function update(g, dt) {
      wants a final decision, give the endings different outcomes first. */
   if (!g.practice) {
     g.racket = Math.min(1, g.racket + RACKET_DRIFT * dt);
-    if (g.racket >= 1) { g.ending = 'owner'; beginPickup(g); return; }
+    if (ownerHere(g)) { fetchOwner(g); return; }
   }
 
   // wave changeover
@@ -1100,8 +1113,14 @@ function update(g, dt) {
   checkSpotted(g, dt);
 
   /* Only from open play: if this tick's catch took the last friendly house,
-     the 'caught' scene shows SPOTTED! first and ends the round itself. */
-  if (g.scene === 'play' && !g.practice && g.houses.every(h => isSettled(g, h))) beginLeave(g);
+     the 'caught' scene shows SPOTTED! first and ends the round itself. The
+     meter is asked first here too: today nothing can fill it on the tick the
+     last bowl is finished (it only rises from being seen while eating, and a
+     finished bowl is not being eaten), but that is a fact about checkSpotted,
+     not a rule, and the last time it was assumed the owner never came. */
+  if (g.scene === 'play' && !g.practice && g.houses.every(h => isSettled(g, h))) {
+    if (ownerHere(g)) fetchOwner(g); else beginLeave(g);
+  }
 }
 
 return {

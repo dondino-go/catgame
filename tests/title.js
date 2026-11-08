@@ -59,7 +59,7 @@ function boxes(r) {
     } catch (e) {}
   });
   const p = await ctx.newPage();
-  await p.goto('file://' + path.join(ROOT, 'mobile.html') + '?debug&manual');
+  await p.goto('file://' + path.join(ROOT, 'index.html') + '?debug&manual');
   await p.evaluate(() => window.__bb.advance(0.5));
 
   const streets = await p.evaluate(() => window.__bb.C.STREETS.length);

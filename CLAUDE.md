@@ -8,9 +8,9 @@ build step, no dependencies (Playwright is used by one optional test only).
 
 | Branch | What it is |
 |---|---|
-| `main` | **The live build and the canonical source.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/mobile.html>. Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
+| `main` | **The live build and the canonical source.** GitHub Pages serves this branch, and testers have it installed: <https://dondino-go.github.io/catgame/> (installed apps still launch `mobile.html`, see below). Every push here reaches their phones: game changes go through the preview first (see Preview before shipping). |
 | `claude/new-streets` | **Where work is built** (new streets, minigames, the endgame). Branched from `main`; merged back into `main` after a preview and, where it applies, a `/code-review`. |
-| `legacy-desktop` | The original desktop game (`index.html`) and its three suites, exactly as `main` held them before the swap. Kept until #10 retires them. |
+| `legacy-desktop` | The original desktop game (`index.html`) and its three suites, exactly as `main` held them before the swap. Retired from `main` by #10; kept here for reference. |
 
 Retired -- **don't commit to these**: `claude/mobile-redesign` (the old live
 branch; Pages moved to `main`), `claude/slow-loop` (the night) and
@@ -19,10 +19,15 @@ branch; Pages moved to `main`), `claude/slow-loop` (the night) and
 Fixes from playtest feedback go on `main` (through the preview), then get
 merged into `claude/new-streets`, not the other way round.
 
-`index.html` on `main` is still the legacy desktop game and `mobile.html` is
-the mobile one; the swap is #10. The installed app's `start_url` is
-`mobile.html`, so moving Pages from one branch to another changed nothing at
-that address.
+**`index.html` is the mobile game** (Pages serves it at the root). **`mobile.html`
+is the same page again, kept on purpose and never to be deleted as a duplicate:**
+an iPhone stores the address it was added from and never updates it, so every
+install made before #10 still launches `mobile.html`, and would open a 404
+without it. `start_url` in the manifest is deliberately still `./mobile.html`:
+changing it without an `id` makes Chrome treat the app as a different one, and
+the phones that matter cannot be updated from here. `tests/entry.test.js` fails
+if the two pages differ or either goes missing. When you change the page, change
+both: `cp index.html mobile.html`.
 
 ## Git workflow
 
@@ -141,16 +146,17 @@ then the button earns itself.
   reads it) of the data-driven refactor are done, reviewed and live on
   `main`. Marrow Street plays and looks exactly as before.
 - Terrace Row, the first new street (#8), is live on `main`
-  and tagged "work in progress" in the picker for testers (`wip: true` on the
-  street; remove it when the street is done). Five brick terrace houses on a
+  and still tagged "work in progress" in the picker (`wip: true` on the street;
+  removing it is a game change, so it goes through the preview -- the street is
+  done and playtested, the tag just has not been taken off). Five brick terrace houses on a
   narrow road at a warm evening, and a pub opposite that watches every bowl
   from wave 3 (a `venue` house: no bowl, watch only) with a bus stop and a beer
   garden beside it (`scenery`). It has its own ranks, wave wording, picker row,
   best score and unlock (Bin Lid Regular on Marrow Street: eased for
   playtesting from the second rung to the first, and now 600 rather than 700
   since the ladders were re-derived for the night). Its owed
-  `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 stays open
-  until it is playtested.
+  `/code-review` is now done (6 findings; 4 fixed, 2 filed). #8 is closed: it was
+  playtested by the owner and by the iPhone tester.
   Next: Phase 3 walking routes (#7), then more streets (#12) and minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
 - Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
@@ -192,13 +198,21 @@ then the button earns itself.
   from Marrow Street's shape. Holds
   presentation-only state (eased glows, floaters, the practice night, hints).
 - `src/version.js`: **generated** build stamp. Never edit by hand.
-- `mobile.html`, `manifest.webmanifest`, `sw.js`, `icons/`: the installable
-  app. `sw.js` is network first with an offline fallback.
-- `index.html`: the legacy desktop game, kept until the mobile one replaces it.
+- `index.html` (and its copy `mobile.html`), `manifest.webmanifest`, `sw.js`,
+  `icons/`: the installable app. `sw.js` is network first with an offline
+  fallback, and precaches the bare address, `index.html` and `mobile.html`
+  separately because its cache is keyed by URL.
 - `tools/stamp-build.sh`: writes `src/version.js` (time and branch).
 - `tools/preview.html`: the page the Claude artifact preview is published from.
 - `tools/simulate.js`: the balance simulator (bots of four skill levels, careful
   or greedy). Re-run after any scoring change.
+- `tools/street-gen.js`, `street-lab.js`, `planning-lab.js`, `fed-sleep.js`,
+  `street-gallery.js`, `street-lab-play.html`: prototypes from the street-a-day
+  experiment (#34, closed). A street generator that derives `neighbours` from
+  geometry, bot labs that measure how much a street or a rule changes a night,
+  and a playable page. Nothing in `src/` uses them. They only know straight
+  roads, so they are a starting point for #7 and the roguelike run (#37), not a
+  finished tool.
 
 ## Commands
 
@@ -216,7 +230,7 @@ sh tools/stamp-build.sh           # stamp the build by hand
 To play it over HTTP (needed for the service worker and install), serve the
 repo's parent directory so the path matches GitHub Pages:
 `python3 -m http.server 8123` from the parent, then open
-`http://127.0.0.1:8123/catgame/mobile.html`.
+`http://127.0.0.1:8123/catgame/`.
 
 URL flags: `?debug` exposes `window.__bb` (`g`, `C`, `tut()`, `advance()`...)
 for setting up scenes by hand; `?manual` stops the animation timer so a test
@@ -263,8 +277,14 @@ steps frames itself with `__bb.advance(seconds)`.
   check is skipped on `file://`. It stalls the stamp request, then mends it,
   and insists the game asks again and reloads. A stalled fetch used to leave
   the single-flight guard up for the life of the page.
-- `behaviour`, `geometry`, `layout` test the **legacy `index.html`** only.
-  They will be retired when the mobile game replaces it.
+- `tests/entry.test.js`: the two ways into the game and what an installed app
+  depends on -- `index.html` is the mobile game, `mobile.html` still exists and
+  is identical to it, `start_url` and every file the service worker precaches
+  and the update check refreshes exist, and both entry pages are in both lists.
+  Remove `mobile.html` and it fails, which is the point.
+- The legacy desktop game's suites (`behaviour`, `geometry`, `layout`, `balance`)
+  and the stubbed-browser half of `tests/harness.js` were retired with it in #10;
+  `harness.js` is now only the shared `ok()` / `report()`.
 
 ## Screenshot goldens: how to re-record
 
@@ -374,7 +394,13 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `b5ed7b3` (the night's second pass, `e0b35c6..b5ed7b3`, high,
+last reviewed: `1e2eddb` (everything since the night's second pass, including
+two commits that had shipped unreviewed, `b5ed7b3..1e2eddb`, high, 10 findings;
+9 fixed in `8320a8b` -- a RUN bar frozen through the owner's pickup, the
+full-meter rule living in three places, a rank test that guarded nothing, an
+update test with a fixed sleep and a silent skip, the bot loop copied into the
+labs, and a stale install description -- and 1 filed as #38).
+before that: `b5ed7b3` (the night's second pass, `e0b35c6..b5ed7b3`, high,
 4 findings; all 4 fixed in `0954268` -- a results line that clipped at 719 of
 720 units, the two ranks disagreeing, a frozen RUN bar through the send-off,
 and a stale threshold in a comment).

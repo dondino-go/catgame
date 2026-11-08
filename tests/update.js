@@ -62,7 +62,7 @@ const STUB = () => {
 
 (async () => {
   const server = await serve();
-  const url = 'http://127.0.0.1:' + server.address().port + '/mobile.html?debug&manual';
+  const url = 'http://127.0.0.1:' + server.address().port + '/index.html?debug&manual';
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   await ctx.addInitScript(STUB);
@@ -86,12 +86,15 @@ const STUB = () => {
   await p.waitForTimeout(500);
   check('checks queue behind the one in flight', await asked() === during, (await asked()) + ' asked');
 
-  /* 3. ...but the queue lets go, so a stalled call can't disable it for good */
-  await p.waitForTimeout(9000);                 /* past CHECK_TIMEOUT */
-  /* a build without the escape hatch has no such handle: the behaviour check
-     below is the one that matters, and it fails there either way */
-  const held = await p.evaluate(() => typeof window.__bb.checking === 'function' ? window.__bb.checking() : null);
-  if (held !== null) check('the guard clears after a stalled call', !held);
+  /* 3. ...but the queue lets go, so a stalled call can't disable it for good.
+     Wait past the game's own timeout, asked of the page rather than restated
+     here, and then ask the guard directly: a missing hook is a failure, not a
+     check that quietly does not run. */
+  const hooks = await p.evaluate(() => ({ timeout: window.__bb.checkTimeout, checking: typeof window.__bb.checking }));
+  check('the page exposes the timeout and the guard to this test', typeof hooks.timeout === 'number' && hooks.checking === 'function', JSON.stringify(hooks));
+  await p.waitForTimeout((hooks.timeout || 8000) + 1000);
+  const held = await p.evaluate(() => typeof window.__bb.checking === 'function' ? window.__bb.checking() : true);
+  check('the guard clears after a stalled call', !held);
   await p.evaluate(() => { window.__mode = 'ok'; });
   await fire();
   await p.waitForTimeout(700);

@@ -1,7 +1,7 @@
 /*
  * Reference screenshots: the safety net for the renderer.
  *
- * Renders the key screens of mobile.html in headless Chromium and compares
+ * Renders the key screens of index.html in headless Chromium and compares
  * them with tests/screens/*.png. To make that repeatable the page runs in
  * ?manual mode, where the test steps frames itself (exactly 1/60s each)
  * instead of the browser's animation timer; Math.random is seeded, the game
@@ -26,7 +26,7 @@ const ROOT = path.join(__dirname, '..');
 const REF = path.join(__dirname, 'screens');
 const OUT = path.join(REF, 'out');
 const UPDATE = process.argv.includes('--update');
-const URL = 'file://' + path.join(ROOT, 'mobile.html') + '?debug&manual';
+const URL = 'file://' + path.join(ROOT, 'index.html') + '?debug&manual';
 const NOISE = 48;
 const VW = 390, VH = 844;
 

@@ -22,7 +22,8 @@
  */
 'use strict';
 const path = require('path');
-const C = require(path.join(__dirname, '..', 'src', 'core.js'));
+const CORE = require(path.join(__dirname, '..', 'src', 'core.js'));
+const C = CORE;
 
 const arg = name => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : null; };
 const ROUNDS = parseInt(arg('--rounds') || '60', 10);
@@ -35,18 +36,28 @@ const SKILLS = {
   expert: { sigma: 0.025, react: 0.25 },
 };
 
-function play(skill, style, seed) {
+/* `o` is for the labs that borrow this bot (tools/street-lab.js, planning-lab.js)
+   so there is one bot to retune, not three: o.street and o.C are the street and
+   the rules to play on (the planning lab hands in a patched copy of the rules),
+   and o.pick(g, C, pool) chooses which quiet bowl to go for. The defaults are
+   exactly what this file always did. */
+function play(skill, style, seed, o = {}) {
+  const C = o.C || CORE, street = o.street || STREET;
   let a = seed >>> 0;
   const rng = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
   const randn = () => Math.sqrt(-2 * Math.log(rng() + 1e-9)) * Math.cos(6.2832 * rng());
-  const g = C.create({ rng, street: STREET }); C.start(g);
+  const g = C.create({ rng, street }); C.start(g);
   const DT = 1 / 60;
   let react = 0, aim = null, cool = 0;
+  /* What clearing the street cannot say (every bot does): how much of the night
+     was spent with nowhere safe to go, and how near the owner came. */
+  let stuck = 0, peak = 0;
   /* No clock, so this needs its own stop. It has to sit above the loop's own
      backstop -- the drift takes about 1/RACKET_DRIFT seconds and the owner
      then takes PICKUP_SECS -- or the guard becomes what ends the night. */
   let guard = 60 * (1 / C.NIGHT.RACKET_DRIFT + C.PICKUP_SECS + 60);
   while (g.scene !== 'over' && guard-- > 0) {
+    if (g.racket > peak) peak = g.racket;
     if (g.scene === 'play') {
       const e = g.eat;
       if (e) {
@@ -63,9 +74,10 @@ function play(skill, style, seed) {
         const quiet = g.houses.filter(h => h.bowl && h.neighbours.every(i => g.houses[i].state === 'idle'));
         const pool = quiet.length ? quiet : (style === 'cautious' ? [] : g.houses.filter(h => h.bowl));
         if (pool.length) {
-          pool.sort((p, q) => Math.abs(C.bowlSpot(p).y - g.cat.y) - Math.abs(C.bowlSpot(q).y - g.cat.y));
-          C.tapHouse(g, pool[0].id);
-        }
+          const pickH = o.pick ? o.pick(g, C, pool)
+            : pool.sort((p, q) => Math.abs(C.bowlSpot(p).y - g.cat.y) - Math.abs(C.bowlSpot(q).y - g.cat.y))[0];
+          C.tapHouse(g, pickH.id);
+        } else stuck += DT;
       }
     }
     cool -= DT;
@@ -73,43 +85,49 @@ function play(skill, style, seed) {
   }
   const pr = C.progress(g);
   return { score: g.score, kept: g.houses.filter(h => !h.venue && !h.angry).length,
-           mult: g.bestMult, rank: C.rankFor(g.score, STREET),
-           cleared: pr.cleared, total: pr.total, ending: g.ending, secs: g.elapsed };
+           mult: g.bestMult, rank: C.rankFor(g.score, street),
+           cleared: pr.cleared, total: pr.total, ending: g.ending, secs: g.elapsed,
+           caught: g.timesCaught || 0, stuck, peak };
 }
 
-const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
-const short = name => name.split(' ').map(w => w[0]).join('');      /* "Bowl Bandit" -> "BB" */
-console.log('Balance simulation, ' + ROUNDS + ' rounds per row\n');
-console.log('Street: ' + STREET.name + '\n');
-console.log('skill   style     score p10 / p50 / p90   got     night p50   how it ended');
-console.log('        ranks (' + C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
-for (const [k, s] of Object.entries(SKILLS)) {
-  for (const style of ['cautious', 'greedy']) {
-    const r = [];
-    for (let i = 1; i <= ROUNDS; i++) r.push(play(s, style, i * 7919 + 13));
-    const sc = r.map(x => x.score).sort((x, y) => x - y);
-    const avg = f => (r.reduce((n, x) => n + x[f], 0) / r.length).toFixed(1);
-    const secs = r.map(x => x.secs).sort((x, y) => x - y);
-    const endings = ['cleared', 'done', 'owner'].map(e => {
-      const n = r.filter(x => x.ending === e).length;
-      return n ? e + ' ' + Math.round(100 * n / r.length) + '%' : null;
-    }).filter(Boolean).join(', ');
-    /* CLAUDE.md says to scale a new street's ladder from this, so the rank
-       spread has to be in the output, not just the raw scores. */
-    const ranks = C.ranksOf(STREET).map(([, name]) => {
-      const n = r.filter(x => x.rank === name).length;
-      return n ? short(name) + ' ' + Math.round(100 * n / r.length) + '%' : null;
-    }).filter(Boolean).join(', ');
-    console.log(k.padEnd(8) + style.padEnd(10) +
-                [pct(sc, 0.1), pct(sc, 0.5), pct(sc, 0.9)].join(' / ').padEnd(24) +
-                (avg('cleared') + '/' + r[0].total).padEnd(8) +
-                (pct(secs, 0.5).toFixed(0) + 's').padEnd(12) + endings);
-    console.log(' '.repeat(18) + 'ranks: ' + ranks);
+const SKILL_SET = SKILLS;
+if (require.main === module) {
+  const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
+  const short = name => name.split(' ').map(w => w[0]).join('');      /* "Bowl Bandit" -> "BB" */
+  console.log('Balance simulation, ' + ROUNDS + ' rounds per row\n');
+  console.log('Street: ' + STREET.name + '\n');
+  console.log('skill   style     score p10 / p50 / p90   got     night p50   how it ended');
+  console.log('        ranks (' + C.ranksOf(STREET).map(r => short(r[1]) + ' ' + r[0] + '+').join(', ') + ')');
+  for (const [k, s] of Object.entries(SKILLS)) {
+    for (const style of ['cautious', 'greedy']) {
+      const r = [];
+      for (let i = 1; i <= ROUNDS; i++) r.push(play(s, style, i * 7919 + 13));
+      const sc = r.map(x => x.score).sort((x, y) => x - y);
+      const avg = f => (r.reduce((n, x) => n + x[f], 0) / r.length).toFixed(1);
+      const secs = r.map(x => x.secs).sort((x, y) => x - y);
+      const endings = ['cleared', 'done', 'owner'].map(e => {
+        const n = r.filter(x => x.ending === e).length;
+        return n ? e + ' ' + Math.round(100 * n / r.length) + '%' : null;
+      }).filter(Boolean).join(', ');
+      /* CLAUDE.md says to scale a new street's ladder from this, so the rank
+         spread has to be in the output, not just the raw scores. */
+      const ranks = C.ranksOf(STREET).map(([, name]) => {
+        const n = r.filter(x => x.rank === name).length;
+        return n ? short(name) + ' ' + Math.round(100 * n / r.length) + '%' : null;
+      }).filter(Boolean).join(', ');
+      console.log(k.padEnd(8) + style.padEnd(10) +
+                  [pct(sc, 0.1), pct(sc, 0.5), pct(sc, 0.9)].join(' / ').padEnd(24) +
+                  (avg('cleared') + '/' + r[0].total).padEnd(8) +
+                  (pct(secs, 0.5).toFixed(0) + 's').padEnd(12) + endings);
+      console.log(' '.repeat(18) + 'ranks: ' + ranks);
+    }
   }
+  console.log('\nWhat good looks like: cautious beats greedy at every skill level, on what it');
+  console.log('gets as well as on what it scores, and a careless night is the one the owner');
+  console.log('ends. Night length should follow the street\'s size, not a constant. Bots see');
+  console.log('every window at once, so they get far more of the street than a real player');
+  console.log('does -- a tester not reaching the last bowl is the sim being optimistic, not');
+  console.log('the night being too easy.');
 }
-console.log('\nWhat good looks like: cautious beats greedy at every skill level, on what it');
-console.log('gets as well as on what it scores, and a careless night is the one the owner');
-console.log('ends. Night length should follow the street\'s size, not a constant. Bots see');
-console.log('every window at once, so they get far more of the street than a real player');
-console.log('does -- a tester not reaching the last bowl is the sim being optimistic, not');
-console.log('the night being too easy.');
+
+module.exports = { play, SKILLS: SKILL_SET };
