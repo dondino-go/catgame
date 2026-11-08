@@ -168,6 +168,13 @@ The cat and the fox follow routes; the fox also judges which bowl is nearest by
 for "walk straight at it", which is the answer everywhere on a one-run street
 and is what the callers lean on to stay bit-identical.
 
+The fox's **mooch** -- what it does with nothing to rob -- paces the line
+`street.fox` names, in a straight line, easing x towards it. That is fine on
+one run of road and was off walkable ground 0.22s later up a cul-de-sac, so it
+now walks back to the road by route first. The line itself must be walkable
+end to end on **one** stretch, which `validateStreet` checks: the mooch cannot
+turn a corner, so pointing it across a gap is a street bug, not a fox bug.
+
 **A link carries `open`, and nothing closes one.** It is there so that a gate
 -- "clearing this bowl opens that path" -- is a flag the search already reads
 rather than a rebuild of the section. When something does close a path, the
@@ -176,10 +183,16 @@ straight line rather than leaving a character stuck on the spot, so a closed
 gate would let the cat walk through a house. Gating means `tapHouse` declining
 an unreachable bowl, not just flipping the flag.
 
-**Not routed yet, and tied to the road line on purpose:** the dog's run, the
-cat's walk off at the end of a night, and the owner's approach (which is drawn
+**Not routed, and tied to the road line on purpose:** the dog's run, the cat's
+walk off at the end of a night, and the owner's approach (which is drawn
 entirely in screen space in `pickupPlan`). All three are set-pieces shot along
 a straight road, and they move to routes when the renderer can draw a bend.
+
+**Houses and scenery belong to a run of road, not just to a side.** `on` names
+it and defaults to the run the bowl stands on (scenery: the first run). Every
+rule about what may sit where -- the pavement a bowl stands on, two tap strips
+overlapping, scenery sitting on a house -- is measured against that run, or
+things round a corner from each other read as on top of each other.
 
 **The renderer still draws one straight road.** `drawStreet`, `houseRect`,
 `bodyRect`, `fenceX`, the lamps, the house hit test and both cameras all key
@@ -456,7 +469,14 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `1e2eddb` (everything since the night's second pass, including
+last reviewed: `82ed815` (walking routes phase 3, `5edf3cf..82ed815`, high,
+3 findings; all 3 fixed in the commit after it -- validateStreet throwing a
+TypeError on a misshapen `paths` instead of reporting it, the fox's mooch
+walking through the houses up a cul-de-sac, and the scenery check never
+learning about runs of road, which refused a legal street. A guard that the
+fox's patrol line is walkable end to end came with them: nothing checked it,
+which is how the mooch bug got in.)
+before that: `1e2eddb` (everything since the night's second pass, including
 two commits that had shipped unreviewed, `b5ed7b3..1e2eddb`, high, 10 findings;
 9 fixed in `8320a8b` -- a RUN bar frozen through the owner's pickup, the
 full-meter rule living in three places, a rank test that guarded nothing, an

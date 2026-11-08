@@ -179,8 +179,21 @@ deepFreeze(MARROW_STREET); deepFreeze(TERRACE_STREET);   // shared by every defa
  * `walk: { x, y }` is the original single-rectangle shape and still works:
  * it reads as one stretch called 'main'.
  */
+/* Everything downstream of this -- buildRoutes and the geometry half of the
+   validator -- walks the list it returns, so it hands back only stretches that
+   are actually rectangles. A description that is the wrong shape is reported
+   by validateStreet from the raw `st.paths`, and must not throw on the way:
+   the validator's whole contract is that it returns the problems rather than
+   raising on the first one. */
+const isRect = s => !!s && typeof s === 'object' &&
+  Array.isArray(s.x) && s.x.length === 2 && typeof s.x[0] === 'number' && typeof s.x[1] === 'number' &&
+  Array.isArray(s.y) && s.y.length === 2 && typeof s.y[0] === 'number' && typeof s.y[1] === 'number';
 function pathsOf(st) {
-  if (st && st.paths) return st.paths;
+  const p = st && st.paths;
+  if (p && typeof p === 'object') return {
+    stretches: (Array.isArray(p.stretches) ? p.stretches : []).filter(isRect),
+    links: Array.isArray(p.links) ? p.links.filter(l => l && typeof l === 'object') : [],
+  };
   const w = st && st.walk;
   if (!w || !w.x || !w.y) return { stretches: [], links: [] };
   return { stretches: [{ id: 'main', roadX: st.roadX, x: w.x, y: w.y }], links: [] };
@@ -218,10 +231,13 @@ function buildRoutes(street) {
   /* which links touch each stretch, so the search can step junction to junction */
   const at = stretches.map(() => []);
   links.forEach((l, i) => { at[l.a].push(i); at[l.b].push(i); });
-  const bounds = {
+  /* A street with no usable ground is one the validator is about to refuse;
+     give it a bounds of zero rather than the Infinities a min over nothing
+     returns, so a caller reading it gets a number. */
+  const bounds = stretches.length ? {
     x: [Math.min(...stretches.map(s => s.x[0])), Math.max(...stretches.map(s => s.x[1]))],
     y: [Math.min(...stretches.map(s => s.y[0])), Math.max(...stretches.map(s => s.y[1]))],
-  };
+  } : { x: [0, 0], y: [0, 0] };
   /* `single` is not an optimisation. It is the promise that a street which is
      one run of road behaves exactly as it did before routes existed. */
   return { stretches, links, at, bounds, single: stretches.length === 1 };
@@ -418,7 +434,12 @@ function validateStreet(st) {
   const hs = st.houses;
   if (!Array.isArray(hs) || !hs.length) { bad.push('houses must be a non-empty list'); return bad; }
   /* scenery: things to look at beside the road that nobody can raid; each takes
-     one row on one side, and must not sit on a house */
+     one row on one side of one run of road, and must not sit on a house.
+     `on` names the run, as it does on a house, and defaults to the first --
+     which is the only one on every street that has shipped. Without the run
+     in the test, a bus stop was reported as sitting on a house that is round
+     a corner from it, and a legal street was refused. */
+  const firstRun = P.stretches.filter(s => num(s.roadX))[0] || null;
   if (st.scenery !== undefined) {
     if (!Array.isArray(st.scenery)) bad.push('scenery must be a list');
     else st.scenery.forEach((sc, i) => {
@@ -426,8 +447,10 @@ function validateStreet(st) {
       if (!sc || typeof sc.kind !== 'string' || !sc.kind) { bad.push(at + ': needs a kind'); return; }
       if (sc.side !== -1 && sc.side !== 1) bad.push(at + ': side must be -1 or 1');
       if (!(Number.isInteger(sc.row) && sc.row >= 0 && sc.row < st.rows)) { bad.push(at + ': row must be a row of the street'); return; }
+      if (sc.on !== undefined && !P.stretches.some(s => s.id === sc.on)) { bad.push(at + ': on names no stretch of this street'); return; }
+      const scRun = sc.on !== undefined ? P.stretches.find(s => s.id === sc.on) : firstRun;
       hs.forEach((h, id) => {
-        if (!h || h.side !== sc.side || !num(h.row)) return;
+        if (!h || h.side !== sc.side || !num(h.row) || runOf(h) !== scRun) return;
         const span = h.venue && h.venue.span || 1;
         if (sc.row < h.row + span && sc.row + 1 > h.row) bad.push(at + ' sits on house ' + id + ' (' + h.name + ')');
       });
@@ -499,6 +522,12 @@ function validateStreet(st) {
   if (!(pt && pair(pt.y) && num(pt.speed) && pt.speed > 0)) bad.push('fox.patrol needs a y range and a speed');
   else if (ends(st.fox) && (pt.y[0] < Math.min(...st.fox.ends) || pt.y[1] > Math.max(...st.fox.ends)))
     bad.push('fox.patrol.y must lie between the fox\'s ends');
+  /* The mooch runs up and down this line in a straight line, so the line has
+     to be on one piece of walkable ground from end to end -- otherwise the
+     fox is being told to pace through somebody's front room. */
+  if (pt && pair(pt.y) && num(st.fox.x) && P.stretches.length &&
+      !P.stretches.some(s => pair(s.x) && pair(s.y) && rectHas(s, st.fox.x, pt.y[0]) && rectHas(s, st.fox.x, pt.y[1])))
+    bad.push('fox.patrol must lie end to end on one stretch of walkable ground: the fox moochs up and down it in a straight line');
   return bad;
 }
 
@@ -1167,6 +1196,21 @@ function updateFox(g, dt) {
   if (!f.target || !f.target.bowl || foxBarred(g, f.target)) { foxPickTarget(g); f.eatT = 0; }
   if (!f.target) {             // nothing to rob -- mooch up and down the road
     const run = g.street.fox;
+    /* The mooch is up and down the line the street's fox names, and it gets
+       there by easing x towards it. On a street that bends, a fox left up a
+       cul-de-sac cannot ease towards that line without crossing the houses in
+       between (it was off walkable ground 0.22s later), so it walks back to
+       the road properly first. On a street with one run of road there is never
+       a corner between the two, routeNext says so, and the mooch below is
+       exactly what it always was. */
+    const home = { x: run.x, y: clamp(f.y, run.patrol.y[0], run.patrol.y[1]) };
+    const wp = routeNext(g.routes, f.x, f.y, home.x, home.y);
+    if (wp) {
+      const d = dist(f.x, f.y, wp.x, wp.y), step = Math.min(d, FOX_SPEED * dt);
+      f.x += ((wp.x - f.x) / d) * step;
+      f.y += ((wp.y - f.y) / d) * step;
+      return;
+    }
     f.y += f.patrol * run.patrol.speed * dt;
     if (f.y < run.patrol.y[0] || f.y > run.patrol.y[1]) f.patrol *= -1;
     f.x = lerp(f.x, run.x, dt * 2);

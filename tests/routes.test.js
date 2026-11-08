@@ -229,4 +229,92 @@ console.log('\n=== THE VALIDATOR KNOWS WHAT A ROUTE MAP MUST BE ===');
      '... but two on the same run at the same row still do');
 }
 
+console.log('\n=== A BAD DESCRIPTION IS REPORTED, NOT THROWN ===');
+{
+  /* validateStreet's whole contract is that it hands back the problems, so
+     create() can say why a street was refused. It used to walk the stretch
+     list straight after saying the list was missing, and died with a
+     TypeError on anything that was not the shape it expected. */
+  const shapes = [
+    ['paths with no stretches',   { links: [] }],
+    ['paths that is not an object', 'nope'],
+    ['stretches that is not a list', { stretches: 7 }],
+    ['a stretch that is not a rectangle', { stretches: [{ id: 'a' }, { id: 'b', x: 1, y: 2 }] }],
+    ['a link that is not an object', { stretches: [{ id: 'a', x: [0.3, 0.7], y: [0, 1] }], links: [null, 3] }],
+  ];
+  let threw = null, silent = null;
+  for (const [what, paths] of shapes) {
+    const st = JSON.parse(JSON.stringify(BENT));
+    st.paths = paths;
+    try {
+      const said = C.validateStreet(st);
+      if (!said.length) silent = silent || what;
+    } catch (e) { threw = threw || what + ' (' + e.constructor.name + ': ' + e.message + ')'; }
+    try { C.buildRoutes(st); } catch (e) { threw = threw || 'buildRoutes on ' + what + ' (' + e.message + ')'; }
+  }
+  ok(!threw, 'a misshapen paths is reported rather than thrown on' + (threw ? ': ' + threw : ''));
+  ok(!silent, 'and none of them is waved through' + (silent ? ': ' + silent : ''));
+  let refused = '';
+  try { C.create({ street: Object.assign(JSON.parse(JSON.stringify(BENT)), { paths: { links: [] } }) }); }
+  catch (e) { refused = e.message; }
+  ok(/invalid street "Bent Lane".*stretches/.test(refused), 'create() refuses it and says what was wrong with it');
+}
+
+console.log('\n=== THE FOX MOOCHES ON THE ROAD, NOT THROUGH THE HOUSES ===');
+{
+  /* With nothing to rob the fox paces the line street.fox names, easing x
+     towards it. Up the cul-de-sac that line cannot be eased towards without
+     crossing the block, and the fox was off walkable ground 0.22s later.
+     The street is left with nothing worth robbing but the night still
+     running, which is the only state this happens in. */
+  const g = fresh(BENT, 11);
+  C.lockWave(g, 2);
+  C.update(g, DT); C.drainEvents(g);
+  g.houses.forEach(h => { h.bowl = null; h.cleared = true; });
+  g.houses[0].cleared = false; g.houses[0].shut = 999;   /* shut, not settled: the night goes on */
+  g.fox.x = WREN.x; g.fox.y = 2.0; g.fox.target = null; g.fox.rest = 0;
+
+  let off = null, home = false;
+  for (let i = 0; i < 60 * 20; i++) {
+    quiet(g);
+    C.update(g, DT); C.drainEvents(g);
+    if (!g.fox) continue;
+    if (!onGround(g.routes, g.fox.x, g.fox.y) && !off) off = { x: g.fox.x, y: g.fox.y, t: i / 60 };
+    if (Math.abs(g.fox.x - BENT.fox.x) < 0.02) home = true;
+  }
+  ok(g.scene === 'play', 'the night is still running, which is the only time the fox mooches');
+  ok(!off, 'a fox with nothing to rob walks back to the road instead of across the gardens' +
+     (off ? ' (off at ' + off.x.toFixed(3) + ',' + off.y.toFixed(3) + ' after ' + off.t.toFixed(2) + 's)' : ''));
+  ok(home, '... and it gets back to the line it paces');
+}
+
+console.log('\n=== WHAT THE VALIDATOR LEARNED WITH THEM ===');
+{
+  const problems = mutate => { const st = JSON.parse(JSON.stringify(BENT)); mutate(st); return C.validateStreet(st); };
+  const has = (list, word) => list.some(m => m.includes(word));
+
+  /* The mooch is a straight line, so the line it paces has to be walkable end
+     to end. Nothing checked that, which is how the bug above got in. */
+  ok(has(problems(st => { st.fox.patrol.y = [0.3, 4.9]; }), 'end to end'),
+     'validator: a patrol line that runs off the walkable ground is named');
+  ok(has(problems(st => { st.fox.x = 0.95; }), 'end to end'),
+     'validator: ...and so is one pacing a line that is not one piece of ground');
+
+  /* Scenery had the same bug the house-overlap rule had: side and row only. */
+  /* Row 3 on the right is Miss Alder's, but she is on the main run: a bus
+     stop on row 3 of the cul-de-sac is round a corner from her. */
+  ok(C.validateStreet(Object.assign(JSON.parse(JSON.stringify(BENT)),
+      { scenery: [{ kind: 'busstop', row: 3, side: 1, on: 'close' }] })).length === 0,
+     'scenery up the cul-de-sac does not clash with a house on the main run at the same row');
+  ok(has(problems(st => { st.scenery = [{ kind: 'busstop', row: 3, side: 1 }]; }), 'sits on house 4'),
+     '... while the same bus stop on the main run does clash with her');
+  ok(has(problems(st => { st.scenery = [{ kind: 'busstop', row: 1, side: 1 }]; }), 'sits on house 3'),
+     '... while scenery on the run a house is on still does');
+  ok(!has(problems(st => { st.scenery = [{ kind: 'busstop', row: 1, side: 1 }]; }), 'house 5'),
+     '... and it is no longer blamed for sitting on one it is round a corner from');
+  ok(has(problems(st => { st.scenery = [{ kind: 'busstop', row: 0, side: 1, on: 'nowhere' }]; }), 'on names no stretch'),
+     'validator: scenery fronting a stretch that is not there');
+}
+
+
 report();
