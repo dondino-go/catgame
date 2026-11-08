@@ -2810,6 +2810,9 @@ if (DEBUG) window.__bb = { g, C, tut: () => tut, checkForUpdate, updateReady: ()
   /* whether a check is in flight, for tests/update.js: the stall it guards
      against is only visible as a check that never clears */
   checking: () => !!checking,
+  /* tests/update.js waits this long for the guard to let go, so it reads the
+     constant instead of restating it */
+  checkTimeout: CHECK_TIMEOUT,
   /* the title screen's hit areas, in design units, for tests/title.js and the
      picker scenes in tests/screens.js -- so neither has to restate the layout */
   titleRects: () => ({ play: playRect(), how: howRect(), DH,

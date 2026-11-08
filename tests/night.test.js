@@ -132,6 +132,23 @@ console.log('\n=== A FULL METER ALWAYS MEANS THE OWNER ===');
   ok(g.ending === 'owner', 'a full meter fetches the owner even as the street settles (got ' + g.ending + ')');
   ok(g.scene === 'pickup' || g.scene === 'over', '... and it is the pickup that plays, not the walk off');
 }
+{
+  /* checkSpotted only runs in `play`, so a RUN bar half drained when the scene
+     changes would sit frozen through whatever follows. The walk off clears it;
+     the owner's arrival is the same kind of exit and has to as well. The bar is
+     drawn from g.spot with no look at g.eat, and the close-up eases out rather
+     than cutting, so this is what the player would watch for PICKUP_SECS. */
+  const g = fresh(); quiet(g);
+  const h = g.houses.find(x => !x.venue);
+  const n = g.houses[h.neighbours.find(i => !g.houses[i].venue)];
+  C.tapHouse(g, h.id);
+  for (let i = 0; i < 60 * 20 && !g.eat; i++) { quiet(g); C.update(g, DT); C.drainEvents(g); }
+  for (let i = 0; i < 12; i++) { g.houses.forEach(x => { x.state = 'idle'; x.t = 9999; }); n.state = 'watch'; n.t = 9999; C.update(g, DT); C.drainEvents(g); }
+  ok(g.scene === 'play' && !!g.eat && g.spot.heat > 0 && g.spot.by === n.id, '(setup) mid-bite, a neighbour has clocked us and the RUN bar is draining');
+  g.racket = 1; C.update(g, DT); C.drainEvents(g);
+  ok(g.scene === 'pickup' && g.ending === 'owner', 'the owner comes');
+  ok(g.spot.heat === 0 && g.spot.by === null, '... and the half-drained RUN bar does not sit frozen through the pickup');
+}
 
 console.log('\n=== THE RACKET ===');
 {
@@ -287,7 +304,11 @@ console.log('\n=== HOW GOOD A NIGHT WAS ===');
   ok(got(4) === 3, 'four of five is the rung below');
   ok(got(1) === 0, 'one of five is the bottom');
   /* the grade is a rung, not a name: what the player is shown comes from the
-     score, so it cannot disagree with their best or with the unlocks */
+     score, so it cannot disagree with their best or with the unlocks.
+     NOTE this only checks that the grade has no name field. It does not guard
+     the behaviour that matters -- the results screen reading its rank from the
+     score -- which lives in the renderer; tests/results.js holds that, with a
+     night built so the score's rank and the grade's rank differ. */
   ok(C.nightGrade(g).name === undefined, 'the grade carries no name of its own');
 }
 

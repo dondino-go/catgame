@@ -1,7 +1,7 @@
 {
   "name": "Bowl Bandit",
   "short_name": "Bowl Bandit",
-  "description": "One cat, eight bowls, two minutes, and neighbours who gossip.",
+  "description": "One cat, a whole street of bowls, and neighbours who gossip.",
   "start_url": "./mobile.html",
   "scope": "./",
   "display": "fullscreen",

@@ -103,13 +103,10 @@ const PUBS = ['The Stag\'s Head', 'The Red Lion', 'The Anchor', 'The Plough', 'T
 const STREET_NAMES = ['Hollis', 'Quarry', 'Tanner', 'Mill', 'Cobbler', 'Bramble', 'Fennel', 'Garrick', 'Linnet', 'Osier'];
 const STREET_KINDS = ['Street', 'Row', 'Lane', 'Close', 'Terrace', 'Walk'];
 
-/* what each side of the road is: the shapes the streets are made from */
-const SIDES = {
-  full:  rows => Array.from({ length: rows }, () => 'house'),
-  gappy: rows => Array.from({ length: rows }, () => ('house')),     // thinned below
-  venue: rows => Array.from({ length: rows }, () => 'free'),
-  empty: rows => Array.from({ length: rows }, () => 'free'),
-};
+/* what each side of the road starts as; `build` then thins a gappy side, puts the
+   venue on a venue side, and turns the rest of an empty side into gaps */
+const START = { full: 'house', gappy: 'house', venue: 'free', empty: 'free' };
+const SIDES = Object.fromEntries(Object.entries(START).map(([kind, cell]) => [kind, rows => Array(rows).fill(cell)]));
 const ARCHETYPES = [
   [['full', 'full'], 14], [['full', 'gappy'], 16], [['gappy', 'gappy'], 14],
   [['full', 'venue'], 22], [['gappy', 'venue'], 14], [['full', 'empty'], 8], [['venue', 'venue'], 12],

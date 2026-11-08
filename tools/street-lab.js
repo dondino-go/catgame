@@ -10,11 +10,10 @@
  *
  * --from 2026-11-08 sets the first date (the seed is the date string).
  *
- * The bots are tools/simulate.js's, copied rather than imported because that
- * file reads its street from argv at load time. If the loop changes, change
- * both. As CLAUDE.md says of that tool: bots see every window at once, so read
- * these numbers as *relative* -- which streets differ from which -- never as
- * how hard a street feels.
+ * The bots are tools/simulate.js's (it exports `play`), so retuning the loop
+ * there retunes these too. As CLAUDE.md says of that tool: bots see every
+ * window at once, so read these numbers as *relative* -- which streets differ
+ * from which -- never as how hard a street feels.
  */
 'use strict';
 const fs = require('fs');
@@ -60,51 +59,11 @@ function list() {
   }
 }
 
-/* ---------- bots, as in tools/simulate.js ---------- */
-const SKILLS = { novice: { sigma: 0.16, react: 0.65 }, decent: { sigma: 0.09, react: 0.45 }, expert: { sigma: 0.025, react: 0.25 } };
-/* `o.C` is the rules to play on (the planning lab hands in a patched copy) and `o.pick(g, C, pool)`
-   chooses which quiet bowl to go for; the default is the nearest, as in tools/simulate.js. */
-function play(street, skill, style, seed, o = {}) {
-  const C = o.C || CORE;
-  let a = seed >>> 0;
-  const rng = () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; };
-  const randn = () => Math.sqrt(-2 * Math.log(rng() + 1e-9)) * Math.cos(6.2832 * rng());
-  const g = C.create({ rng, street }); C.start(g);
-  const DT = 1 / 60;
-  let react = 0, aim = null, cool = 0;
-  /* What the bots can't say by clearing the street (they all do), so measure
-     how tight the night was: seconds with nowhere safe to go, and how near the
-     owner came. */
-  let stuck = 0, peak = 0;
-  let guard = 60 * (1 / C.NIGHT.RACKET_DRIFT + C.PICKUP_SECS + 60);
-  while (g.scene !== 'over' && guard-- > 0) {
-    if (g.racket > peak) peak = g.racket;
-    if (g.scene === 'play') {
-      const e = g.eat;
-      if (e) {
-        const ns = e.h.neighbours.map(i => g.houses[i]);
-        const danger = style === 'cautious' ? ns.some(n => n.state !== 'idle') : g.spot.heat > 0;
-        if (danger) { react += DT; if (react > skill.react) { C.tapRoad(g, g.street.roadX, g.cat.y); react = 0; aim = null; } }
-        else react = 0;
-        if (g.eat && cool <= 0) {
-          if (aim == null) aim = Math.min(1, Math.max(0, e.zone + e.zoneW / 2 + randn() * skill.sigma));
-          if (Math.abs(e.t - aim) <= e.speed * DT) { C.tapEat(g); aim = null; cool = 0.12; }
-        }
-      } else if (!g.cat.target) {
-        const quiet = g.houses.filter(h => h.bowl && h.neighbours.every(i => g.houses[i].state === 'idle'));
-        const pool = quiet.length ? quiet : (style === 'cautious' ? [] : g.houses.filter(h => h.bowl));
-        if (pool.length) {
-          const pickH = o.pick ? o.pick(g, C, pool) : pool.sort((p, q) => Math.abs(C.bowlSpot(p).y - g.cat.y) - Math.abs(C.bowlSpot(q).y - g.cat.y))[0];
-          C.tapHouse(g, pickH.id);
-        } else stuck += DT;
-      }
-    }
-    cool -= DT;
-    C.update(g, DT); C.drainEvents(g);
-  }
-  const pr = C.progress(g);
-  return { score: g.score, cleared: pr.cleared, total: pr.total, ending: g.ending, secs: g.elapsed, caught: g.timesCaught || 0, stuck, peak };
-}
+/* ---------- bots: tools/simulate.js's, not a copy ---------- */
+const SIM = require('./simulate.js');
+const SKILLS = SIM.SKILLS;
+/* o.C is the rules to play on, o.pick(g, C, pool) the bowl choice; see simulate.js */
+const play = (street, skill, style, seed, o = {}) => SIM.play(skill, style, seed, Object.assign({ street }, o));
 
 const PROFILES = [
   ['expert, careful', SKILLS.expert, 'cautious'],

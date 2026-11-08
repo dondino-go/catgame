@@ -153,6 +153,24 @@ function overlaps(B) {
   await p.evaluate(() => window.__bb.advance(3));          /* past OVER_LOCK, so the prompt is up */
 
   let shapes = 0, bad = 0;
+
+  /* The rank shown comes from the score, not from the night's grade, so it
+     agrees with the player's best and with what unlocks a street. They are
+     different axes (completion against points) and used to be read off each
+     other: a greedy night that took the whole street for few points read
+     "GHOST OF MARROW STREET" over "BEST 1400". This night is built so the two
+     disagree -- five of eight taken is the third rung, 960 points is the
+     second -- so a rank read from the grade would be a different line. */
+  const rk = await p.evaluate(() => {
+    window.__drawn.length = 0; window.__bb.advance(1 / 60);
+    const g = window.__bb.g, C = window.__bb.C, line = n => '— ' + n.toUpperCase() + ' —';
+    return { drawn: window.__drawn.map(d => d.str), want: line(C.rankFor(g.score, g.street)), fromGrade: line(C.ranksOf(g.street)[C.nightGrade(g).idx][1]) };
+  });
+  const rankOk = rk.want !== rk.fromGrade && rk.drawn.includes(rk.want) && !rk.drawn.includes(rk.fromGrade);
+  console.log((rankOk ? 'ok   ' : 'FAIL ') + 'the rank shown is the score\'s (' + rk.want + '), not the grade\'s (' + rk.fromGrade + ')' +
+              (rk.want === rk.fromGrade ? '  [setup: they no longer differ, so this checks nothing]' : ''));
+  if (!rankOk) bad++;
+
   for (let vh = 610; vh <= 930; vh += STEP) {
     await p.setViewportSize({ width: VW, height: vh });
     await p.evaluate(() => { window.dispatchEvent(new Event('resize')); window.__drawn.length = 0; });
