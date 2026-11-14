@@ -178,11 +178,11 @@ const SCENES = {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET); await a.run(300);
     const target = () => a.game(() => { const t = window.__bb.g.cat.target; return t ? t.house : 'none'; });
     const poke = async (x, row) => { await a.game(() => { window.__bb.g.cat.target = null; }); await a.tap(x, await a.rowAt(row)); return target(); };
-    a.check('a tap far left goes to house 0 on the main road (The Pemburys)', await poke(40, 0) === 0);
-    a.check('a tap far right goes to house 6 on the back road (Doctor Pye)', await poke(680, 0) === 6);
-    a.check('a tap just left of the middle goes to house 3 (Mr Quill, main road)', await poke(300, 1) === 3);
-    a.check('a tap just right of it goes to house 5 (The Mullens, back road)', await poke(420, 1) === 5);
-    a.check('a tap on a placeholder building is a road tap', await poke(40, 1) === null);
+    a.check('a tap far left goes to house 0 on the main road (The Pemburys)', await poke(40, 1) === 0);
+    a.check('a tap far right goes to house 6 on the back road (Doctor Pye)', await poke(680, 1) === 6);
+    a.check('a tap just left of the middle goes to house 2 (Mr Quill, main road)', await poke(300, 2) === 2);
+    a.check('a tap just right of it goes to house 4 (The Mullens, back road)', await poke(420, 2) === 4);
+    a.check('a tap on a placeholder building is a road tap', await poke(40, 0) === null);
     await a.game(() => { window.__bb.g.cat.target = null; });
     await a.run(200);
   } },
@@ -190,10 +190,10 @@ const SCENES = {
      Mullens at the back window, which is a watcher from the other road */
   'block-eating': { street: BLOCK, setup: async a => {
     await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET);
-    await a.game(() => { window.__bb.C.WAVES[0].react = 30; window.__bb.C.tapHouse(window.__bb.g, 3); });
+    await a.game(() => { window.__bb.C.WAVES[0].react = 30; window.__bb.C.tapHouse(window.__bb.g, 2); });
     await a.run(4200);
     await a.game(() => { const g = window.__bb.g; g.eat.speed = 0;
-      g.houses[5].state = 'watch'; g.houses[5].t = 9999; g.houses[0].state = 'stir'; g.houses[0].t = 9999; });
+      g.houses[4].state = 'watch'; g.houses[4].t = 9999; g.houses[0].state = 'stir'; g.houses[0].t = 9999; });
     await a.run(500);
   } },
   /* eight rows of street map on the results card, which is twice what any

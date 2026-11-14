@@ -191,10 +191,14 @@ straight line rather than leaving a character stuck on the spot, so a closed
 gate would let the cat walk through a house. Gating means `tapHouse` declining
 an unreachable bowl, not just flipping the flag.
 
-**Not routed, and tied to the road line on purpose:** the dog's run, the cat's
-walk off at the end of a night, and the owner's approach (which is drawn
-entirely in screen space in `pickupPlan`). All three are set-pieces shot along
-a straight road, and they move to routes when the renderer can draw a bend.
+**Not routed, and tied to the road line on purpose:** the cat's walk off at
+the end of a night and the owner's approach (which is drawn entirely in screen
+space in `pickupPlan`). Both are set-pieces shot along a straight road. **The
+dog is not routed either, but it is no longer tied to one road:** a street may
+give `dog.route`, the corners of its run, and it runs them in straight lines
+(forwards or backwards, by the night). `validateStreet` checks every leg stays
+on one piece of walkable ground, because nothing else will -- the dog does not
+ask the route finder.
 
 **Houses and scenery belong to a run of road, not just to a side.** `on` names
 it and defaults to the run the bowl stands on (scenery: the first run). Every
@@ -222,8 +226,16 @@ and the route finder walked it there quite correctly, so it never looked
 broken -- it just did not work. `scenery` takes a `block` kind for the gaps a
 wider street leaves: a building with nobody in it, which the rules never see.
 
-**Still tied to the main run:** `pickupPlan` (the owner's approach) and the
-dog's run. Those are set-pieces shot along one road.
+**Still tied to the main run:** `pickupPlan` (the owner's approach), a
+set-piece shot along one road.
+
+**A street drawn smaller says how fast it is walked** (`pace`, default 1). At
+`width` 2 there is twice the ground and, at the same world speed, a cat that
+crosses the screen half as fast: the first playtest of Lamplighter Block read
+that as a slower game, not a bigger street. `pace` scales everything on foot
+alike -- cat, fox, dog, the walk off -- so who beats whom to a bowl does not
+change. With no `pace` it multiplies by 1 and changes no number, which is why
+Marrow's and Terrace Row's golden logs did not move.
 
 **The cat's walk off is not, any more.** It drifted to `street.roadX` and so
 dragged a cat leaving from the back road straight through the middle of the
@@ -243,11 +255,23 @@ canvas rather than standing on the street belongs on that side of the
 transform too.
 
 **Lamplighter Block is the first street with two of them** (`BLOCK_STREET`):
-a back lane, two roads with a block of houses between them and an alley at
-the bottom joining them. Eight bowls and twenty sight lines -- Marrow
-Street's exactly -- on purpose, so a night on a shaped street can be compared
-with a night on a straight one without the bowl count explaining the
-difference. It is `wip` and deliberately **not** gated behind an unlock while
+two roads with a block of houses between them and three alleys through it --
+top, middle and bottom -- so it is a ladder with a choice of ways round. Eight
+bowls and twenty sight lines -- Marrow Street's exactly -- on purpose, so a
+night on a shaped street can be compared with a night on a straight one
+without the bowl count explaining the difference. Four bowls a road.
+
+**It was a horseshoe first, and that was the wrong test.** One alley, at the
+bottom, with the back road's bowls all at the top: the average walk between
+two bowls was 6.8 against Marrow's 1.5, the worst 14, and a careful decent
+bot's night was 177s against 88s. The playtest said "a lot of back and forth
+on a long path" and "slower", and both were the layout and the scale rather
+than anything about shaped streets. **A lab street has to be a fair specimen
+of the idea it is testing**: measure its hops against Marrow's
+(`tests/block.test.js` does, at the street's pace) before reading a playtest
+of it as a verdict on the idea. As a ladder at `pace` 2 the hops match
+Marrow's, the night is about 100s, and the score ladder came out next to
+Marrow's on its own. It is `wip` and deliberately **not** gated behind an unlock while
 it is being played; give it one before it is anything but work in progress.
 `tests/bent.js` is still only a rules fixture.
 
@@ -309,10 +333,12 @@ it is being played; give it one before it is anything but work in progress.
   anyone but us. The eight findings from its `/code-review` were all fixed
   before it went (see the marker under **Code review**).
 - **Lamplighter Block (`block`) lives behind THE LAB, open and tagged `wip`**,
-  waiting on its first playtest. It is the first street with two roads. What
+  rebuilt as a ladder after its first playtest (see **Walking routes**) and
+  waiting on the next. It is the first street with two roads. What
   it still owes: an unlock, a look of its own (it borrows the default night
-  palette), kerbs on the alley, and the owner's approach and the dog's run,
-  which still follow the main road (see **Walking routes**). Its send-off and
+  palette), kerbs on the alleys, and the owner's approach, which still
+  follows the main road. Not done, and worth trying if the dog still feels
+  unfair: only the road the dog is on going to its windows. Its send-off and
   both cameras were owed too and are done. The results screen's street map
   does not know about runs either -- it draws every house as left or right of
   one road -- which reads fine but is not the street's shape.
@@ -419,9 +445,11 @@ steps frames itself with `__bb.advance(seconds)`.
 
 - `tests/core.test.js`: the rules, directly against `src/core.js`.
 - `tests/block.test.js`: Lamplighter Block -- its sight lines, including the
-  one that crosses the block (Mr Quill and The Mullens back onto each other
-  from different roads), that the walk between the two roads goes by the alley
-  and never crosses the block, that the walk off at the end of a night leaves
+  two that cross the block (back-to-back houses on different roads), that the
+  walk between the two roads goes by an alley and never crosses the block,
+  that a hop between bowls takes about what it does on Marrow Street at the
+  street's pace (the guard on the horseshoe coming back), that the dog runs
+  both roads by the alley without leaving the ground, that the walk off at the end of a night leaves
   along the road the cat is standing on, its ladder and wording, and that it is
   behind the lab rather than in the picker (where it shows is
   `tests/title.js`'s business). It also sweeps **every** street for holes: each

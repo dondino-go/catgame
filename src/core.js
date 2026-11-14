@@ -50,6 +50,16 @@
  *   so and is drawn smaller to fit. Everything shrinks together, so a wider
  *   street wants more rows as well or it leaves the bottom of the screen
  *   empty.
+ * pace (optional, default 1): how fast everything on foot moves here -- the
+ *   cat, the fox and the dog alike, so who beats whom to a bowl is unchanged.
+ *   A street drawn at half size has twice the ground to cover and, at the
+ *   same speed, a cat that crosses the screen half as fast: the first playtest
+ *   of Lamplighter Block read as a slower game, not a bigger street. A street
+ *   of `width` 2 wants a pace of about 2.
+ * dog.route (optional): the corners of the dog's run, first to last, for a
+ *   street with more than one road. It runs them in order or backwards, and
+ *   is gone at the far end. Without it the dog runs the line `x` between its
+ *   two `ends`, as it always has.
  * dog.ends / fox.ends: y the animal enters at, one per end of the road (the
  *   first is "from the top"); it runs to the other and is gone `overrun`
  *   past it. fox.patrol: the stretch it mooches along when nothing is worth
@@ -152,25 +162,44 @@ const TERRACE_STREET = {
 
 /* Lamplighter Block: the first street that is not one straight road.
  *
- * A back lane. Two roads with a block of houses between them, back to back,
- * and an alley at the bottom joining them -- so the far road is a two-minute
- * walk away by route and no distance at all as the crow flies, which is the
- * whole point of giving the street a shape.
+ * Two roads with a block of houses between them, back to back, and three
+ * alleys through the block -- top, middle and bottom -- so the street is a
+ * ladder: two loops, and from any bowl a choice of which way round.
+ *
+ *            main (0.5)            back (1.5)
+ *   row 0  .          ====top====          .
+ *   row 1  Pemburys   .         .   Doctor Pye
+ *   row 2  .       Mr Quill | Mullens      .
+ *   row 3  .          .         .          .
+ *   row 4  Old Nan    ====cut====     Ashfords
+ *   row 5  .          .         .          .
+ *   row 6  .     Bea & Rook | Dobsons      .
+ *   row 7  .          ===alley===          .
+ *
+ * It was first built as a horseshoe: one alley, at the bottom, with all three
+ * of the back road's bowls at the top. The first playtest found that out at
+ * once -- every trip to the back road was the length of the street and back,
+ * and a bowl that was shut or robbed when you got there meant doing it again.
+ * The average walk between two bowls was 6.8 against Marrow Street's 1.5, and
+ * the worst was 14. A street meant to find out whether a shape is fun was
+ * mostly measuring whether a long corridor is, which nobody had asked. As a
+ * ladder the average is 3.2 and the worst 5.5, and `pace` gives that back in
+ * time: twice the ground at twice the speed, so a hop here takes what a hop
+ * on Marrow Street does and the street is bigger without being slower.
  *
  * Eight bowls and twenty sight lines: Marrow Street's exactly. That is
- * deliberate, so the first night on a shaped street can be compared with a
- * night on a straight one without the bowl count explaining the difference.
- * Whether the shape is worth anything is the question this street exists to
- * answer; if it is, the pace and the size are the next things to tune.
+ * deliberate, so a night on a shaped street can be compared with a night on
+ * a straight one without the bowl count explaining the difference. Four
+ * bowls a road, so neither is the one you visit and the other the detour.
  *
  * `width: 2` means the whole street is drawn at half size, and it has eight
  * rows rather than four so it still fills the screen -- a bigger place drawn
  * smaller, not one street squashed. The rest of the block is `block` scenery:
  * buildings with nobody in them, which the rules never see.
  *
- * The one sight line that crosses the block is Mr Quill (main road, right)
- * and The Mullens (back road, left): they back onto each other, so a window
- * at the rear catches a cat it has no business seeing from the front.
+ * Two sight lines cross the block: Mr Quill and The Mullens, and Bea & Rook
+ * and The Dobsons. Each pair backs onto each other from different roads, so a
+ * window at the rear catches a cat it has no business seeing from the front.
  */
 const BLOCK_STREET = {
   id: 'block',
@@ -188,73 +217,70 @@ const BLOCK_STREET = {
      opened, and gating it behind a rank on another one only gets in the way.
      Give it one before it is anything other than work in progress. */
   rows: 8,
-  roadX: 0.5,                   // the main run: the set-pieces still follow it
+  roadX: 0.5,                   // the main run: the owner's approach still follows it
   width: 2,
+  pace: 2,                      // drawn at half size, so twice as fast: the same speed across the screen
   paths: {
     stretches: [
       { id: 'main', roadX: 0.5, x: [0.2612, 0.7388], y: [0.2, 7.8] },
       { id: 'back', roadX: 1.5, x: [1.2612, 1.7388], y: [0.2, 7.8] },
-      /* the alley: a crossing, so nothing fronts it and it has no pavement */
+      /* the alleys: crossings, so nothing fronts them and they have no pavement */
+      { id: 'top',              x: [0.5,    1.5],    y: [0.4, 1.0] },
+      { id: 'cut',              x: [0.5,    1.5],    y: [4.2, 4.8] },
       { id: 'alley',            x: [0.5,    1.5],    y: [7.0, 7.6] },
     ],
-    links: [{ a: 'main', b: 'alley' }, { a: 'alley', b: 'back' }],
+    links: [
+      { a: 'main', b: 'top' },   { a: 'top', b: 'back' },
+      { a: 'main', b: 'cut' },   { a: 'cut', b: 'back' },
+      { a: 'main', b: 'alley' }, { a: 'alley', b: 'back' },
+    ],
   },
   catStart: { x: 0.5, y: 3.5 },
   houses: [
-    { name: 'The Pemburys', col: 0, row: 0, side: -1, bowl: { x: 0.29, y: 0.5 }, neighbours: [1, 3] },
-    { name: 'Old Nan',      col: 0, row: 2, side: -1, bowl: { x: 0.29, y: 2.5 }, neighbours: [0, 2, 4] },
-    { name: 'The Dobsons',  col: 0, row: 4, side: -1, bowl: { x: 0.29, y: 4.5 }, neighbours: [1, 4] },
-    { name: 'Mr Quill',     col: 1, row: 1, side:  1, bowl: { x: 0.71, y: 1.5 }, neighbours: [0, 4, 5] },
-    { name: 'Bea & Rook',   col: 1, row: 3, side:  1, bowl: { x: 0.71, y: 3.5 }, neighbours: [1, 2, 3] },
-    /* backing onto Mr Quill across the block: the one sight line that crosses it */
-    { name: 'The Mullens',  col: 2, row: 1, side: -1, bowl: { x: 1.29, y: 1.5 }, neighbours: [3, 6, 7] },
-    { name: 'Doctor Pye',   col: 3, row: 0, side:  1, bowl: { x: 1.71, y: 0.5 }, neighbours: [5, 7] },
-    { name: 'The Ashfords', col: 3, row: 2, side:  1, bowl: { x: 1.71, y: 2.5 }, neighbours: [5, 6] },
+    { name: 'The Pemburys', col: 0, row: 1, side: -1, bowl: { x: 0.29, y: 1.5 }, neighbours: [1, 2] },
+    { name: 'Old Nan',      col: 0, row: 4, side: -1, bowl: { x: 0.29, y: 4.5 }, neighbours: [0, 2, 3] },
+    { name: 'Mr Quill',     col: 1, row: 2, side:  1, bowl: { x: 0.71, y: 2.5 }, neighbours: [0, 1, 4] },
+    { name: 'Bea & Rook',   col: 1, row: 6, side:  1, bowl: { x: 0.71, y: 6.5 }, neighbours: [1, 5] },
+    /* backing onto Mr Quill across the block */
+    { name: 'The Mullens',  col: 2, row: 2, side: -1, bowl: { x: 1.29, y: 2.5 }, neighbours: [2, 6, 7] },
+    /* and onto Bea & Rook */
+    { name: 'The Dobsons',  col: 2, row: 6, side: -1, bowl: { x: 1.29, y: 6.5 }, neighbours: [3, 7] },
+    { name: 'Doctor Pye',   col: 3, row: 1, side:  1, bowl: { x: 1.71, y: 1.5 }, neighbours: [4, 7] },
+    { name: 'The Ashfords', col: 3, row: 4, side:  1, bowl: { x: 1.71, y: 4.5 }, neighbours: [4, 5, 6] },
   ],
   /* the rest of the block, so a gap in a row reads as a street and not a
-     mistake. The two middle strips stop at row 6: row 7 is the alley. */
+     mistake. The two middle strips have no rows 0, 4 or 7: those are the
+     alleys. */
   scenery: [
-    { kind: 'block', row: 1, side: -1, on: 'main' },
-    { kind: 'block', row: 3, side: -1, on: 'main' },
-    { kind: 'block', row: 5, side: -1, on: 'main' },
-    { kind: 'block', row: 6, side: -1, on: 'main' },
-    { kind: 'block', row: 7, side: -1, on: 'main' },
-    { kind: 'block', row: 0, side:  1, on: 'main' },
-    { kind: 'block', row: 2, side:  1, on: 'main' },
-    { kind: 'block', row: 4, side:  1, on: 'main' },
-    { kind: 'block', row: 5, side:  1, on: 'main' },
-    { kind: 'block', row: 6, side:  1, on: 'main' },
-    { kind: 'block', row: 0, side: -1, on: 'back' },
-    { kind: 'block', row: 2, side: -1, on: 'back' },
-    { kind: 'block', row: 3, side: -1, on: 'back' },
-    { kind: 'block', row: 4, side: -1, on: 'back' },
-    { kind: 'block', row: 5, side: -1, on: 'back' },
-    { kind: 'block', row: 6, side: -1, on: 'back' },
-    { kind: 'block', row: 1, side:  1, on: 'back' },
-    { kind: 'block', row: 3, side:  1, on: 'back' },
-    { kind: 'block', row: 4, side:  1, on: 'back' },
-    { kind: 'block', row: 5, side:  1, on: 'back' },
-    { kind: 'block', row: 6, side:  1, on: 'back' },
-    { kind: 'block', row: 7, side:  1, on: 'back' },
+    ...[0, 2, 3, 5, 6, 7].map(row => ({ kind: 'block', row, side: -1, on: 'main' })),
+    ...[1, 3, 5].map(row => ({ kind: 'block', row, side:  1, on: 'main' })),
+    ...[1, 3, 5].map(row => ({ kind: 'block', row, side: -1, on: 'back' })),
+    ...[0, 2, 3, 5, 6, 7].map(row => ({ kind: 'block', row, side:  1, on: 'back' })),
   ],
   /* Derived from `node tools/simulate.js --street block --rounds 150`, from
      this street's own night medians, the same way Marrow's and Terrace Row's
-     were. A night here pays less than one on Marrow Street for the same play
-     -- expert careful medians 1649 against 1950 -- because the walk round
-     the block is time not spent eating, so the ladder sits lower rather than
-     the street feeling stingy. Medians it is built from: greedy novice 668,
-     careful novice 846, careful decent 1294, careful expert 1649. */
+     were. As a horseshoe a night here paid a fifth less than one on Marrow
+     Street for the same play (expert careful medians 1649 against 1950),
+     because the walk round the block was time not spent eating. As a ladder
+     at `pace` 2 it pays the same, so the ladder has come out next to Marrow's
+     -- which is the comparison the street is for. Medians it is built from:
+     greedy novice 649, careful novice 1130, careful decent 1548, careful
+     expert 2007. */
   ranks: [
     [0,    'Alley Amateur'],
-    [560,  'Bin Lid Regular'],
-    [820,  'Back Lane Sweetheart'],
-    [1150, 'Bowl Bandit'],
-    [1600, 'Ghost of Lamplighter Block'],
+    [580,  'Bin Lid Regular'],
+    [1000, 'Back Lane Sweetheart'],
+    [1350, 'Bowl Bandit'],
+    [1950, 'Ghost of Lamplighter Block'],
   ],
   waveBlurbs: {
     3: 'both sides of the block are at their windows now',
   },
-  dog: { x: 0.5, ends: [-0.6, 8.6], overrun: 0.2 },
+  /* The dog runs the whole block: down one road, through the bottom alley and
+     back up the other, or the other way about. It used to run the main road
+     only while every house on both went to its window. */
+  dog: { x: 0.5, ends: [-0.6, 8.6], overrun: 0.2,
+         route: [{ x: 0.5, y: -0.6 }, { x: 0.5, y: 7.3 }, { x: 1.5, y: 7.3 }, { x: 1.5, y: -0.6 }] },
   fox: { x: 0.5, ends: [-0.6, 8.6], patrol: { y: [0.3, 7.7], speed: 0.3 } },
 };
 
@@ -490,6 +516,7 @@ function validateStreet(st) {
      smaller. The ceiling is where a house stops being readable: at a width of
      2 the houses are half size, which a look at Marrow Street rendered that
      way says is about as far as it goes. */
+  if (st.pace !== undefined && !(num(st.pace) && st.pace >= 1 && st.pace <= 3)) bad.push('pace must be a number from 1 to 3');
   if (st.width !== undefined && !(num(st.width) && st.width >= 1 && st.width <= 2))
     bad.push('width must be a number from 1 to 2 (past 2 a house is too small to read)');
   const wide = num(st.width) && st.width >= 1 ? st.width : 1;
@@ -670,6 +697,27 @@ function validateStreet(st) {
   if (!hs.some(h => h && !h.venue)) bad.push('a street needs at least one house with a bowl');
   const ends = o => o && Array.isArray(o.ends) && o.ends.length === 2 && o.ends.every(num) && o.ends[0] !== o.ends[1];
   if (!(st.dog && num(st.dog.x) && ends(st.dog) && num(st.dog.overrun) && st.dog.overrun >= 0)) bad.push('dog needs x, two ends and an overrun');
+  else if (st.dog.route !== undefined) {
+    /* The dog is not routed: it runs the corners it is given, in straight
+       lines. So each leg has to be straight down a road or straight along a
+       crossing -- on one piece of walkable ground -- or the dog is being sent
+       through the houses. Its first and last corners are where it comes on
+       and goes off, and may be past the end of the road. */
+    const rt = st.dog.route;
+    if (!(Array.isArray(rt) && rt.length >= 2 && rt.every(p => p && num(p.x) && num(p.y)))) bad.push('dog.route needs at least two corners, each with x and y');
+    else for (let i = 0; i + 1 < rt.length; i++) {
+      const a = rt[i], b = rt[i + 1];
+      if (a.x !== b.x && a.y !== b.y) { bad.push('dog.route leg ' + i + ' must run straight along x or y'); continue; }
+      const on = P.stretches.some(s => {
+        const inX = v => v >= s.x[0] - eps && v <= s.x[1] + eps, inY = v => v >= s.y[0] - eps && v <= s.y[1] + eps;
+        /* a leg down a road may start or finish off its end; a leg across must be on the ground */
+        return a.x === b.x ? inX(a.x) && Math.max(a.y, b.y) >= s.y[0] && Math.min(a.y, b.y) <= s.y[1] &&
+                             [a, b].every((p, k) => inY(p.y) || (k === 0 ? i === 0 : i + 2 === rt.length))
+                           : inY(a.y) && inX(a.x) && inX(b.x);
+      });
+      if (!on) bad.push('dog.route leg ' + i + ' leaves the walkable ground');
+    }
+  }
   const pt = st.fox && st.fox.patrol;
   if (!(st.fox && num(st.fox.x) && ends(st.fox))) bad.push('fox needs x and two ends');
   if (!(pt && pair(pt.y) && num(pt.speed) && pt.speed > 0)) bad.push('fox.patrol needs a y range and a speed');
@@ -805,6 +853,11 @@ const ROAD_HALF = 128 / 720;
    deeper gardens. Not wider: the houses would not fit beside it. */
 function roadHalfOf(st) { return st && typeof st.roadHalf === 'number' ? st.roadHalf : ROAD_HALF; }
 const PAVE_W    = 44 / 720;
+
+/* A street may say how fast things on foot move on it (see `pace` above).
+   Everything that walks is scaled alike. With no pace this multiplies by 1,
+   which changes no number: Marrow Street and Terrace Row replay bit for bit. */
+function paceOf(g) { return (g.street && g.street.pace) || 1; }
 
 const CAT_SPEED = 1.4;        // world units per second
 const FOX_SPEED = 0.7;        // slower than the cat: you can beat it to a bowl
@@ -1272,6 +1325,17 @@ function spawnDog(g) {
   const dir = g.rng() < 0.5 ? 1 : -1;
   const d = g.street.dog;
   g.dog = { dir, x: d.x, y: d.ends[dir === 1 ? 0 : 1], phase: 'bark', t: 1.15 };
+  if (d.route) {
+    /* A street with more than one road: the dog runs all of it, not just the
+       main road. On Lamplighter Block it used to run one road while both
+       sides of the block went to their windows for a dog half of them could
+       not see. `path` is the corners still ahead of it; `dir` is which way it
+       is facing as it comes on, for the renderer's warning. */
+    const path = dir === 1 ? d.route.slice() : d.route.slice().reverse();
+    const at = path.shift();
+    g.dog.x = at.x; g.dog.y = at.y; g.dog.path = path;
+    g.dog.dir = path[0].y >= at.y ? 1 : -1;
+  }
   emit(g, 'bark', {});
 }
 
@@ -1297,14 +1361,23 @@ function updateDog(g, dt) {
     if (d.t <= 0) { d.phase = 'run'; emit(g, 'bark', {}); }
     return;
   }
-  d.y += d.dir * DOG_SPEED * dt;
+  if (d.path) {
+    let step = DOG_SPEED * paceOf(g) * dt;
+    while (step > 0 && d.path.length) {
+      const to = d.path[0], gap = dist(d.x, d.y, to.x, to.y);
+      if (gap <= step) { d.x = to.x; d.y = to.y; step -= gap; d.path.shift(); continue; }
+      if (to.x !== d.x) d.face = to.x > d.x ? 1 : -1;
+      d.x += ((to.x - d.x) / gap) * step; d.y += ((to.y - d.y) / gap) * step; step = 0;
+    }
+  } else d.y += d.dir * DOG_SPEED * paceOf(g) * dt;
   /* The dog brings every open house to its window. A venue that hasn't opened
      yet has to be left out: watchersOfBowl only tests state, so a pub stirred
      by the dog before last orders became a watcher the player had no way of
      seeing -- drawVenue goes on drawing it shuttered and dark. */
   for (const h of g.houses) { if (!isOpen(g, h)) continue; h.state = 'watch'; h.t = 0.7; }
   const run = g.street.dog;
-  if (d.y < Math.min(...run.ends) - run.overrun || d.y > Math.max(...run.ends) + run.overrun) g.dog = null;
+  if (d.path ? !d.path.length
+             : d.y < Math.min(...run.ends) - run.overrun || d.y > Math.max(...run.ends) + run.overrun) g.dog = null;
 }
 
 /* ---------- the fox ---------- *
@@ -1364,12 +1437,12 @@ function updateFox(g, dt) {
     const home = { x: run.x, y: clamp(f.y, run.patrol.y[0], run.patrol.y[1]) };
     const wp = routeNext(g.routes, f.x, f.y, home.x, home.y);
     if (wp) {
-      const d = dist(f.x, f.y, wp.x, wp.y), step = Math.min(d, FOX_SPEED * dt);
+      const d = dist(f.x, f.y, wp.x, wp.y), step = Math.min(d, FOX_SPEED * paceOf(g) * dt);
       f.x += ((wp.x - f.x) / d) * step;
       f.y += ((wp.y - f.y) / d) * step;
       return;
     }
-    f.y += f.patrol * run.patrol.speed * dt;
+    f.y += f.patrol * run.patrol.speed * paceOf(g) * dt;
     if (f.y < run.patrol.y[0] || f.y > run.patrol.y[1]) f.patrol *= -1;
     f.x = lerp(f.x, run.x, dt * 2);
     return;
@@ -1382,7 +1455,7 @@ function updateFox(g, dt) {
     const wp = routeNext(g.routes, f.x, f.y, s.x, s.y);
     const tx = wp ? wp.x : s.x, ty = wp ? wp.y : s.y;
     const wd = wp ? dist(f.x, f.y, tx, ty) : d;
-    const step = Math.min(wd, FOX_SPEED * dt);
+    const step = Math.min(wd, FOX_SPEED * paceOf(g) * dt);
     f.x += ((tx - f.x) / wd) * step;
     f.y += ((ty - f.y) / wd) * step;
     f.eatT = 0;
@@ -1486,7 +1559,7 @@ function updateCat(g, dt) {
   const wp = routeNext(g.routes, c.x, c.y, c.target.x, c.target.y);
   const tx = wp ? wp.x : c.target.x, ty = wp ? wp.y : c.target.y;
   const d = dist(c.x, c.y, tx, ty);
-  const step = CAT_SPEED * dt;
+  const step = CAT_SPEED * paceOf(g) * dt;
   if (Math.abs(tx - c.x) > 0.01) c.face = tx > c.x ? 1 : -1;
   if (d > step) {
     c.x += ((tx - c.x) / d) * step;
@@ -1540,7 +1613,7 @@ function update(g, dt) {
     } else {
       /* out past the end of the road, drifting to the middle of it on the way */
       const w = g.routes.bounds.y, endY = lv.up ? w[0] - 1.4 : w[1] + 1.4;
-      const dy = endY - g.cat.y, step = CAT_SPEED * 0.95 * dt;
+      const dy = endY - g.cat.y, step = CAT_SPEED * 0.95 * paceOf(g) * dt;
       g.cat.y += Math.abs(dy) > step ? Math.sign(dy) * step : dy;
       g.cat.x = lerp(g.cat.x, lv.roadX, dt * 2.2);
     }

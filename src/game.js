@@ -1045,13 +1045,16 @@ function drawDog() {
     const edgeY = d.dir === 1 ? L.top + 44 : L.bot - 44;
     const pulse = 0.5 + 0.5 * Math.sin(elapsed * 14);
     ctx.globalAlpha = 0.55 + pulse * 0.45;
-    outlined('WOOF!', DW / 2, edgeY, 56, ALARM);
-    text('get off the bowls', DW / 2, edgeY + (d.dir === 1 ? 40 : -40), 24, CREAM);
+    /* on a street with more than one road, over the road it is coming down */
+    const edgeX = d.path ? sx(d.x) : DW / 2;
+    outlined('WOOF!', edgeX, edgeY, 56, ALARM);
+    text('get off the bowls', edgeX, edgeY + (d.dir === 1 ? 40 : -40), 24, CREAM);
     ctx.globalAlpha = 1;
     return;
   }
   ctx.save();
   ctx.translate(sx(d.x), sy(d.y));
+  if (d.face === -1) ctx.scale(-1, 1);   /* only a dog that turns a corner ever faces left */
   ctx.globalAlpha = 0.3;
   ctx.beginPath(); ctx.ellipse(0, 24, 34, 11, 0, 0, 6.3);
   ctx.fillStyle = '#000'; ctx.fill();
