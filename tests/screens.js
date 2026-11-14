@@ -63,6 +63,8 @@ async function scene(browser, name, { onboarded = true, street, bests, setup }) 
        restated here: the title screen's layout flows, so it is not a fixed
        fraction of the height */
     streetRow: i => p.evaluate(i => { const r = window.__bb.titleRects().picker[i]; return r.y + r.h / 2; }, i),
+    /* and the door to THE LAB, which is the row under the streets */
+    labRow: () => p.evaluate(() => { const r = window.__bb.titleRects().lab; return r.y + r.h / 2; }),
     /* the middle of PLAY, asked of the page: the title screen's layout flows */
     playY: () => p.evaluate(() => { const r = window.__bb.titleRects().play; return r.y + r.h / 2; }),
     /* where a row's centre is on screen, for the street the page is running */
@@ -87,7 +89,10 @@ const UNLOCK_AT = CORE.RANKS[TERRACE.unlock.rank][0];
 const LOCKED_BEST = UNLOCK_AT - 1;
 const QUIET = () => { const g = window.__bb.g; g.houses.forEach(h => { h.state = 'idle'; h.t = 9999; }); };
 const SCENES = {
-  'title': {},
+  'title': { setup: async a => {
+    a.check('the picker offers the finished streets, and the lab is behind its own door',
+            await a.game(() => { const r = window.__bb.titleRects(); return r.picker.length === 2 && !!r.lab && !r.labOpen; }));
+  } },
   'practice-tap': { onboarded: false, setup: async a => { await a.tap(360, a.DH * 0.6 + 54); await a.run(600); } },
   'street': { setup: async a => { await a.tap(360, a.DH * 0.6 + 54); await a.run(3400); await a.game(QUIET); await a.run(300); } },
   'eating-stir': { setup: async a => {
@@ -208,6 +213,16 @@ const SCENES = {
     await a.tap(360, await a.streetRow(0)); await a.run(100);
     a.check('and tapping Marrow Street goes back', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.houses.length === 8));
     await a.tap(360, await a.streetRow(1)); await a.run(300);
+  } },
+  /* THE LAB: what is behind the door, and that the streets that are finished
+     are not what it put on screen. The lab is the title screen with different
+     rows, so this is the one picture of it. */
+  'title-lab': { bests: { marrow: UNLOCK_AT * 2, terrace: Math.round(TERRACE.ranks[1][0] * 1.2) }, setup: async a => {
+    await a.tap(360, await a.labRow()); await a.run(300);
+    a.check('the door opens the lab onto its street',
+            await a.game(() => window.__bb.g.street.id === 'block' && window.__bb.titleRects().labOpen));
+    a.check('and the finished streets are not among its rows',
+            await a.game(() => window.__bb.titleRects().rows.length === 1));
   } },
   'title-locked': { bests: { marrow: LOCKED_BEST }, setup: async a => {
     await a.tap(360, await a.streetRow(1)); await a.run(100);

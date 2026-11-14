@@ -57,6 +57,8 @@
  * A house has one to three neighbours: the close-up has three windows, and the
  * practice night needs someone to watch.
  * wip (renderer only, optional): the picker tags the street "work in progress".
+ * lab (renderer only, optional): the street lives behind THE LAB instead of in
+ *   the street picker -- see BLOCK_STREET.
  * look, house.size (renderer only, optional): colours, mood and house sizes, see LOOK in game.js.
  * roadHalf (optional): half the road's width as a fraction of the street's.
  * roadX stays within 2% of the middle: the renderer draws the road there with a
@@ -174,6 +176,14 @@ const BLOCK_STREET = {
   id: 'block',
   name: 'Lamplighter Block',
   wip: true,                    // the picker says so: being played for the first time
+  /* Behind THE LAB on the title screen rather than in the street picker
+     (renderer only). The live game is what testers already know, and a street
+     this unfinished -- see #39 for what it still owes -- should not land in
+     the middle of it. The lab is also where the next gameplay experiments go,
+     so nothing being tried out has to be mixed in with the streets that are
+     done. Its best score is kept like any other street's, and it unlocks
+     nothing. */
+  lab: true,
   /* No unlock while it is being playtested: it is the street we most need
      opened, and gating it behind a rank on another one only gets in the way.
      Give it one before it is anything other than work in progress. */

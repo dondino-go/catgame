@@ -278,13 +278,47 @@ it is being played; give it one before it is anything but work in progress.
   `tests/streets.js` for an odd-shaped one and `tests/bent.js` for one that
   bends), with its own sight-line test,
   golden playthroughs and screenshots, a preview, and a `/code-review`.
-- **Lamplighter Block (`block`) is in the picker, open and tagged `wip`**,
+- **Lamplighter Block (`block`) lives behind THE LAB, open and tagged `wip`**,
   waiting on its first playtest. It is the first street with two roads. What
   it still owes: an unlock, a look of its own (it borrows the default night
   palette), kerbs on the alley, and the set-pieces listed under **Walking
   routes** that still follow the main road. The results screen's street map
   does not know about runs either -- it draws every house as left or right of
   one road -- which reads fine but is not the street's shape.
+
+## THE LAB
+
+Testers have the live game on their phones, and what they know is Marrow
+Street and Terrace Row. Anything still being tried out goes behind **THE LAB**,
+a door under the street picker on the title screen, so a street that is half
+built or a rule that is being measured can ship to `main` without landing in
+the middle of the game they already play.
+
+- A street opts in with **`lab: true`** in its description (renderer only,
+  beside `wip`). The picker then offers only the streets without it, and the
+  door offers the ones with it. The rules know nothing about any of this: the
+  core is handed a street and plays it, so an experiment can never leak into a
+  street that is done.
+- **The lab is not a screen of its own.** It is the title screen with the
+  lab's streets in place of the picker's rows, and BACK where How to play
+  sits (`titleRows()` in `src/game.js`). That is deliberate: the vertical
+  budget on the title is nearly spent, and `tests/title.js` sweeps these rows
+  at every phone shape -- so the lab is fitted and guarded by the work already
+  done rather than being the one screen nothing measures. The door counts as a
+  row for the same reason.
+- **A lab street is never remembered as the chosen street**, and is never
+  opened on at launch even if an older build stored one. Two separate guards,
+  with a check each in `tests/title.js`: a sweep that reverted either on its
+  own would have passed, because the other covered for it.
+- Bests are kept per street as usual, and a lab street unlocks nothing.
+- When something in the lab is finished, it is one line: drop `lab` (and
+  `wip`), give it an unlock, and it joins the picker. That is a game change,
+  so it goes through the preview.
+- **Gameplay experiments belong here too**, and this is where they were headed
+  when the lab was built: fed sleep (#34, already a patch in
+  `tools/fed-sleep.js`), a calmer endgame (#33) and fox mercy (#31) are each a
+  small, localised rule change. They are not built yet -- the first lab build
+  is the street alone, so testers react to one new thing at a time.
 
 ## Layout
 

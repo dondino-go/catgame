@@ -2369,43 +2369,96 @@ function playRect() {
 }
 function howRect()  { const p = playRect(); return { x: DW / 2 - 150, y: p.y + p.h + 30, w: 300, h: 60 }; }
 
-/* The street picker: one row per street, under the tagline. Only after the
-   first-launch lesson, which is always on Marrow Street. */
+/* The rows under the tagline: one per street the picker offers, and then a
+   door to THE LAB if there is anything in it. Only after the first-launch
+   lesson, which is always on Marrow Street.
+   While the lab is open the rows are the lab's own streets instead, and BACK
+   takes the place of How to play. The lab is this screen with different rows,
+   not a screen of its own, which is what keeps it honest: the vertical budget
+   here is nearly spent (see playRect) and tests/title.js measures these rows
+   at every phone shape, so the lab is fitted and guarded by the work already
+   done rather than being the one screen nothing watches. */
 const STREET_ROW = { w: 600, h: 84, gap: 14 };
-const pickerOn = () => onboarded && C.STREETS.length > 1;
+/* The streets the picker offers, and the ones that live in the lab (street.lab).
+   Fixed at load: a street does not change its mind about which it is. */
+const MAIN_STREETS = C.STREETS.filter(st => !st.lab);
+const LAB_STREETS  = C.STREETS.filter(st => st.lab);
+/* Presentation only. The core knows nothing about a lab: it is handed a street
+   and plays it, so an experiment can never leak into a street that is done. */
+let labOpen = false;
+let labFrom = null;                /* the street to put back when the lab closes */
+const pickerOn  = () => onboarded && MAIN_STREETS.length > 1;
+const labDoorOn = () => onboarded && LAB_STREETS.length > 0;
+/* What the rows are, in order: what is drawn and tapped at streetRect(i). */
+function titleRows() {
+  if (labOpen) return LAB_STREETS.map(st => ({ st }));
+  const out = pickerOn() ? MAIN_STREETS.map(st => ({ st })) : [];
+  if (labDoorOn()) out.push({ door: true });
+  return out;
+}
+function openLab() {
+  labFrom = g.street;
+  labOpen = true;
+  /* something has to be selected for PLAY to mean anything */
+  if (!g.street.lab) selectStreet(LAB_STREETS[0]);
+}
+function closeLab() {
+  labOpen = false;
+  if (labFrom && labFrom !== g.street) selectStreet(labFrom);
+  labFrom = null;
+}
 /* the foot of the second tagline line (drawn 'middle', so half its size down),
    plus a little air */
 const taglineBottom = () => DH * 0.25 + 240 + 16 + 8;
 const pickerTop = () => Math.max(DH * 0.45, taglineBottom() + 16);
 function pickerBlock() {
-  const r = STREET_ROW, n = C.STREETS.length;
-  return pickerOn() ? n * r.h + (n - 1) * r.gap : 0;
+  const r = STREET_ROW, n = titleRows().length;
+  return n ? n * r.h + (n - 1) * r.gap : 0;
 }
 function streetRect(i) {
   const r = STREET_ROW;
   return { x: DW / 2 - r.w / 2, y: pickerTop() + i * (r.h + r.gap), w: r.w, h: r.h };
 }
-function drawStreetPicker() {
-  C.STREETS.forEach((st, i) => {
-    const r = streetRect(i), open = C.isUnlocked(st, bests), on = st === g.street || st.id === g.street.id;
-    rr(r.x, r.y, r.w, r.h, 22);
-    fillStroke(on ? 'rgba(255,233,201,.16)' : 'rgba(18,12,36,.55)', on ? WARM : 'rgba(255,233,201,.22)', on ? 4 : 2.5);
-    const b = bests[st.id] || 0;
-    text(st.name, r.x + 28, r.y + (open ? 31 : 36), 30, open ? CREAM : 'rgba(255,233,201,.45)', 'left', 700);
-    if (open) text(b ? 'BEST ' + b + ' · ' + C.rankFor(b, st) : 'not played yet', r.x + 28, r.y + 62, 21, 'rgba(255,233,201,.6)', 'left', 600);
-    else      text(C.unlockHint(st), r.x + 28, r.y + 64, 20, 'rgba(255,233,201,.5)', 'left', 600);
-    if (st.wip) {                                /* a street still being worked on: say so, for testers */
-      ctx.font = '700 15px ' + FONT;
-      const label = 'WORK IN PROGRESS', tw = ctx.measureText(label).width;
-      ctx.font = '700 30px ' + FONT;
-      const nx = r.x + 28 + ctx.measureText(st.name).width + 14;
-      rr(nx, r.y + 14, tw + 20, 26, 13); fillStroke('rgba(255,217,120,.18)', WARM, 2);
-      text(label, nx + 10, r.y + 27, 15, WARM, 'left', 700);
-    }
-    if (!open) text('LOCKED', r.x + r.w - 28, r.y + r.h / 2, 21, 'rgba(255,233,201,.4)', 'right', 800);
-    else if (on) text('✓', r.x + r.w - 30, r.y + r.h / 2, 34, MINT, 'right', 800);
+function drawRows() {
+  titleRows().forEach((row, i) => {
+    const r = streetRect(i);
+    if (row.door) drawLabDoor(r); else drawStreetRow(row.st, r);
   });
 }
+function drawStreetRow(st, r) {
+  const open = C.isUnlocked(st, bests), on = st === g.street || st.id === g.street.id;
+  rr(r.x, r.y, r.w, r.h, 22);
+  fillStroke(on ? 'rgba(255,233,201,.16)' : 'rgba(18,12,36,.55)', on ? WARM : 'rgba(255,233,201,.22)', on ? 4 : 2.5);
+  const b = bests[st.id] || 0;
+  text(st.name, r.x + 28, r.y + (open ? 31 : 36), 30, open ? CREAM : 'rgba(255,233,201,.45)', 'left', 700);
+  if (open) text(b ? 'BEST ' + b + ' \u00b7 ' + C.rankFor(b, st) : 'not played yet', r.x + 28, r.y + 62, 21, 'rgba(255,233,201,.6)', 'left', 600);
+  else      text(C.unlockHint(st), r.x + 28, r.y + 64, 20, 'rgba(255,233,201,.5)', 'left', 600);
+  if (st.wip) {                                /* a street still being worked on: say so, for testers */
+    ctx.font = '700 15px ' + FONT;
+    const label = 'WORK IN PROGRESS', tw = ctx.measureText(label).width;
+    ctx.font = '700 30px ' + FONT;
+    const nx = r.x + 28 + ctx.measureText(st.name).width + 14;
+    rr(nx, r.y + 14, tw + 20, 26, 13); fillStroke('rgba(255,217,120,.18)', WARM, 2);
+    text(label, nx + 10, r.y + 27, 15, WARM, 'left', 700);
+  }
+  if (!open) text('LOCKED', r.x + r.w - 28, r.y + r.h / 2, 21, 'rgba(255,233,201,.4)', 'right', 800);
+  else if (on) text('\u2713', r.x + r.w - 30, r.y + r.h / 2, 34, MINT, 'right', 800);
+}
+/* The way in. Deliberately not drawn as a street -- a dashed edge and a
+   chevron -- so it reads as somewhere to go rather than somewhere to raid,
+   and a player looking for a street does not count it as one. */
+function drawLabDoor(r) {
+  ctx.save();
+  ctx.setLineDash([14 * STROKE, 10 * STROKE]);
+  rr(r.x, r.y, r.w, r.h, 22);
+  fillStroke('rgba(157,245,200,.08)', 'rgba(157,245,200,.55)', 2.5);
+  ctx.restore();
+  text('THE LAB', r.x + 28, r.y + 31, 30, MINT, 'left', 700);
+  text(LAB_STREETS.length + (LAB_STREETS.length === 1 ? ' street' : ' streets') + ' being tried out',
+       r.x + 28, r.y + 62, 21, 'rgba(157,245,200,.6)', 'left', 600);
+  text('\u203a', r.x + r.w - 32, r.y + r.h / 2 - 2, 40, MINT, 'right', 800);
+}
+
 /* Swap the game to another street, between rounds. */
 function selectStreet(st) {
   C.setStreet(g, st);
@@ -2413,7 +2466,9 @@ function selectStreet(st) {
   for (let i = 0; i < g.houses.length; i++) vis.push({ glow: 0, curtain: 0, shake: 0, pop: 0 });
   layout();
   best = bests[streetKey()] || 0;
-  if (st.id) saveJSON('bowlbandit.street', st.id);
+  /* A lab street is never remembered: the next launch opens on a street that
+     is finished, and the lab is somewhere you choose to go. */
+  if (st.id && !st.lab) saveJSON('bowlbandit.street', st.id);
 }
 
 function drawTitle() {
@@ -2424,8 +2479,13 @@ function drawTitle() {
   outlined('BOWL', DW / 2, y, 104, WARM);
   outlined('BANDIT', DW / 2, y + 94, 104, '#ff9ecd');
 
-  text('Every house feeds you.', DW / 2, y + 196, 32, CREAM, 'center', 700);
-  text('Don’t get caught.', DW / 2, y + 240, 32, CREAM, 'center', 700);
+  if (labOpen) {
+    text('THE LAB', DW / 2, y + 196, 32, MINT, 'center', 800);
+    text('Half-built streets. Tell us how they play.', DW / 2, y + 240, 26, CREAM, 'center', 700);
+  } else {
+    text('Every house feeds you.', DW / 2, y + 196, 32, CREAM, 'center', 700);
+    text('Don’t get caught.', DW / 2, y + 240, 32, CREAM, 'center', 700);
+  }
 
   const p = playRect();
   const pulse = 1 + Math.sin(elapsed * 3) * 0.03;
@@ -2437,11 +2497,12 @@ function drawTitle() {
   ctx.restore();
 
   const hr = howRect();
-  text('How to play', DW / 2, hr.y + hr.h / 2, 25, 'rgba(255,233,201,.75)', 'center', 700);
-  ctx.fillStyle = 'rgba(255,233,201,.4)';
+  const foot = labOpen ? '‹  Back to the streets' : 'How to play';
+  text(foot, DW / 2, hr.y + hr.h / 2, 25, labOpen ? MINT : 'rgba(255,233,201,.75)', 'center', 700);
+  ctx.fillStyle = labOpen ? 'rgba(157,245,200,.4)' : 'rgba(255,233,201,.4)';
   ctx.fillRect(DW / 2 - 70, hr.y + hr.h / 2 + 18, 140, 2);
 
-  if (pickerOn()) drawStreetPicker();
+  if (titleRows().length) drawRows();
   else if (best > 0) text('BEST ' + best + ' · ' + C.rankFor(best, g.street), DW / 2, hr.y + hr.h + 34, 22,
                           'rgba(255,233,201,.5)', 'center', 600);
   drawInstall();
@@ -2827,11 +2888,17 @@ function onDown(ev) {
   if ((g.scene === 'title' || g.scene === 'over') && updateReady) { loadUpdate(true); return; }
   if (g.scene === 'title') {
     askForMotion();
-    if (pickerOn()) {
-      const i = C.STREETS.findIndex((st, i) => inside(p, streetRect(i)));
-      if (i >= 0) { if (C.isUnlocked(C.STREETS[i], bests) && C.STREETS[i].id !== g.street.id) selectStreet(C.STREETS[i]); Sfx.tap(); return; }
+    const rows = titleRows();
+    const i = rows.findIndex((row, i) => inside(p, streetRect(i)));
+    if (i >= 0) {
+      const row = rows[i];
+      if (row.door) openLab();
+      else if (C.isUnlocked(row.st, bests) && row.st.id !== g.street.id) selectStreet(row.st);
+      Sfx.tap(); return;
     }
-    if (inside(p, howRect()) || !onboarded) startTutorial();
+    /* the foot of the screen is How to play, or BACK while the lab is open */
+    if (inside(p, howRect()) && onboarded) { if (labOpen) { closeLab(); Sfx.tap(); } else startTutorial(); return; }
+    if (!onboarded) startTutorial();
     else { C.start(g); handleEvents(); }
     return;
   }
@@ -2930,7 +2997,9 @@ function frame(ts) {
 /* Start on the street the player last chose, if it is still open to them. */
 {
   const saved = C.streetById(loadJSON('bowlbandit.street', null));
-  if (saved && onboarded && !(DEBUG && window.__bbStreet) && saved !== g.street && C.isUnlocked(saved, bests)) selectStreet(saved);
+  /* ...and never into a lab street: one is not saved as the chosen street, so
+     this only bites on a value stored before a street moved into the lab. */
+  if (saved && onboarded && !saved.lab && !(DEBUG && window.__bbStreet) && saved !== g.street && C.isUnlocked(saved, bests)) selectStreet(saved);
 }
 
 fit();
@@ -2953,7 +3022,15 @@ if (DEBUG) window.__bb = { houseRect, L, bolt, g, C, tut: () => tut, checkForUpd
   titleRects: () => ({ play: playRect(), how: howRect(), DH,
                        tagline: { x: 0, y: DH * 0.25 + 240 - 16, w: DW, h: 32 },
                        build: { x: 0, y: DH - 52, w: DW, h: 34 },
-                       picker: pickerOn() ? C.STREETS.map((_, i) => streetRect(i)) : [] }) };
+                       /* every row under the tagline, in order: the street rows and
+                          then the door to the lab -- or, while the lab is open, its
+                          own streets. tests/title.js measures these. */
+                       rows: titleRows().map((_, i) => streetRect(i)),
+                       /* the street rows alone, so tests/screens.js can tap a street
+                          by its index without counting the door */
+                       picker: titleRows().map((row, i) => row.door ? null : streetRect(i)).filter(Boolean),
+                       lab: labDoorOn() && !labOpen ? streetRect(titleRows().length - 1) : null,
+                       labOpen }) };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */

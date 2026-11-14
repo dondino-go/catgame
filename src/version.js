@@ -1,2 +1,2 @@
 /* Written by tools/stamp-build.sh. Don't edit by hand. */
-window.BOWL_BUILD = { time: '2026-11-08T20:07:17Z', branch: 'claude/walking-routes-phase-3-czlkq2' };
+window.BOWL_BUILD = { time: '2026-11-14T09:01:10Z', branch: 'claude/game-loop-fun-tests-wf61fb' };
