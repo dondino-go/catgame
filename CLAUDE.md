@@ -13,8 +13,16 @@ build step, no dependencies (Playwright is used by one optional test only).
 | `legacy-desktop` | The original desktop game (`index.html`) and its three suites, exactly as `main` held them before the swap. Retired from `main` by #10; kept here for reference. |
 
 Retired -- **don't commit to these**: `claude/mobile-redesign` (the old live
-branch; Pages moved to `main`), `claude/slow-loop` (the night) and
-`claude/data-driven-streets` (the refactor). All three were merged into `main`.
+branch; Pages moved to `main`), `claude/slow-loop` (the night),
+`claude/data-driven-streets` (the refactor),
+`claude/walking-routes-phase-3-czlkq2` (phase 3 and Lamplighter Block) and
+`claude/game-loop-fun-tests-wf61fb` (THE LAB, and the review that followed).
+All of them were merged into `main`; `git log main..<branch>` is empty for
+each, so nothing is waiting on them. Deleting a remote branch is refused from
+here, so they are the user's to tidy up if they want them gone.
+
+`claude/new-streets` is fully contained in `main` as well, so **start it again
+from `main`** rather than committing on top of what is there.
 
 Fixes from playtest feedback go on `main` (through the preview), then get
 merged into `claude/new-streets`, not the other way round.
@@ -262,8 +270,6 @@ it is being played; give it one before it is anything but work in progress.
   playtested by the owner and by the iPhone tester.
   Phase 3 walking routes (#7) is done, rules and renderer both (see
   **Walking routes**), and Lamplighter Block is the street that proves it.
-  It has been through the preview once and plays; what it still owes is
-  listed below and in #39.
   Next: finishing Lamplighter Block (#39), more streets (#12), minigames (#9).
   Undecided: whether the eating screen should follow each street's look (#23).
 - Open follow-ups: review findings #16 to #20 (#20 is half done -- the title
@@ -294,6 +300,14 @@ it is being played; give it one before it is anything but work in progress.
   `tests/streets.js` for an odd-shaped one and `tests/bent.js` for one that
   bends), with its own sight-line test,
   golden playthroughs and screenshots, a preview, and a `/code-review`.
+- **THE LAB shipped to testers on 14 Nov**, with Lamplighter Block behind it.
+  That is the first tester build since 1 Nov, and the first that adds
+  something without changing the game they already know: the picker is the two
+  streets it always was, and Marrow's and Terrace Row's golden logs are
+  byte-identical across the whole change. **The next thing this needs is what
+  testers say about the street** -- nothing in the lab has been played by
+  anyone but us. The eight findings from its `/code-review` were all fixed
+  before it went (see the marker under **Code review**).
 - **Lamplighter Block (`block`) lives behind THE LAB, open and tagged `wip`**,
   waiting on its first playtest. It is the first street with two roads. What
   it still owes: an unlock, a look of its own (it borrows the default night
@@ -335,7 +349,17 @@ the middle of the game they already play.
   when the lab was built: fed sleep (#34, already a patch in
   `tools/fed-sleep.js`), a calmer endgame (#33) and fox mercy (#31) are each a
   small, localised rule change. They are not built yet -- the first lab build
-  is the street alone, so testers react to one new thing at a time.
+  is the street alone, so testers react to one new thing at a time. When they
+  are built, the thing to settle first is how a tester turns one on: a rule is
+  not a street, so it is not another row, and two experiments running at once
+  stop either of them being measurable.
+- The profiling that argued for those three, from 200 bot nights a row (a
+  throwaway script, not committed): the last two houses are **41 of 89
+  seconds** of a careful decent night on Marrow Street and 39 of 59 on Terrace
+  Row; about **40% of a night is spent waiting** for a bowl that is safe to go
+  to; and a careful player never gets near the attention meter (peak 0.30 of
+  1) while a sloppy one is carried home on 76% of nights. Bots see every
+  window at once, so read these as shape, not as how it feels.
 
 ## Layout
 
@@ -397,8 +421,12 @@ steps frames itself with `__bb.advance(seconds)`.
 - `tests/block.test.js`: Lamplighter Block -- its sight lines, including the
   one that crosses the block (Mr Quill and The Mullens back onto each other
   from different roads), that the walk between the two roads goes by the alley
-  and never crosses the block, its ladder and wording, and that it is in the
-  picker. It guards hardest that the street has **the same eight bowls and
+  and never crosses the block, that the walk off at the end of a night leaves
+  along the road the cat is standing on, its ladder and wording, and that it is
+  behind the lab rather than in the picker (where it shows is
+  `tests/title.js`'s business). It also sweeps **every** street for holes: each
+  row, on both sides of every run of road, must be a house, part of a venue's
+  span or scenery, unless a crossing takes that ground. It guards hardest that the street has **the same eight bowls and
   twenty sight lines as Marrow Street**: the moment that stops being true, a
   night here measures the size rather than the shape, which is the one thing
   the street exists to measure.
@@ -430,15 +458,20 @@ steps frames itself with `__bb.advance(seconds)`.
   with `--update` and say so in the commit message. During the refactor the
   logs must not change at all.
 - `tests/screens.js`: key screens rendered in `?manual` mode and compared
-  with `tests/screens/*.png` (pixel differences over 48/255 fail). Eight are
-  Marrow Street (two of them the title with the street picker); four are
-  Terrace Row (`terrace-*`: the pub shut and open, the close-up, the results
-  map) and check that a tap on the pub walks to the road; three (`block-*`)
-  are Lamplighter Block, where the taps matter more than the picture -- every
-  one goes through the half-size scale before it reaches a house, and the two
-  middle strips are back to back with only a fence between them; two (`lane-*`) run on the odd-shaped test street in
+  with `tests/screens/*.png` (pixel differences over 48/255 fail). By prefix,
+  because a count in prose drifts every time a scene is added and nothing
+  fails when it does (two `lane-*` screens were really three, and three
+  `block-*` were four, before this was rewritten): `terrace-*` is Terrace Row
+  (the pub shut and open, the close-up, the results map) and checks that a tap
+  on the pub walks to the road; `block-*` is Lamplighter Block, where the taps
+  matter more than the picture -- every one goes through the half-size scale
+  before it reaches a house, and the two middle strips are back to back with
+  only a fence between them -- plus `block-leaving`, the one guard on the
+  send-off cameras at width 2; `lane-*` runs on the odd-shaped test street in
   `tests/streets.js`, handed to the page as `window.__bbStreet` under `?debug`,
-  and also check that taps land on the houses as drawn. Re-record with
+  and also checks that taps land on the houses as drawn; `title-*` is the
+  title screen, the picker, a locked street and the lab. The rest are Marrow
+  Street. Re-record with
   `--update` only for intended visual changes, and never re-record a Marrow
   screen during the refactor. Output goes to `tests/screens/out/`
   (git-ignored).
