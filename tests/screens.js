@@ -228,6 +228,40 @@ const SCENES = {
     await a.tap(360, await a.streetRow(1)); await a.run(100);
     a.check('a locked street cannot be picked, and the tap does not start a round', await a.game(() => window.__bb.g.street.id === 'marrow' && window.__bb.g.scene === 'title'));
   } },
+  /* The send-off on a street drawn at half size. The cameras are put on in
+     screen space, outside that scale; inside it the 1.62x push-in came out as
+     0.81x -- a zoom OUT -- and anchored the cat a quarter of the way across
+     the screen. A wrong camera here is not subtle: it is the whole block in
+     frame, small and off to one side, instead of a close push-in on the cat.
+     It leaves from the back road, which is also where the walk off used to
+     drag it through the middle of the block. */
+  'block-leaving': { street: BLOCK, setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);
+    await a.game(() => { const g = window.__bb.g;
+      const back = g.routes.stretches.find(s => s.id === 'back');
+      g.cat.x = back.roadX; g.cat.y = 2.5; g.cat.target = null;
+      g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } }); });
+    await a.run(16);
+    a.check('a cleared street starts the send-off', await a.game(() => window.__bb.g.scene === 'leaving'));
+    a.check('and it leaves along the back road it was standing on',
+            await a.game(() => Math.abs(window.__bb.g.leave.roadX - 1.5) < 1e-9));
+    await a.run(900);
+  } },
+  /* A player with one street open is offered no choice of street. The count
+     behind that button is the picker's streets, not every street the game
+     holds -- counting the lab's sent a Marrow-only player to a picker with
+     nothing in it to pick. The night is kept under Terrace Row's unlock so
+     nothing opens while it is being played. */
+  'results-locked': { bests: { marrow: LOCKED_BEST }, setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);
+    await a.game(() => { const g = window.__bb.g;
+      g.score = 120; g.bites = 4;
+      g.houses.forEach((h, i) => { if (i < 2) { h.cleared = true; h.bowl = null; } });
+      g.racket = 1; });
+    await a.run(9000);
+    a.check('the night ended without opening a street', await a.game(() => window.__bb.g.scene === 'over' && window.__bb.g.score < 600));
+    a.check('so no street choice is offered', await a.game(() => window.__bb.resultsRects().choose === null));
+  } },
   /* the send-off: the cat walking itself off a street it has cleared */
   'leaving': { setup: async a => {
     await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);

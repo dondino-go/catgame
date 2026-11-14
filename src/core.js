@@ -222,13 +222,17 @@ const BLOCK_STREET = {
     { kind: 'block', row: 0, side:  1, on: 'main' },
     { kind: 'block', row: 2, side:  1, on: 'main' },
     { kind: 'block', row: 4, side:  1, on: 'main' },
+    { kind: 'block', row: 5, side:  1, on: 'main' },
     { kind: 'block', row: 6, side:  1, on: 'main' },
     { kind: 'block', row: 0, side: -1, on: 'back' },
+    { kind: 'block', row: 2, side: -1, on: 'back' },
     { kind: 'block', row: 3, side: -1, on: 'back' },
+    { kind: 'block', row: 4, side: -1, on: 'back' },
     { kind: 'block', row: 5, side: -1, on: 'back' },
     { kind: 'block', row: 6, side: -1, on: 'back' },
     { kind: 'block', row: 1, side:  1, on: 'back' },
     { kind: 'block', row: 3, side:  1, on: 'back' },
+    { kind: 'block', row: 4, side:  1, on: 'back' },
     { kind: 'block', row: 5, side:  1, on: 'back' },
     { kind: 'block', row: 6, side:  1, on: 'back' },
     { kind: 'block', row: 7, side:  1, on: 'back' },
@@ -567,8 +571,19 @@ function validateStreet(st) {
     const on = stretchesAt(h && h.bowl).filter(s => num(s.roadX));
     return h && h.on !== undefined ? on.filter(s => s.id === h.on) : on;
   };
-  const runOf = h => (h && h.bowl && !h.venue)
-    ? (frontsOf(h)[0] || stretchesAt(h.bowl)[0] || P.stretches[0] || null) : null;
+  const firstRun = P.stretches.filter(s => num(s.roadX))[0] || null;
+  /* A venue has no bowl, so the only thing that can say which run it stands
+     against is `on` -- or the first run, which is the default scenery takes
+     too. This used to return null for anything without a bowl, and null is
+     never a stretch, so the run test below quietly excused every venue: a bus
+     stop could be put straight on top of the pub and the street validated
+     clean. The check was doing its job one commit earlier, which is the sort
+     of thing only putting the bug back finds. */
+  const runOf = h => {
+    if (!h) return null;
+    if (h.venue) return h.on !== undefined ? (P.stretches.find(st => st.id === h.on) || null) : firstRun;
+    return h.bowl ? (frontsOf(h)[0] || stretchesAt(h.bowl)[0] || P.stretches[0] || null) : null;
+  };
   if (!(st.catStart && inWalk(st.catStart))) bad.push('catStart must be inside the walkable area');
   const hs = st.houses;
   if (!Array.isArray(hs) || !hs.length) { bad.push('houses must be a non-empty list'); return bad; }
@@ -578,7 +593,6 @@ function validateStreet(st) {
      which is the only one on every street that has shipped. Without the run
      in the test, a bus stop was reported as sitting on a house that is round
      a corner from it, and a legal street was refused. */
-  const firstRun = P.stretches.filter(s => num(s.roadX))[0] || null;
   if (st.scenery !== undefined) {
     if (!Array.isArray(st.scenery)) bad.push('scenery must be a list');
     else st.scenery.forEach((sc, i) => {
@@ -1425,9 +1439,18 @@ function beginLeave(g) {
   clearSpot(g);              /* it never showed before because the ending cut away on the same frame */
   if (!g.ending) g.ending = g.houses.every(h => h.venue || (h.cleared && !h.angry)) ? 'cleared' : 'done';
   const w = g.routes.bounds.y;
+  /* The road it walks out along is the one it is standing on. Drifting to
+     street.roadX instead sent a cat leaving from the back road of a two-road
+     street straight through the middle block -- 31 frames of 180 off every
+     walkable stretch, with the camera following it. Settled here rather than
+     read each tick, because the walk goes out past the end of the road, where
+     no stretch contains the cat any more. */
+  const runs = g.routes.stretches.filter(s => s.roadX != null);
+  const here = runs.filter(s => rectHas(s, g.cat.x, g.cat.y))[0] || runs[0] || null;
   /* the anchor the turn is made around, so it starts and finishes on the spot */
   g.leave = { t: 0, up: Math.abs(g.cat.y - w[0]) <= Math.abs(g.cat.y - w[1]),
-              ax: g.cat.x, ay: g.cat.y };
+              ax: g.cat.x, ay: g.cat.y,
+              roadX: here ? here.roadX : g.street.roadX };
   g.scene = 'leaving';
   emit(g, 'leave', { ending: g.ending });
 }
@@ -1519,7 +1542,7 @@ function update(g, dt) {
       const w = g.routes.bounds.y, endY = lv.up ? w[0] - 1.4 : w[1] + 1.4;
       const dy = endY - g.cat.y, step = CAT_SPEED * 0.95 * dt;
       g.cat.y += Math.abs(dy) > step ? Math.sign(dy) * step : dy;
-      g.cat.x = lerp(g.cat.x, g.street.roadX, dt * 2.2);
+      g.cat.x = lerp(g.cat.x, lv.roadX, dt * 2.2);
     }
     updateHouses(g, dt);
     if (lv.t > LEAVE_SECS) endRound(g);

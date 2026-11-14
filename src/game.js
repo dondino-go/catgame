@@ -208,6 +208,13 @@ function fit() {
 /* world -> screen */
 const sx = wx => wx * DW;
 const sy = wy => L.top + wy * L.rowH;
+/* Street space (what sx/sy give) to screen space: the same mapping draw()
+   puts on for a street wider than one run of road. Only the cameras need it,
+   because they are the one thing applied outside that scale -- everything
+   else is drawn in street space and carried through it. k is 1 on a
+   one-run street, so both are the identity there. */
+const scrX = v => v * L.k;
+const scrY = v => L.top + (v - L.top) * L.k;
 const bowlX = h => sx(h.bowlAt.x);
 const rowY  = h => sy(h.bowlAt.y);
 const onLeft = h => h.side < 0;
@@ -1100,7 +1107,11 @@ function pickupPlan() {
   const cx = sx(g.cat.x), cy = sy(g.cat.y);
   /* they come from whichever end of the street is nearer */
   const fromBottom = g.cat.y > g.street.rows / 2;
-  const startX = sx(g.street.roadX), startY = fromBottom ? L.bot + 140 : L.top - 40;
+  /* sy(rows) is L.bot on a one-run street and the street's own bottom edge on
+     a wider one; L.bot is the canvas's, which is not the same place once the
+     street is drawn smaller. (Which road the owner walks up is still the
+     street's main one -- that is a set-piece, and #39.) */
+  const startX = sx(g.street.roadX), startY = fromBottom ? sy(g.street.rows) + 140 : L.top - 40;
   const side = cx < sx(g.street.roadX) ? 1 : -1;               /* stand on the road side of the cat */
   const standX = cx + side * 60, standY = cy;
   const walkT  = clamp(Math.hypot(standX - startX, standY - startY) / 320, 0.9, 1.8);
@@ -1139,10 +1150,10 @@ function leaveCamera() {
      pavement -- a cat strolling into nothing. Clamped like this it walks out
      of the bottom of the frame instead, which is what was wanted. */
   const lo = L.top + anchorY / z, hi = L.bot - (DH - anchorY) / z;
-  const fy = clamp(sy(g.cat.y), Math.min(lo, hi), Math.max(lo, hi));
+  const fy = clamp(scrY(sy(g.cat.y)), Math.min(lo, hi), Math.max(lo, hi));
   ctx.translate(DW / 2, anchorY);
   ctx.scale(z, z);
-  ctx.translate(-lerp(DW / 2, sx(g.cat.x), ease), -lerp(anchorY, fy, ease));
+  ctx.translate(-lerp(DW / 2, scrX(sx(g.cat.x)), ease), -lerp(anchorY, fy, ease));
 }
 
 /* Gentle push-in on the cat, then follow the owner home. Only the street
@@ -1152,7 +1163,9 @@ function pickupCamera() {
   const P = pickupPlan();
   const z = 1 + 0.75 * (1 - Math.pow(1 - clamp(P.t / 1.1, 0, 1), 3));
   const follow = clamp((P.t - P.reachT) / 0.6, 0, 1);
-  const fx = lerp(P.cx, P.ox, follow), fy = lerp(P.cy, P.oy, follow) - 50;
+  /* P is in street space, like everything the plan is drawn from; the 50 is a
+     screen-space nudge, so it goes on after the conversion. */
+  const fx = scrX(lerp(P.cx, P.ox, follow)), fy = scrY(lerp(P.cy, P.oy, follow)) - 50;
   const anchorY = DH * 0.55;
   const e = clamp(P.t / 1.1, 0, 1);
   ctx.translate(DW / 2, anchorY);
@@ -2364,7 +2377,9 @@ setTimeout(checkForUpdate, 1500);
    answer (paging, or a shorter row). tests/title.js fails when that day
    comes. */
 function playRect() {
-  const under = pickerOn() ? pickerTop() + pickerBlock() + 30 : 0;
+  /* measured from the rows that are actually drawn -- asking pickerOn() put
+     PLAY over the lab's door on a game with one finished street */
+  const under = titleRows().length ? pickerTop() + pickerBlock() + 30 : 0;
   return { x: DW / 2 - 180, y: Math.max(DH * 0.6, under), w: 360, h: 108 };
 }
 function howRect()  { const p = playRect(); return { x: DW / 2 - 150, y: p.y + p.h + 30, w: 300, h: 60 }; }
@@ -2565,7 +2580,15 @@ function drawStreetMap(cx, top, rowH) {
 
 /* "Choose a street" on the results, once there is a choice to make */
 let chooseY = 0;
-const canChoose = () => onboarded && C.STREETS.filter(st => C.isUnlocked(st, bests)).length > 1;
+/* Is there anywhere else to go from the results screen? The streets the
+   picker offers, not every street there is -- counting the lab's put "choose
+   a street" in front of a player with only Marrow Street unlocked, which took
+   them to a picker with nothing to choose.
+   In the lab there is always somewhere to go: back to the streets. Without
+   that, a lab holding one street would have no way out of it, because every
+   other tap on the results screen starts the next round. */
+const canChoose = () => onboarded &&
+  (labOpen || MAIN_STREETS.filter(st => C.isUnlocked(st, bests)).length > 1);
 const chooseRect = () => ({ x: DW / 2 - 160, y: chooseY - 28, w: 320, h: 56 });
 
 function drawOver() {
@@ -2749,9 +2772,14 @@ function draw() {
      Anchored at the left edge of the street and the top of row 0, because
      that is where street space starts. k is 1 on every street that has one
      run, so this is the identity transform and nothing below it moves. */
-  if (L.k !== 1) { ctx.translate(0, L.top); ctx.scale(L.k, L.k); ctx.translate(0, -L.top); }
+  /* The cameras frame the canvas, so they are put on in screen space, outside
+     the street's own scale and before it: the street is drawn small, then
+     framed. Inside it they did neither job -- at width 2 the send-off's 1.62x
+     push-in came out as 0.81x, a zoom OUT, and the cat was anchored a quarter
+     of the way across the screen instead of the middle. */
   pickupCamera();
   leaveCamera();
+  if (L.k !== 1) { ctx.translate(0, L.top); ctx.scale(L.k, L.k); ctx.translate(0, -L.top); }
   drawStreet();
   /* Lamps stand on row boundaries (bowls are mid-row), so they never sit on a
      bowl: the first boundary inside a run and the last, one lamp each side.
@@ -3030,7 +3058,11 @@ if (DEBUG) window.__bb = { houseRect, L, bolt, g, C, tut: () => tut, checkForUpd
                           by its index without counting the door */
                        picker: titleRows().map((row, i) => row.door ? null : streetRect(i)).filter(Boolean),
                        lab: labDoorOn() && !labOpen ? streetRect(titleRows().length - 1) : null,
-                       labOpen }) };
+                       labOpen }),
+  /* the results screen's one optional hit area, asked of the page the same
+     way: null when there is nowhere else to go, so a test can say so without
+     restating the rule */
+  resultsRects: () => ({ choose: canChoose() ? chooseRect() : null }) };
 
 /* Keep a published page's best score across a republish, where the host
    supports it. */

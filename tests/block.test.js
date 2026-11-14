@@ -116,15 +116,89 @@ console.log('\n=== LAMPLIGHTER BLOCK: RANKS AND WORDING ===');
   ok(C.blurbFor(ST, 3) !== C.WAVES[3].blurb && !/Marrow/.test(C.blurbFor(ST, 3)), 'the last wave is worded for this street, not Marrow Street');
 }
 
-console.log('\n=== LAMPLIGHTER BLOCK: IN THE PICKER ===');
+console.log('\n=== LAMPLIGHTER BLOCK: IN THE LAB ===');
 {
-  ok(C.STREETS.includes(ST), 'the title screen lists it');
+  /* It used to say "the title screen lists it", which stopped being true the
+     day it moved behind THE LAB and nothing noticed: being in C.STREETS is
+     not being in the picker, and the assertion read like a guard on the one
+     while only ever testing the other. Where it shows is the renderer's
+     business, and tests/title.js is what measures it. */
+  ok(C.STREETS.includes(ST), 'the game knows about it');
+  ok(ST.lab === true, 'and it lives behind THE LAB, not in the street picker, while it is half built');
   ok(ST.wip === true, 'and tags it work in progress, because it is being played for the first time');
   /* Deliberately open: it is the street that most needs playing, and a rank
      gate on another one only gets in the way. Give it an unlock before it is
      anything other than work in progress. */
   ok(C.isUnlocked(ST, {}), 'it is open from the start while it is being playtested');
   ok(C.STREETS.filter(s => s.id === ST.id).length === 1 && ST.id === 'block', 'it has one id of its own');
+}
+
+console.log('\n=== EVERY STREET: NO HOLES IN THE ROW ===');
+{
+  /* Four cells of this block were never filled in -- the strip between the
+     roads at row 5 on one side, rows 2 and 4 on the other -- so the street had
+     bare gaps mid-block, which is the one thing the `block` scenery exists to
+     prevent. Nothing was looking, because scenery is renderer-only and no rule
+     reads it.
+     So: every row, on both sides of every run of road, must be a house, part
+     of a venue's span, or scenery -- unless a crossing takes that ground, the
+     way the alley takes row 7 of the two middle strips. Swept over every
+     street, because the rule is not this street's: it is what makes a row
+     read as a street rather than a mistake. */
+  const holes = [];
+  for (const st of C.STREETS) {
+    const g = C.create({ street: st });
+    const runs = g.routes.stretches.filter(s => s.roadX != null);
+    const crossings = g.routes.stretches.filter(s => s.roadX == null);
+    for (const run of runs) for (const side of [-1, 1]) for (let row = 0; row < st.rows; row++) {
+      const taken = (st.houses || []).some(h => {
+        if (h.side !== side) return false;
+        const hr = g.houses[st.houses.indexOf(h)];
+        if (!hr || (g.routes.stretches[hr.run] || runs[0]) !== run) return false;
+        const span = (h.venue && h.venue.span) || 1;
+        return row >= h.row && row < h.row + span;
+      }) || (st.scenery || []).some(sc => {
+        if (sc.side !== side) return false;
+        const on = sc.on !== undefined ? g.routes.stretches.find(x => x.id === sc.on) : runs[0];
+        return on === run && sc.row === row;
+      });
+      /* a crossing reaching into this strip is ground, not a hole: the probe
+         sits just off the kerb on the side being checked */
+      const probe = run.roadX + side * 0.12;
+      const crossed = crossings.some(c => probe >= c.x[0] && probe <= c.x[1] && c.y[0] < row + 1 && c.y[1] > row);
+      if (!taken && !crossed) holes.push(st.id + ' ' + run.id + ' side ' + side + ' row ' + row);
+    }
+  }
+  ok(holes.length === 0, 'every row on every side of every road is a house or something to look at' +
+     (holes.length ? ' -- bare: ' + holes.join(', ') : ''));
+}
+
+console.log('\n=== LAMPLIGHTER BLOCK: WALKING OFF AT THE END ===');
+{
+  /* The walk off at the end of a night drifted to street.roadX -- the main
+     road -- so a cat leaving from the back one was dragged straight through
+     the middle of the block, on camera, with the send-off following it.
+     It leaves along the road it is standing on now. */
+  const g = fresh(5); quiet(g);
+  const back = g.routes.stretches.find(s => s.id === 'back');
+  g.cat.x = back.roadX; g.cat.y = 2.5; g.cat.target = null;
+  g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } });
+  run(g, 1 / 60);                       /* the settled street starts the send-off */
+  ok(g.scene === 'leaving', 'a settled street starts the send-off');
+  ok(Math.abs(g.leave.roadX - back.roadX) < 1e-9, 'and it leaves along the back road, the one it was standing on');
+  let off = 0, frames = 0, crossed = 0;
+  const bounds = g.routes.bounds.y;
+  for (let i = 0; i < 60 * 4 && g.scene === 'leaving'; i++) {
+    C.update(g, DT); C.drainEvents(g);
+    frames++;
+    /* past the end of the road it is off the map on purpose; while it is
+       still beside the street it must be on ground it could walk on */
+    if (g.cat.y >= bounds[0] && g.cat.y <= bounds[1] && !onGround(g.routes, g.cat.x, g.cat.y)) off++;
+    if (g.cat.x < 1.0) crossed++;       /* 1.0 is inside the block between the two roads */
+  }
+  ok(frames > 30, 'the send-off runs for a while (' + frames + ' frames)');
+  ok(off === 0, 'the cat is never off walkable ground on its way out (' + off + ' of ' + frames + ' frames)');
+  ok(crossed === 0, 'and never crosses into the block between the roads');
 }
 
 report();

@@ -214,9 +214,25 @@ and the route finder walked it there quite correctly, so it never looked
 broken -- it just did not work. `scenery` takes a `block` kind for the gaps a
 wider street leaves: a building with nobody in it, which the rules never see.
 
-**Still tied to the main run:** `pickupPlan` (the owner's approach), the dog's
-run and the cat's walk off. Those are set-pieces shot along one road, and the
-cameras have not been checked at width 2 either.
+**Still tied to the main run:** `pickupPlan` (the owner's approach) and the
+dog's run. Those are set-pieces shot along one road.
+
+**The cat's walk off is not, any more.** It drifted to `street.roadX` and so
+dragged a cat leaving from the back road straight through the middle of the
+block -- 31 frames of 180 off every walkable stretch, with the send-off camera
+following it. `beginLeave` settles the road it is standing on and the walk
+uses that. It is settled at the anchor rather than read each tick because the
+walk goes out past the end of the road, where no stretch contains the cat any
+more.
+
+**The cameras are screen space, and go on outside the street's scale.**
+`leaveCamera` and `pickupCamera` were being applied inside `scale(L.k, L.k)`,
+so on a street drawn at half size the send-off's 1.62x push-in came out as
+0.81x -- a zoom *out* -- anchored a quarter of the way across the screen.
+They are put on before that scale now, and convert the cat and the owner out
+of street space themselves (`scrX`/`scrY`). Anything else that frames the
+canvas rather than standing on the street belongs on that side of the
+transform too.
 
 **Lamplighter Block is the first street with two of them** (`BLOCK_STREET`):
 a back lane, two roads with a block of houses between them and an alley at
@@ -281,8 +297,9 @@ it is being played; give it one before it is anything but work in progress.
 - **Lamplighter Block (`block`) lives behind THE LAB, open and tagged `wip`**,
   waiting on its first playtest. It is the first street with two roads. What
   it still owes: an unlock, a look of its own (it borrows the default night
-  palette), kerbs on the alley, and the set-pieces listed under **Walking
-  routes** that still follow the main road. The results screen's street map
+  palette), kerbs on the alley, and the owner's approach and the dog's run,
+  which still follow the main road (see **Walking routes**). Its send-off and
+  both cameras were owed too and are done. The results screen's street map
   does not know about runs either -- it draws every house as left or right of
   one road -- which reads fine but is not the street's shape.
 
@@ -567,7 +584,15 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `82ed815` (walking routes phase 3, `5edf3cf..82ed815`, high,
+last reviewed: `cdd40f6` (the renderer half of walking routes phase 3,
+Lamplighter Block and THE LAB, `82ed815..cdd40f6`, high, 8 findings; all 8
+fixed -- a scenery check that excused every venue, a screenshot reference that
+was wrong the day it was recorded, both send-off cameras applied inside the
+street's own scale, the walk off dragging the cat through the block, the
+results screen counting lab streets it would not offer, four cells of the
+block left as holes, PLAY placed from the picker rather than from the rows
+drawn, and a block assertion that read like a picker guard and was not one.)
+before that: `82ed815` (walking routes phase 3, `5edf3cf..82ed815`, high,
 3 findings; all 3 fixed in the commit after it -- validateStreet throwing a
 TypeError on a misshapen `paths` instead of reporting it, the fox's mooch
 walking through the houses up a cul-de-sac, and the scenery check never
@@ -645,6 +670,25 @@ update-path fixes and the results-screen fit, high, 4 findings; all 4 fixed)
   `tests/screens/out/<name>.first.png`. A real change fails both renders. If
   the retry notice appears often, the flake is back: compare that image with
   the reference and add what you find to #21.
+- **A guard can quietly excuse the very case it was written for.** The
+  scenery-on-a-house check learnt about runs of road and started asking which
+  run each house fronts -- and a venue has no bowl to work that out from, so
+  it came back "no run at all", which matches no run, so every venue was
+  skipped. A bus stop could be built on top of the pub and the street
+  validated clean. It had worked one commit earlier. The shape to watch for:
+  a test that gained a new term, where the new term is undefined for some of
+  the things being tested.
+- **Screen space and street space are not the same space, and a camera lives
+  in the first.** See **Walking routes**: a push-in applied inside the
+  street's own `ctx.scale` multiplied with it and became a zoom out. The test
+  is what the number is measured against -- the canvas, or the street.
+- **"Failing both renders" did not catch a reference that was wrong from
+  birth.** `block-results.png` never matched what the game drew, from the
+  commit that recorded it, and it was read as the #21 flake twice -- once
+  here, from a single retry that happened to pass. What settles it is a run
+  with your own changes stashed: if it fails there, it is not your work, and
+  if it fails there on every run, the reference is wrong rather than flaky.
+  See **Screenshot goldens**, which now says this.
 - A new session can't overwrite the preview until it has read the files
   already published there (Artifact `read` with `paths`), and may start on a
   detached HEAD or a random `claude/...` branch: check `git status -sb` and

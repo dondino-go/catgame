@@ -29,6 +29,18 @@ for (let i = 0; i < N; i++) {
 
 console.log('\n=== TERRACE ROW: THE PUB ===');
 {
+  /* Nothing may be put on top of the pub. The validator's overlap test works
+     out which run of road each house stands against, and a venue has no bowl
+     to work it out from -- so it came back as "no run at all", which matches
+     no run, so every venue was quietly excused and a bus stop could be built
+     on the Stag's Head. It was caught one commit earlier, which is the kind
+     of thing only putting the bug back finds. */
+  const onPub = Object.assign({}, ST, { scenery: [{ kind: 'busstop', row: 2, side: 1 }] });
+  const beside = Object.assign({}, ST, { scenery: [{ kind: 'busstop', row: 0, side: 1 }] });
+  ok(C.validateStreet(onPub).some(m => /sits on house 5/.test(m)), 'the validator refuses scenery built on top of the pub');
+  ok(C.validateStreet(beside).length === 0, 'and still allows it in the rows the pub leaves free');
+}
+{
   const g = fresh(); quiet(g);
   g.houses[PUB].t = 0;
   for (let i = 0; i < 120; i++) { g.houses[PUB].t = Math.min(g.houses[PUB].t, 0); C.update(g, DT); }

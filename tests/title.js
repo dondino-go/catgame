@@ -14,6 +14,15 @@
  * overlaps anything else. Then, at the shape that used to break, tap the very
  * top of PLAY and check a round actually starts.
  *
+ * A caveat on what that sweep proves: it runs at the configuration the game
+ * ships with -- two streets in the picker and one door. PLAY is placed from
+ * the rows that are drawn (titleRows), and it used to be placed from the
+ * picker instead, which with a single finished street and a lab street would
+ * have laid PLAY over the door. That case has no test, because the street
+ * lists are fixed at load and this test drives the real page; the fix is that
+ * both now read the same list. If a street is ever retired from the picker,
+ * this is the comment that says the sweep was not covering it.
+ *
  * THE LAB is swept the same way. It is not a screen of its own -- it is this
  * screen with the lab's streets in place of the picker's rows -- so the same
  * sweep is the whole of its layout guard, and the door that opens it is one
