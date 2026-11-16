@@ -15,8 +15,10 @@ build step, no dependencies (Playwright is used by one optional test only).
 Retired -- **don't commit to these**: `claude/mobile-redesign` (the old live
 branch; Pages moved to `main`), `claude/slow-loop` (the night),
 `claude/data-driven-streets` (the refactor),
-`claude/walking-routes-phase-3-czlkq2` (phase 3 and Lamplighter Block) and
-`claude/game-loop-fun-tests-wf61fb` (THE LAB, and the review that followed).
+`claude/walking-routes-phase-3-czlkq2` (phase 3 and Lamplighter Block),
+`claude/game-loop-fun-tests-wf61fb` (THE LAB, and the review that followed) and
+`claude/labs-layout-validation-r49mxv` (the Block rebuilt as a ladder, and the
+review that followed).
 All of them were merged into `main`; `git log main..<branch>` is empty for
 each, so nothing is waiting on them. Deleting a remote branch is refused from
 here, so they are the user's to tidy up if they want them gone.
