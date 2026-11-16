@@ -333,8 +333,9 @@ it is being played; give it one before it is anything but work in progress.
   anyone but us. The eight findings from its `/code-review` were all fixed
   before it went (see the marker under **Code review**).
 - **Lamplighter Block (`block`) lives behind THE LAB, open and tagged `wip`**,
-  rebuilt as a ladder after its first playtest (see **Walking routes**) and
-  waiting on the next. It is the first street with two roads. What
+  rebuilt as a ladder after its first playtest (see **Walking routes**),
+  shipped to testers on 16 Nov without a `/code-review` (owed: `cdd40f6..`,
+  it adds `pace` and `dog.route` to the rules) and waiting on the next. It is the first street with two roads. What
   it still owes: an unlock, a look of its own (it borrows the default night
   palette), kerbs on the alleys, and the owner's approach, which still
   follows the main road. Not done, and worth trying if the dog still feels
