@@ -164,7 +164,7 @@
 4380 @ play cat=1.438741,3.252471 score=1345 streak=12 st=s-.s-.s-.w-.i2.i-.i6.i-
 4419 eatStart house=6
 4440 @ play cat=1.71,1.5 score=1345 streak=12 st=w-.w-.w-.w-.i1.i-.i6.i-
-4478 steal house=4
+4470 steal house=4
 4488 stir house=7
 4498 bite house=6 mult=3 multUp=null perfect=true points=45 streak=12
 4500 @ play cat=1.71,1.5 score=1390 streak=12 st=w-.w-.w-.i-.i-.i-.i5.s-
@@ -173,7 +173,7 @@
 4572 bark
 4620 @ play cat=1.5,1.5 score=1390 streak=12 st=s-.s-.w-.s-.s-.s-.s5.w-
 4641 bark
-4680 @ play cat=1.5,1.5 score=1390 streak=12 st=w-.w-.w-.w-.w6.w-.w4.w-
+4680 @ play cat=1.5,1.5 score=1390 streak=12 st=w-.w-.w-.w-.w-.w-.w4.w-
 4740 @ play cat=1.5,1.5 score=1390 streak=12 st=w-.w-.w-.w-.w6.w-.w3.w-
 4800 @ play cat=1.5,1.5 score=1390 streak=12 st=w-.w-.w-.w-.w6.w-.w2.w-
 4860 @ play cat=1.5,1.5 score=1390 streak=12 st=w-.w-.w-.w-.w6.w-.w1.w-

@@ -179,7 +179,13 @@ and is what the callers lean on to stay bit-identical.
 The fox's **mooch** -- what it does with nothing to rob -- paces the line
 `street.fox` names, in a straight line, easing x towards it. That is fine on
 one run of road and was off walkable ground 0.22s later up a cul-de-sac, so it
-now walks back to the road by route first. The line itself must be walkable
+now walks back to the road by route first. **"No corner to make for" is not
+"on the road":** the fox's home follows its own y, so in an alley its home is
+in that same alley, the router says straight on, and the pacing took it out
+of the alley sideways into the buildings. It paces only once it is level with
+the ground the patrol line is on. The sweep that guards it
+(`tests/block.test.js`) needs a cat eating the street, or the fox never runs
+out of bowls and never goes home. The line itself must be walkable
 end to end on **one** stretch, which `validateStreet` checks: the mooch cannot
 turn a corner, so pointing it across a gap is a street bug, not a fox bug.
 
@@ -252,7 +258,10 @@ so on a street drawn at half size the send-off's 1.62x push-in came out as
 They are put on before that scale now, and convert the cat and the owner out
 of street space themselves (`scrX`/`scrY`). Anything else that frames the
 canvas rather than standing on the street belongs on that side of the
-transform too.
+transform too -- the dog's WOOF warning was the next one found. Both cameras
+also clamp sideways (`camX`): the street is exactly as wide as the canvas, so
+a push-in centred on a cat at an outer bowl of a wide street showed flat
+night down a third of the frame.
 
 **Lamplighter Block is the first street with two of them** (`BLOCK_STREET`):
 two roads with a block of houses between them and three alleys through it --
@@ -334,8 +343,8 @@ it is being played; give it one before it is anything but work in progress.
   before it went (see the marker under **Code review**).
 - **Lamplighter Block (`block`) lives behind THE LAB, open and tagged `wip`**,
   rebuilt as a ladder after its first playtest (see **Walking routes**),
-  shipped to testers on 16 Nov without a `/code-review` (owed: `cdd40f6..`,
-  it adds `pace` and `dog.route` to the rules) and waiting on the next. It is the first street with two roads. What
+  shipped to testers on 16 Nov ahead of its `/code-review`, which is now
+  done (see the marker under **Code review**), and waiting on the next. It is the first street with two roads. What
   it still owes: an unlock, a look of its own (it borrows the default night
   palette), kerbs on the alleys, and the owner's approach, which still
   follows the main road. Not done, and worth trying if the dog still feels
@@ -369,6 +378,11 @@ the middle of the game they already play.
   with a check each in `tests/title.js`: a sweep that reverted either on its
   own would have passed, because the other covered for it.
 - Bests are kept per street as usual, and a lab street unlocks nothing.
+- **The door has to be reachable from the results screen.** "Choose a street"
+  is the only way back to the title from there, so it is offered whenever the
+  title has the door on it (`canChoose` counts `labDoorOn()`), not only when a
+  second street is unlocked. For one build it was not, and a new tester could
+  reach the lab only by relaunching.
 - When something in the lab is finished, it is one line: drop `lab` (and
   `wip`), give it an unlock, and it joins the picker. That is a game change,
   so it goes through the preview.
@@ -646,7 +660,16 @@ steps frames itself with `__bb.advance(seconds)`.
 - Small visual tweaks don't need a review; the golden and screenshot tests
   cover them.
 
-last reviewed: `cdd40f6` (the renderer half of walking routes phase 3,
+last reviewed: `ace863d` (the fixes from the review below and Lamplighter
+Block rebuilt as a ladder, `cdd40f6..ace863d`, high, 9 findings; 7 fixed in
+the commit after it and 2 filed as #40 and #41. This range had already
+shipped. Fixed: the fox's walk home cutting through the block, both cameras
+hanging over the side of a wide street, no way from the results to the title
+-- and so to THE LAB -- for a player with one street open, a venue's `on`
+never being validated, a hole in the dog-route check, the dog's warning
+placed inside the street's scale, and a threshold restated in a test. Three
+of the seven were in the previous review's own fixes.)
+before that: `cdd40f6` (the renderer half of walking routes phase 3,
 Lamplighter Block and THE LAB, `82ed815..cdd40f6`, high, 8 findings; all 8
 fixed -- a scenery check that excused every venue, a screenshot reference that
 was wrong the day it was recorded, both send-off cameras applied inside the

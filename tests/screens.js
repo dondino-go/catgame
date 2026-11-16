@@ -247,11 +247,39 @@ const SCENES = {
             await a.game(() => Math.abs(window.__bb.g.leave.roadX - 1.5) < 1e-9));
     await a.run(900);
   } },
-  /* A player with one street open is offered no choice of street. The count
-     behind that button is the picker's streets, not every street the game
-     holds -- counting the lab's sent a Marrow-only player to a picker with
-     nothing in it to pick. The night is kept under Terrace Row's unlock so
-     nothing opens while it is being played. */
+  /* The same send-off from an outer bowl. The cameras clamp sideways now: the
+     street is exactly as wide as the canvas, so a push-in centred on a cat
+     standing at the far left hung over the edge and a third of the frame was
+     flat night. The picture is the guard: with the clamp taken out it
+     differs from this reference by 126,100 pixels. A check that read the left
+     edge back and asked for more than one colour was tried and passed with
+     the bug in -- the street's wash tints the empty part too -- so it went. */
+  'block-leaving-outer': { street: BLOCK, setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);
+    await a.game(() => { const g = window.__bb.g, C = window.__bb.C;
+      const s = C.bowlSpot(g.houses[0]);
+      g.cat.x = s.x; g.cat.y = s.y; g.cat.target = null;
+      g.houses.forEach(h => { if (!h.venue) { h.cleared = true; h.bowl = null; } }); });
+    await a.run(16);
+    a.check('a cleared street starts the send-off', await a.game(() => window.__bb.g.scene === 'leaving'));
+    await a.run(1300);
+  } },
+  /* the dog's warning on a half-size street: full size, at the edge of the
+     screen, over the road the dog is about to come down */
+  'block-bark': { street: BLOCK, setup: async a => {
+    await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);
+    await a.game(() => { const g = window.__bb.g, C = window.__bb.C; C.lockWave(g, 1); });
+    await a.run(50);                       /* the wave coming in sets the dog's timer, so it is zeroed after */
+    await a.game(() => { const g = window.__bb.g; g.rng = () => 0.9; g.dogTimer = 0; });
+    await a.run(500);
+    a.check('the dog is barking, about to come down the back road',
+            await a.game(() => { const d = window.__bb.g.dog; return !!d && d.phase === 'bark' && d.x === 1.5; }));
+  } },
+  /* A player with one street open is still offered the way back to the
+     title, because THE LAB's door is there. For one build they were not: the
+     button counted only the picker's unlocked streets, so every new tester
+     was shut out of the lab from the results screen. The night is kept under
+     Terrace Row's unlock so nothing opens while it is being played. */
   'results-locked': { bests: { marrow: LOCKED_BEST }, setup: async a => {
     await a.tap(360, await a.playY()); await a.run(400); await a.game(QUIET);
     await a.game(() => { const g = window.__bb.g;
@@ -259,8 +287,11 @@ const SCENES = {
       g.houses.forEach((h, i) => { if (i < 2) { h.cleared = true; h.bowl = null; } });
       g.racket = 1; });
     await a.run(9000);
-    a.check('the night ended without opening a street', await a.game(() => window.__bb.g.scene === 'over' && window.__bb.g.score < 600));
-    a.check('so no street choice is offered', await a.game(() => window.__bb.resultsRects().choose === null));
+    const end = await a.game(() => ({ scene: window.__bb.g.scene, score: window.__bb.g.score }));
+    a.check('the night ended without opening a street', end.scene === 'over' && end.score < UNLOCK_AT);
+    const choose = await a.game(() => window.__bb.resultsRects().choose);
+    a.check('the way back to the title is offered, because the lab door is there', !!choose);
+
   } },
   /* the send-off: the cat walking itself off a street it has cleared */
   'leaving': { setup: async a => {

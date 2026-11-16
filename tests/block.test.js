@@ -171,6 +171,62 @@ console.log('\n=== LAMPLIGHTER BLOCK: THE DOG ===');
   ok(a && a.secs < 3.6, 'the whole run is over in a few seconds (' + (a ? a.secs.toFixed(1) : '-') + 's), because the dog keeps the street\'s pace');
 }
 
+{
+  /* What validateStreet says about a route, because the dog asks nobody else.
+     The second case validated clean when the check was first written: "may
+     start off the end of the road" was allowed of any stretch, alleys too. */
+  const withRoute = route => { const st = JSON.parse(JSON.stringify(ST)); st.dog.route = route; return C.validateStreet(st).filter(b => /dog/.test(b)); };
+  ok(withRoute(ST.dog.route).length === 0, 'the street\'s own route is legal');
+  ok(withRoute([{ x: 1.0, y: -0.6 }, { x: 1.0, y: 0.7 }, { x: 1.5, y: 0.7 }, { x: 1.5, y: 8.6 }]).length > 0,
+     'a route that comes on down the middle of the block to reach an alley is refused');
+  ok(withRoute([{ x: 0.5, y: -0.6 }, { x: 0.5, y: 6.0 }, { x: 1.5, y: 6.0 }, { x: 1.5, y: -0.6 }]).length > 0,
+     'and so is one that crosses between the roads where there is no alley');
+  ok(withRoute([{ x: 0.5, y: -0.6 }, { x: 0.5, y: 0.7 }, { x: 1.5, y: 0.7 }, { x: 1.5, y: 8.6 }]).length === 0,
+     'one that crosses by the top alley and leaves by the far end is fine');
+  ok(withRoute([{ x: 0.3, y: 7.3 }, { x: 1.7, y: 7.3 }]).length === 0,
+     'a leg may pass from one stretch into the next where they overlap (pavement, alley, pavement)');
+}
+
+console.log('\n=== LAMPLIGHTER BLOCK: THE FOX ===');
+{
+  /* A fox with nothing to rob goes home to the main road, and used to cut
+     through the buildings on the way: its home follows its own y, so once it
+     was in an alley the router said "straight on" and the mooch paced it out
+     of the alley sideways. It only goes home when there is nothing to rob,
+     so a cat has to be eating the street out from under it: the first version
+     of this sweep had no cat, the fox never ran out of bowls, and it passed
+     with the bug in. Houses silent, no dog, held at a fox wave, the cat
+     taking the nearest bowl, and the fox watched every tick. With the old
+     mooch put back this finds it off the ground on most of a third of these
+     nights; it must be none. */
+  let nights = 0, ticks = 0, deepest = 0, back = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const g = fresh(seed); C.lockWave(g, 2);
+    let off = 0;
+    for (let i = 0; i < 60 * 240 && g.scene !== 'over'; i++) {
+      quiet(g); g.racket = 0; g.dogTimer = 1e9;
+      if (g.scene === 'play') {
+        if (g.eat) { if (i % 25 === 0) C.tapEat(g); }
+        else if (!g.cat.target) {
+          let best = null, bd = 1e9;
+          g.houses.filter(h => h.bowl).forEach(h => { const sp = C.bowlSpot(h), d = C.routeDist(g.routes, g.cat.x, g.cat.y, sp.x, sp.y); if (d < bd) { bd = d; best = h; } });
+          if (best) C.tapHouse(g, best.id);
+        }
+      }
+      C.update(g, DT); C.drainEvents(g);
+      const f = g.fox; if (!f) continue;
+      const b = g.routes.bounds.y;
+      if (f.x > 1.2) back++;
+      if (f.y < b[0] || f.y > b[1]) continue;   /* coming on or going off past the end of the road */
+      const p = C.clampToPaths(g.routes, f.x, f.y), d = Math.hypot(p.x - f.x, p.y - f.y);
+      if (d > 1e-6) { off++; deepest = Math.max(deepest, d); }
+    }
+    if (off) nights++; ticks += off;
+  }
+  ok(back > 0, 'the fox does get round to the back road in these nights (' + back + ' ticks there)');
+  ok(nights === 0, 'and is never off walkable ground on its way home (' + nights + ' of 40 nights, ' + ticks + ' ticks, ' + deepest.toFixed(2) + ' deep)');
+}
+
 console.log('\n=== LAMPLIGHTER BLOCK: RANKS AND WORDING ===');
 {
   const R = C.ranksOf(ST);

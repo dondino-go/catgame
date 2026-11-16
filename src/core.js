@@ -355,7 +355,14 @@ function overlapRect(a, b) {
    street's only one, and validateStreet works the same thing out for itself
    from the raw description before any of this exists. */
 function runIndexFor(R, d) {
-  if (!d || !d.bowl) return -1;
+  if (!d) return -1;
+  /* Nothing with no bowl can be placed by where its bowl stands, so a venue
+     stands against the run it names, or the first one -- the same answer
+     validateStreet gives, so the two cannot put the pub on different roads. */
+  if (!d.bowl) {
+    const named = d.on !== undefined ? R.stretches.findIndex(s => s.roadX != null && s.id === d.on) : -1;
+    return named >= 0 ? named : R.stretches.findIndex(s => s.roadX != null);
+  }
   const on = R.stretches.filter(s => s.roadX != null && rectHas(s, d.bowl.x, d.bowl.y));
   const pick = d.on !== undefined ? on.filter(s => s.id === d.on) : on;
   return pick.length ? pick[0].i : (R.stretches.findIndex(s => s.roadX != null));
@@ -645,6 +652,10 @@ function validateStreet(st) {
       /* a venue (the pub) has no bowl and no tap target of its own: it only watches */
       const v = h.venue;
       if (h.bowl) bad.push(at + ': a venue has no bowl');
+      /* its `on` is the only thing that says which road it stands against, so
+         a name that is not a run of road leaves it standing nowhere -- and
+         the scenery check above then has no run to compare and excuses it */
+      if (h.on !== undefined && !P.stretches.some(s => s.id === h.on && num(s.roadX))) bad.push(at + ': on must name a run of road');
       if (!(Number.isInteger(v.from) && v.from >= 0 && v.from < WAVES.length)) bad.push(at + ': venue.from must be a wave number');
       if (!(Number.isInteger(v.span) && v.span >= 1 && h.row >= 0 && h.row + v.span <= st.rows)) bad.push(at + ': venue.span must keep it inside the street');
       if (!Array.isArray(h.neighbours) || !h.neighbours.length) { bad.push(at + ': a venue needs someone to watch'); return; }
@@ -699,22 +710,28 @@ function validateStreet(st) {
   if (!(st.dog && num(st.dog.x) && ends(st.dog) && num(st.dog.overrun) && st.dog.overrun >= 0)) bad.push('dog needs x, two ends and an overrun');
   else if (st.dog.route !== undefined) {
     /* The dog is not routed: it runs the corners it is given, in straight
-       lines. So each leg has to be straight down a road or straight along a
-       crossing -- on one piece of walkable ground -- or the dog is being sent
-       through the houses. Its first and last corners are where it comes on
-       and goes off, and may be past the end of the road. */
+       lines. So every step of each leg has to be on walkable ground, or the
+       dog is being sent through the houses. The one exception is where it
+       comes on and goes off: the first and last legs may run past the end of
+       a road -- a run of road, in line with it. The first version let that
+       excuse apply to a crossing too, so a dog could come down through the
+       middle of the block to reach an alley and the street validated clean.
+       Walked in steps rather than matched to one stretch, so a leg that
+       passes from one stretch into the next where they overlap is legal. */
     const rt = st.dog.route;
     if (!(Array.isArray(rt) && rt.length >= 2 && rt.every(p => p && num(p.x) && num(p.y)))) bad.push('dog.route needs at least two corners, each with x and y');
     else for (let i = 0; i + 1 < rt.length; i++) {
       const a = rt[i], b = rt[i + 1];
       if (a.x !== b.x && a.y !== b.y) { bad.push('dog.route leg ' + i + ' must run straight along x or y'); continue; }
-      const on = P.stretches.some(s => {
-        const inX = v => v >= s.x[0] - eps && v <= s.x[1] + eps, inY = v => v >= s.y[0] - eps && v <= s.y[1] + eps;
-        /* a leg down a road may start or finish off its end; a leg across must be on the ground */
-        return a.x === b.x ? inX(a.x) && Math.max(a.y, b.y) >= s.y[0] && Math.min(a.y, b.y) <= s.y[1] &&
-                             [a, b].every((p, k) => inY(p.y) || (k === 0 ? i === 0 : i + 2 === rt.length))
-                           : inY(a.y) && inX(a.x) && inX(b.x);
-      });
+      const outer = a.x === b.x && (i === 0 || i + 2 === rt.length);
+      const offEnd = p => outer && P.stretches.some(s => num(s.roadX) && p.x >= s.x[0] - eps && p.x <= s.x[1] + eps &&
+                                                          (p.y < s.y[0] || p.y > s.y[1]));
+      const n = Math.max(1, Math.ceil((Math.abs(b.x - a.x) + Math.abs(b.y - a.y)) / 0.02));
+      let on = true;
+      for (let k = 0; k <= n && on; k++) {
+        const p = { x: a.x + (b.x - a.x) * k / n, y: a.y + (b.y - a.y) * k / n };
+        on = inWalk(p) || offEnd(p);
+      }
       if (!on) bad.push('dog.route leg ' + i + ' leaves the walkable ground');
     }
   }
@@ -1442,9 +1459,23 @@ function updateFox(g, dt) {
       f.y += ((wp.y - f.y) / d) * step;
       return;
     }
+    /* No corner to make for is not the same as being on the road. `home`
+       follows the fox's own y, so a fox coming back through an alley has its
+       home in that same alley: the router says "walk straight at it", and the
+       mooch below then paced it up and down while it was still mid-alley --
+       out of a strip 0.6 tall and into the buildings, on 31 nights of 80 on
+       Lamplighter Block. The pacing is only legal on the ground the patrol
+       line is on, so until the fox is level with that it walks straight
+       across to it. On a street with one run of road it always is. */
+    const line = g.routes.stretches.find(s => rectHas(s, run.x, run.patrol.y[0]) && rectHas(s, run.x, run.patrol.y[1]));
+    if (line && (f.x < line.x[0] - 1e-9 || f.x > line.x[1] + 1e-9)) {
+      const d = Math.abs(home.x - f.x), step = Math.min(d, FOX_SPEED * paceOf(g) * dt);
+      f.x += Math.sign(home.x - f.x) * step;
+      return;
+    }
     f.y += f.patrol * run.patrol.speed * paceOf(g) * dt;
     if (f.y < run.patrol.y[0] || f.y > run.patrol.y[1]) f.patrol *= -1;
-    f.x = lerp(f.x, run.x, dt * 2);
+    f.x = lerp(f.x, run.x, dt * 2 * paceOf(g));
     return;
   }
 

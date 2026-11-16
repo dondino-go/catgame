@@ -1042,14 +1042,22 @@ function drawDog() {
   if (!d) return;
   if (d.phase === 'bark') {
     /* it is off-screen while barking: say which end it is coming from */
+    /* The warning frames the canvas, so it is placed in screen space: L.top
+       and L.bot are the screen's, and inside the street's own scale "44 from
+       the bottom" landed mid-screen on a half-size street, with the words at
+       half size too. The street's scale is undone for it rather than the
+       call being moved, so it keeps its place in the drawing order. */
+    ctx.save();
+    if (L.k !== 1) { ctx.translate(0, L.top); ctx.scale(1 / L.k, 1 / L.k); ctx.translate(0, -L.top); }
     const edgeY = d.dir === 1 ? L.top + 44 : L.bot - 44;
     const pulse = 0.5 + 0.5 * Math.sin(elapsed * 14);
     ctx.globalAlpha = 0.55 + pulse * 0.45;
     /* on a street with more than one road, over the road it is coming down */
-    const edgeX = d.path ? sx(d.x) : DW / 2;
+    const edgeX = d.path ? clamp(scrX(sx(d.x)), 130, DW - 130) : DW / 2;
     outlined('WOOF!', edgeX, edgeY, 56, ALARM);
     text('get off the bowls', edgeX, edgeY + (d.dir === 1 ? 40 : -40), 24, CREAM);
     ctx.globalAlpha = 1;
+    ctx.restore();
     return;
   }
   ctx.save();
@@ -1156,8 +1164,15 @@ function leaveCamera() {
   const fy = clamp(scrY(sy(g.cat.y)), Math.min(lo, hi), Math.max(lo, hi));
   ctx.translate(DW / 2, anchorY);
   ctx.scale(z, z);
-  ctx.translate(-lerp(DW / 2, scrX(sx(g.cat.x)), ease), -lerp(anchorY, fy, ease));
+  ctx.translate(-camX(lerp(DW / 2, scrX(sx(g.cat.x)), ease), z), -lerp(anchorY, fy, ease));
 }
+
+/* Keep a pushed-in camera on the street sideways as well. The street is as
+   wide as the canvas, so a view 1/z of that wide, centred on a cat standing
+   off-centre, hangs over the edge: on Lamplighter Block, where the roads are
+   a quarter and three quarters of the way across, a send-off from an outer
+   bowl had flat night down a third of the frame. */
+function camX(x, z) { const half = DW / (2 * z); return clamp(x, half, DW - half); }
 
 /* Gentle push-in on the cat, then follow the owner home. Only the street
    zooms; the HUD stays put. */
@@ -1173,7 +1188,7 @@ function pickupCamera() {
   const e = clamp(P.t / 1.1, 0, 1);
   ctx.translate(DW / 2, anchorY);
   ctx.scale(z, z);
-  ctx.translate(-lerp(DW / 2, fx, e), -lerp(anchorY, fy, e));
+  ctx.translate(-camX(lerp(DW / 2, fx, e), z), -lerp(anchorY, fy, e));
 }
 
 /* the cat, scooped up: curled, eyes shut, purring */
@@ -2589,9 +2604,14 @@ let chooseY = 0;
    them to a picker with nothing to choose.
    In the lab there is always somewhere to go: back to the streets. Without
    that, a lab holding one street would have no way out of it, because every
-   other tap on the results screen starts the next round. */
+   other tap on the results screen starts the next round.
+   And the lab's door is somewhere to go from the streets. Leaving it out
+   meant a player with only Marrow Street open -- every new tester -- had no
+   way from the results back to the title, which is where the door is, short
+   of relaunching; and an installed app resumes rather than relaunches. The
+   door is a row on that title, so there is something there to choose. */
 const canChoose = () => onboarded &&
-  (labOpen || MAIN_STREETS.filter(st => C.isUnlocked(st, bests)).length > 1);
+  (labOpen || labDoorOn() || MAIN_STREETS.filter(st => C.isUnlocked(st, bests)).length > 1);
 const chooseRect = () => ({ x: DW / 2 - 160, y: chooseY - 28, w: 320, h: 56 });
 
 function drawOver() {

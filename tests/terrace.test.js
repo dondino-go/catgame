@@ -169,4 +169,29 @@ console.log('\n=== STREETS AND UNLOCKS ===');
   C.setStreet(g, M); C.start(g);
   ok(g.houses.length === 8 && g.street === M, 'and back to Marrow Street');
 }
+console.log('\n=== A VENUE SAYS WHICH ROAD IT STANDS ON ===');
+{
+  /* A venue has no bowl to place it, so `on` is all there is. An `on` that
+     named nothing used to leave it on no run at all, and the scenery check
+     then had nothing to compare and let a bus stop be built on the pub. */
+  const T = C.TERRACE_STREET, pub = T.houses.findIndex(h => h.venue);
+  const st = JSON.parse(JSON.stringify(T));
+  st.houses[pub].on = 'nowhere';
+  st.scenery.push({ kind: 'busstop', row: st.houses[pub].row, side: st.houses[pub].side });
+  const bad = C.validateStreet(st);
+  ok(bad.some(b => /on must name a run of road/.test(b)), 'a venue whose `on` names no road is refused');
+  const st2 = JSON.parse(JSON.stringify(T));
+  st2.scenery.push({ kind: 'busstop', row: st2.houses[pub].row, side: st2.houses[pub].side });
+  ok(C.validateStreet(st2).some(b => /sits on house/.test(b)), 'and scenery on top of the pub is still refused');
+  /* the rules and the validator must agree about where it stands */
+  const B = JSON.parse(JSON.stringify(C.BLOCK_STREET));
+  B.houses.push({ name: 'The Lamp', col: 3, row: 3, side: 1, on: 'back', venue: { from: 2, span: 1 }, neighbours: [6] });
+  B.houses[6].neighbours.push(B.houses.length - 1);
+  B.scenery = B.scenery.filter(sc => !(sc.on === 'back' && sc.side === 1 && sc.row === 3));
+  ok(C.validateStreet(B).length === 0, 'a venue may stand on the back road of a street with two (' + C.validateStreet(B).join('; ') + ')');
+  const g = C.create({ street: B });
+  ok(g.routes.stretches[g.houses[g.houses.length - 1].run].id === 'back', 'and the game puts it on the road it named, not the first one');
+  ok(C.create({ street: T }).houses[pub].run === 0, 'the pub on Terrace Row stands on its one road');
+}
+
 report();

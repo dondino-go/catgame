@@ -209,44 +209,51 @@
 4204 eatStart house=5
 4229 eatStart house=5
 4254 eatStart house=5
-4260 @ play cat=1.29,6.5 score=800 streak=0 st=w-.w-.w-.w-.w-.w3.w6.w-
+4260 @ play cat=1.29,6.5 score=800 streak=0 st=w-.w-.w-.w-.w-.w3.w5.w-
 4279 eatStart house=5
-4320 @ play cat=1.29,6.5 score=800 streak=0 st=i-.i-.i-.i-.i-.i3.i5.i-
+4320 @ play cat=1.29,6.5 score=800 streak=0 st=i-.i-.i-.i-.i-.i3.i4.i-
 4330 bite house=5 mult=1 multUp=null perfect=true points=15 streak=2
-4380 @ play cat=1.29,6.5 score=815 streak=2 st=i-.i-.i-.i-.i-.i2.i4.i-
+4380 @ play cat=1.29,6.5 score=815 streak=2 st=i-.i-.i-.i-.i-.i2.i3.i-
 4414 bite house=5 mult=1 multUp=1.5 perfect=true points=15 streak=4
-4440 @ play cat=1.29,6.5 score=830 streak=4 st=i-.i-.i-.i-.i-.i1.i3.i-
+4440 @ play cat=1.29,6.5 score=830 streak=4 st=i-.i-.i-.i-.i-.i1.i2.i-
 4466 bite house=5 mult=1.5 multUp=2 perfect=true points=23 streak=6
 4466 clear house=5 points=50
 4468 stir house=7
 4470 stir house=4
 4499 stir house=3
-4500 @ play cat=1.422812,4.918902 score=903 streak=6 st=i-.i-.i-.s-.s-.i-.i2.s-
+4500 @ play cat=1.422812,4.918902 score=903 streak=6 st=i-.i-.i-.s-.s-.i-.i1.s-
+4518 steal house=6
 4526 stir house=0
-4560 @ play cat=1.657187,2.128728 score=903 streak=6 st=s-.i-.i-.w-.w-.i-.i1.w-
-4574 eatStart house=6
-4574 streakLost by=4 streak=6
-4599 eatStart house=6
-4620 @ play cat=1.546667,1.5 score=903 streak=0 st=w-.i-.i-.w-.w-.i-.i1.w-
-4624 eatStart house=6
-4649 eatStart house=6
-4674 eatStart house=6
-4680 @ play cat=1.71,1.5 score=903 streak=0 st=w-.i-.i-.w-.i-.i-.i1.w-
-4699 eatStart house=6
-4715 stir house=2
-4717 stir house=6
-4722 stir house=1
-4740 @ play cat=1.71,1.5 score=903 streak=0 st=w-.s-.s-.i-.i-.i-.s1.i-
-4754 bite house=6 mult=1 multUp=null perfect=true points=15 streak=2
-4754 clear house=6 points=25
-4754 leave ending=cleared
-4778 stir house=5
-4800 @ leaving cat=1.741339,1.900791 score=943 streak=2 st=i-.w-.w-.i-.i-.s-.w-.i-
-4860 @ leaving cat=1.686527,1.521041 score=943 streak=2 st=i-.w-.w-.i-.i-.w-.w-.i-
-4918 stir house=7
-4920 @ leaving cat=1.530102,-0.805333 score=943 streak=2 st=i-.w-.w-.i-.i-.w-.i-.s-
-4938 stir house=4
-4970 stir house=3
-4980 @ leaving cat=1.5032,-1.2 score=943 streak=2 st=i-.i-.i-.s-.s-.w-.i-.w-
-5007 over score=1263
-end over score=1263 kept=8 cleared=8 bites=27 perfects=25 misses=0 caught=0 fox=4 bestMult=3 ending=cleared got=8/8
+4560 @ play cat=1.657187,2.128728 score=903 streak=6 st=s-.i-.i-.w-.w-.i-.i-.w-
+4606 eatStart house=6
+4606 streakLost by=4 streak=6
+4620 @ play cat=1.71,1.5 score=903 streak=0 st=w-.i-.i-.w-.w-.i-.i6.w-
+4631 eatStart house=6
+4656 eatStart house=6
+4675 stir house=5
+4680 @ play cat=1.686667,1.5 score=903 streak=0 st=w-.i-.i-.w-.i-.s-.i6.w-
+4681 eatStart house=6
+4693 stir house=1
+4712 bite house=6 mult=1 multUp=null perfect=true points=15 streak=2
+4740 @ play cat=1.71,1.5 score=918 streak=2 st=w-.w-.i-.i-.i-.w-.i5.i-
+4746 stir house=2
+4761 stir house=6
+4779 bite house=6 mult=1 multUp=1.5 perfect=true points=15 streak=4
+4800 @ play cat=1.71,1.5 score=933 streak=4 st=i-.w-.w-.i-.i-.w-.s4.i-
+4847 bite house=6 mult=1.5 multUp=2 perfect=true points=23 streak=6
+4860 @ play cat=1.71,1.5 score=956 streak=6 st=i-.w-.w-.i-.i-.w-.w3.i-
+4907 bark
+4914 bite house=6 mult=2 multUp=null perfect=true points=30 streak=8
+4920 @ play cat=1.71,1.5 score=986 streak=8 st=s-.w-.w-.s-.s-.s-.w2.s-
+4955 bite house=6 mult=2 multUp=2.5 perfect=true points=30 streak=10
+4966 bite house=6 mult=2.5 multUp=null perfect=false points=25 streak=11
+4966 clear house=6 points=63
+4966 leave ending=cleared
+4980 @ leaving cat=1.748351,1.562308 score=1104 streak=11 st=s-.w-.w-.s-.s-.s-.w-.s-
+5040 @ leaving cat=1.665683,1.850292 score=1104 streak=11 st=w-.i-.i-.w-.w-.s-.i-.w-
+5100 @ leaving cat=1.599483,0.613333 score=1104 streak=11 st=w-.i-.i-.w-.w-.s-.i-.w-
+5160 @ leaving cat=1.510577,-1.2 score=1104 streak=11 st=w-.i-.i-.i-.i-.w-.i-.i-
+5173 stir house=2
+5210 stir house=1
+5219 over score=1424
+end over score=1424 kept=8 cleared=8 bites=32 perfects=29 misses=0 caught=0 fox=5 bestMult=3 ending=cleared got=8/8
